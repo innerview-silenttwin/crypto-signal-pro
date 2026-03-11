@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CryptoSignal Pro | 虛擬貨幣買賣信號</title>
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📈</text></svg>">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@500;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- 側邊欄 -->
+        <aside class="sidebar glass-panel">
+            <div class="logo">
+                <span class="glow-text">CryptoSignal</span>
+                <span class="pro-badge">PRO</span>
+            </div>
+
+            <nav class="nav-menu">
+                <a href="#" class="nav-item active" onclick="return false;">🔥 實時監測</a>
+                <a href="#" class="nav-item" onclick="alert('📈 多圖表版將於 Phase 3 開放！'); return false;">📈 多圖表版</a>
+                <a href="#" class="nav-item" onclick="alert('🏆 會員中心將於 Phase 3 開放！'); return false;">🏆 會員中心</a>
+                <a href="#" class="nav-item" onclick="alert('⚙️ 策略參數將於 Phase 3 開放！'); return false;">⚙️ 策略參數</a>
+                <button class="btn-tutorial-open" id="open-tutorial">📖 快速上手教學</button>
+            </nav>
+
+            <div class="market-panel">
+                <label for="market-select">市場</label>
+                <select id="market-select">
+                    <option value="crypto" selected>虛擬幣</option>
+                    <option value="stock">台股</option>
+                    <option value="futures">台股期貨</option>
+                </select>
+                <div id="crypto-input-row" class="stock-input-row" style="display: none;">
+                    <input id="crypto-symbol-input" type="text" placeholder="例：BTC/USDT 或 比特幣" />
+                    <button id="crypto-load-btn">載入</button>
+                </div>
+
+                <div id="stock-input-row" class="stock-input-row" style="display: none;">
+                    <input id="stock-symbol-input" type="text" placeholder="輸入股票代碼 (例：2330)" />
+                    <button id="stock-load-btn">載入</button>
+                </div>
+
+                <div id="futures-input-row" class="stock-input-row" style="display: none;">
+                    <input id="futures-symbol-input" type="text" placeholder="期貨代碼 (TX/MTX/TE/TF)" />
+                    <button id="futures-load-btn">載入</button>
+                </div>
+            </div>
+
+            <div class="system-status">
+                <div class="status-indicator" id="status-dot"></div>
+                <span id="connection-status">系統連線中...</span>
+                <div id="last-update">等待數據</div>
+            </div>
+        </aside>
+
+        <!-- 主內容區 -->
+        <main class="main-content">
+            <header class="top-bar">
+                <h1>實時買賣點信號 (多時間框架共振)</h1>
+                <div class="user-profile">
+                    <span class="vip-tag">💎 Elite 會員</span>
+                </div>
+            </header>
+
+            <div class="dashboard-grid">
+                <!-- 主信號卡片 -->
+                <div class="signal-card glass-panel" id="card-btc">
+                    <div class="card-header">
+                        <h2 id="main-idx-title">BTC/USDT</h2>
+                        <span class="price-value glow-text" id="price-btc">Fetching...</span>
+                    </div>
+
+                    <div class="timeframe-sections">
+                        <!-- 1D 區域 -->
+                        <div class="tf-slot">
+                            <div class="tf-title">
+                                日線 (1D) 戰略波段
+                                <span class="info-tooltip"
+                                    data-tip="動能分數 (0-100)：≥70 強勢信號 / 50-69 中等傾向 / 30-49 弱勢觀望 / <30 多空不明。綠色=做多、紅色=做空、灰色=無方向。">?</span>
+                            </div>
+                            <div class="tf-content" id="tf-btc-1d">
+                                <div class="score-ring">
+                                    <svg viewBox="0 0 36 36" class="circular-chart">
+                                        <path class="circle-bg"
+                                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                        <path class="circle" id="ring-btc-1d" stroke-dasharray="0, 100"
+                                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                        <text x="18" y="20.35" class="percentage" id="score-btc-1d">0</text>
+                                    </svg>
+                                </div>
+                                <div class="signal-details">
+                                    <div class="signal-direction" id="dir-btc-1d">計算中</div>
+                                    <div class="signal-level" id="lvl-btc-1d">Loading</div>
+                                    <div class="score-breakdown">
+                                        買: <span id="buy-btc-1d">0</span> | 賣: <span id="sell-btc-1d">0</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 4H 區域 -->
+                        <div class="tf-slot">
+                            <div class="tf-title">
+                                4小時 (4H) 戰術進場
+                                <span class="info-tooltip"
+                                    data-tip="4H 動能：用於確認短期進出場點。≥70 為強訊號，<30 為噪音。當與日線方向一致時，稱為『共振』，勝率最高。">?</span>
+                            </div>
+                            <div class="tf-content" id="tf-btc-4h">
+                                <div class="score-ring mini">
+                                    <svg viewBox="0 0 36 36" class="circular-chart">
+                                        <path class="circle-bg"
+                                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                        <path class="circle" id="ring-btc-4h" stroke-dasharray="0, 100"
+                                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                        <text x="18" y="20.35" class="percentage" id="score-btc-4h">0</text>
+                                    </svg>
+                                </div>
+                                <div class="signal-details">
+                                    <div class="signal-direction" id="dir-btc-4h">-</div>
+                                    <div class="score-breakdown">買: <span id="buy-btc-4h">0</span> | 賣: <span
+                                            id="sell-btc-4h">0</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="resonance-alert" id="res-btc">
+                        💡 建議：等待日線與4小時產生共振。
+                    </div>
+                </div>
+
+                <!-- 交易圖表區塊 -->
+                <div class="chart-container glass-panel">
+                    <div class="card-header">
+                        <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap; flex: 1;">
+                            <h2 id="chart-title" class="normal-title">BTC 即時走勢圖</h2>
+                            <h2 id="chart-symbol" class="fullscreen-title">BTC/USDT</h2>
+
+                            <div class="info-tooltip">
+                                <span class="info-icon">?</span>
+                                <div class="tooltip-content strategy-legend">
+                                    <h4>🎯 戰略足跡說明</h4>
+                                    <ul>
+                                        <li><strong>🚀 建倉指令</strong>：K 線突破均線 + 趨勢多頭 + RSI 強勢 (>62)。</li>
+                                        <li><strong>💎 加碼機會</strong>：多頭趨勢回測均線支撐 + RSI 冷卻完畢。</li>
+                                        <li><strong>🛑 清倉警告</strong>：價格跌破長期生命線 (EMA 99)。</li>
+                                        <li><strong>🟢 單純箭頭</strong>：初期動能轉向，建議小倉位觀察。</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <!-- 全屏快速切換幣別 -->
+                            <div class="h-symbol-switcher" id="h-symbol-switcher">
+                                <button onclick="window.changeSymbol('BTC/USDT')">BTC</button>
+                                <button onclick="window.changeSymbol('ETH/USDT')">ETH</button>
+                                <button onclick="window.changeSymbol('SOL/USDT')">SOL</button>
+                            </div>
+
+                            <!-- 全屏模式下顯示的精簡資訊欄 -->
+                            <div id="header-mini-stats" class="header-mini-stats">
+                                <div class="h-core-data">
+                                    <span class="h-price" id="h-price-btc">--</span>
+                                    <div class="h-badge">1D: <span id="h-score-1d">0</span>分</div>
+                                    <div class="h-badge">4H: <span id="h-score-4h">0</span>分</div>
+                                    <span class="h-signal" id="h-signal-text">--</span>
+                                </div>
+                                <div class="h-advice" id="h-advice-text">--</div>
+                            </div>
+                        </div>
+                        <div class="chart-toggles-wrapper">
+                            <div class="chart-toggles">
+                                <button class="active">1D</button>
+                                <button>4H</button>
+                                <button>1H</button>
+                            </div>
+                            <button id="btn-chart-expand" class="expand-btn" title="全屏切換">
+                                <span id="expand-icon">⛶</span>
+                            </button>
+                        </div>
+                    </div>
+                    <!-- 使用 Lightweight Charts -->
+                    <div id="tv-chart" style="width: 100%; height: 300px; margin-top: 15px;"></div>
+
+                    <!-- 靜態圖例 -->
+                    <div class="static-legend">
+                        <div class="sl-item"><span>🚀</span> 建倉 (強勢金叉)</div>
+                        <div class="sl-item"><span>💎</span> 加碼 (多頭回測)</div>
+                        <div class="sl-item"><span>🛑</span> 清倉 (趨勢反轉)</div>
+                        <div class="sl-item"><span>🟢</span> 初期轉強 (觀察)</div>
+                    </div>
+
+                    <!-- 指標控制面板 -->
+                    <div class="indicator-controls">
+                        <div class="ic-item">
+                            <label class="switch">
+                                <input type="checkbox" id="enable-vol" checked>
+                                <span class="slider"></span>
+                            </label>
+                            <span class="ic-label">成交量 (VOL)</span>
+                        </div>
+                        <div class="ic-item">
+                            <label class="switch">
+                                <input type="checkbox" id="enable-ema-short" checked>
+                                <span class="slider"></span>
+                            </label>
+                            <span class="ic-label">短期均線</span>
+                            <input type="number" id="val-ema-short" value="25" class="ic-input">
+                        </div>
+                        <div class="ic-item">
+                            <label class="switch">
+                                <input type="checkbox" id="enable-ema-long" checked>
+                                <span class="slider"></span>
+                            </label>
+                            <span class="ic-label">長期均線</span>
+                            <input type="number" id="val-ema-long" value="99" class="ic-input">
+                        </div>
+                        <div class="ic-item">
+                            <label class="switch">
+                                <input type="checkbox" id="enable-bbands" checked>
+                                <span class="slider"></span>
+                            </label>
+                            <span class="ic-label">布林帶 (BB)</span>
+                            <input type="number" id="val-bb-p" value="20" class="ic-input" title="週期">
+                            <input type="number" id="val-bb-s" value="2" class="ic-input" title="標準差" step="0.1">
+                        </div>
+                        <div class="ic-item">
+                            <label class="switch">
+                                <input type="checkbox" id="enable-rsi" checked>
+                                <span class="slider"></span>
+                            </label>
+                            <span class="ic-label">RSI 指數</span>
+                            <input type="number" id="val-rsi" value="14" class="ic-input">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 其他幣種微縮卡片 -->
+            <div class="mini-cards-row">
+                <!-- BTC (為了一致性也可以加入) -->
+                <div class="mini-card glass-panel" id="card-btc-mini" style="cursor: pointer;"
+                    onclick="window.changeSymbol('BTC/USDT')">
+                    <div class="mc-head">
+                        <h3>BTC/USDT</h3> <span id="price-btc-mini" class="glow-text">...</span>
+                    </div>
+                    <div class="mc-body">1D: <span id="dir-btc-mini-1d">--</span> (<span
+                            id="score-btc-mini-1d">0</span>分)</div>
+                </div>
+                <!-- ETH -->
+                <div class="mini-card glass-panel" id="card-eth" style="cursor: pointer;"
+                    onclick="window.changeSymbol('ETH/USDT')">
+                    <div class="mc-head">
+                        <h3>ETH/USDT</h3> <span id="price-eth" class="glow-text">...</span>
+                    </div>
+                    <div class="mc-body">1D: <span id="dir-eth-1d">--</span> (<span id="score-eth-1d">0</span>分)</div>
+                </div>
+                <!-- SOL -->
+                <div class="mini-card glass-panel" id="card-sol" style="cursor: pointer;"
+                    onclick="window.changeSymbol('SOL/USDT')">
+                    <div class="mc-head">
+                        <h3>SOL/USDT</h3> <span id="price-sol" class="glow-text">...</span>
+                    </div>
+                    <div class="mc-body">1D: <span id="dir-sol-1d">--</span> (<span id="score-sol-1d">0</span>分)</div>
+                </div>
+            </div>
+
+            <!-- 台灣市場自選清單微縮卡片（台股 / 期貨切換時顯示） -->
+            <div class="mini-cards-row" id="tw-mini-cards" style="display: none;"></div>
+        </main>
+    </div>
+
+    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="app.js"></script>
+
+    <!-- 教學 Modal -->
+    <div class="modal-overlay" id="tutorial-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>如何使用 CryptoSignal Pro？</h2>
+                <div class="close-btn" id="close-tutorial">&times;</div>
+            </div>
+
+            <div class="tutorial-body">
+                <div class="tutorial-step">
+                    <h4>📊 動能分數怎麼讀？</h4>
+                    <p>圓形圖中的數字是 <span class="tutorial-highlight">動能分數 (0-100)</span>。<br>
+                        ● <span class="tutorial-highlight">≥70 強勢信號</span>：多個指標共振，值得積極操作。<br>
+                        ● <span class="tutorial-highlight">50-69 中等傾向</span>：有一定方向，但可等更好時機。<br>
+                        ● <span class="tutorial-highlight">30-49 弱勢觀望</span>：方向偏弱，不建議進場。<br>
+                        ● <span class="tutorial-highlight">&lt;30 多空不明</span>：噪音區，保持空倉。
+                    </p>
+                </div>
+
+                <div class="tutorial-step">
+                    <h4>🟢🔴 顏色代表什麼？</h4>
+                    <p>● <span class="tutorial-highlight">綠色 = 做多趨勢</span>：多方動能勝出。<br>
+                        ● <span class="tutorial-highlight">紅色 = 做空趨勢</span>：空方壓力大，應規避做多。<br>
+                        ● <span class="tutorial-highlight">灰色 = 無方向</span>：分數太低，任何操作都像賭博。</p>
+                </div>
+
+                <div class="tutorial-step">
+                    <h4>🎯 核心獲利術：多時框共振</h4>
+                    <p>當 <span class="tutorial-highlight">1D</span> 與 <span class="tutorial-highlight">4H</span>
+                        方向完全一致且分數 ≥50 時，稱為「共振」，是進場的高勝率時機！</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

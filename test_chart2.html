@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+<div id="tv-chart" style="width: 500px; height: 300px;"></div>
+<script>
+    fetch('http://127.0.0.1:8000/api/chart?symbol=BTC/USDT&timeframe=1d')
+    .then(r => r.json())
+    .then(data => {
+        const chart = LightweightCharts.createChart(document.getElementById('tv-chart'));
+        const candleSeries = chart.addCandlestickSeries();
+        
+        const uniqueData = [];
+        const timeSet = new Set();
+        let tf = '1d';
+        
+        for (let i = 0; i < data.length; i++) {
+            const item = data[i];
+            if (!item.time || typeof item.time !== 'number' || isNaN(item.time)) continue;
+
+            const dateObj = new Date(item.time * 1000);
+            
+            let lwcTime;
+            if (tf === '1d') {
+                lwcTime = dateObj.toISOString().split('T')[0];
+            } else {
+                lwcTime = item.time;
+            }
+
+            if (!timeSet.has(lwcTime)) {
+                timeSet.add(lwcTime);
+                uniqueData.push({ 
+                    time: lwcTime, 
+                    open: item.open, 
+                    high: item.high, 
+                    low: item.low, 
+                    close: item.close 
+                });
+            }
+        }
+
+        uniqueData.sort((a, b) => {
+            if (typeof a.time === 'string') {
+                return new Date(a.time).getTime() - new Date(b.time).getTime();
+            }
+            return a.time - b.time;
+        });
+        
+        candleSeries.setData(uniqueData);
+        console.log("Success with 1d:", uniqueData.length);
+        document.body.innerHTML += "<p>Success</p>";
+    }).catch(e => {
+        console.error(e);
+        document.body.innerHTML += "<p>Error: " + e.message + "</p>";
+    });
+</script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+<script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+<div id="tv-chart" style="width: 500px; height: 300px;"></div>
+<script>
+    fetch('http://127.0.0.1:8000/api/chart?symbol=BTC/USDT&timeframe=1d')
+    .then(r => r.json())
+    .then(data => {
+        const chart = LightweightCharts.createChart(document.getElementById('tv-chart'));
+        const candleSeries = chart.addCandlestickSeries();
+        data.sort((a,b) => a.time - b.time);
+        const u = []; let l = "";
+        data.forEach(item => {
+            const d = new Date(item.time * 1000);
+            const ts = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            if(ts !== l) { l = ts; u.push({time: ts, open: item.open, high: item.high, low: item.low, close: item.close}); }
+        });
+        candleSeries.setData(u);
+        console.log("Success with 1d");
+    }).catch(e => console.error(e));
+</script>
+</body>
+</html>

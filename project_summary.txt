@@ -1,0 +1,4688 @@
+--- PROJECT SNAPSHOT START ---
+
+--- FILE: ./patch_grid.py ---
+with open("frontend/style.css", "r") as f:
+    orig = f.read()
+import re
+new_css = re.sub(r'/\* 終極 Grid 溢出修復.*width: 100%;\n}', '', orig, flags=re.DOTALL)
+
+new_code = """
+/* 終極 Grid 溢出修復 */
+.chart-container, .signal-card {
+    min-width: 0;
+}
+"""
+
+with open("frontend/style.css", "w") as f:
+    f.write(new_css + new_code)
+
+
+--- FILE: ./test_chart.html ---
+<!DOCTYPE html>
+<html>
+<head>
+<script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+<div id="tv-chart" style="width: 500px; height: 300px;"></div>
+<script>
+    fetch('http://127.0.0.1:8000/api/chart?symbol=BTC/USDT&timeframe=1d')
+    .then(r => r.json())
+    .then(data => {
+        const chart = LightweightCharts.createChart(document.getElementById('tv-chart'));
+        const candleSeries = chart.addCandlestickSeries();
+        data.sort((a,b) => a.time - b.time);
+        const u = []; let l = "";
+        data.forEach(item => {
+            const d = new Date(item.time * 1000);
+            const ts = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            if(ts !== l) { l = ts; u.push({time: ts, open: item.open, high: item.high, low: item.low, close: item.close}); }
+        });
+        candleSeries.setData(u);
+        console.log("Success with 1d");
+    }).catch(e => console.error(e));
+</script>
+</body>
+</html>
+
+
+--- FILE: ./test_chart.js ---
+const fs = require('fs');
+const data = JSON.parse(fs.readFileSync('test_data.json', 'utf8'));
+const uniqueData = [];
+let lastTimeStr = "";
+let lastTimeSec = 0;
+let tf = '1d';
+
+for (let i = 0; i < data.length; i++) {
+    const item = data[i];
+    let lwcTime;
+    if (tf === '1d') {
+        const d = new Date(item.time * 1000);
+        lwcTime = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        if (lwcTime !== lastTimeStr) {
+            lastTimeStr = lwcTime;
+            uniqueData.push({ time: lwcTime, open: item.open, high: item.high, low: item.low, close: item.close });
+        }
+    } else {
+        lwcTime = item.time;
+        if (lwcTime > lastTimeSec) {
+            lastTimeSec = lwcTime;
+            uniqueData.push({ time: lwcTime, open: item.open, high: item.high, low: item.low, close: item.close });
+        }
+    }
+}
+console.log(uniqueData.slice(0, 3));
+console.log(uniqueData.length);
+
+// Check if sorted
+let sorted = true;
+for(let i=1; i<uniqueData.length; i++){
+    if(tf === '1d'){
+        if(new Date(uniqueData[i].time) <= new Date(uniqueData[i-1].time)) sorted = false;
+    } else {
+        if(uniqueData[i].time <= uniqueData[i-1].time) sorted = false;
+    }
+}
+console.log("Is sorted?", sorted);
+
+
+--- FILE: ./test_chart2.html ---
+<!DOCTYPE html>
+<html>
+<head>
+<script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+</head>
+<body>
+<div id="tv-chart" style="width: 500px; height: 300px;"></div>
+<script>
+    fetch('http://127.0.0.1:8000/api/chart?symbol=BTC/USDT&timeframe=1d')
+    .then(r => r.json())
+    .then(data => {
+        const chart = LightweightCharts.createChart(document.getElementById('tv-chart'));
+        const candleSeries = chart.addCandlestickSeries();
+        
+        const uniqueData = [];
+        const timeSet = new Set();
+        let tf = '1d';
+        
+        for (let i = 0; i < data.length; i++) {
+            const item = data[i];
+            if (!item.time || typeof item.time !== 'number' || isNaN(item.time)) continue;
+
+            const dateObj = new Date(item.time * 1000);
+            
+            let lwcTime;
+            if (tf === '1d') {
+                lwcTime = dateObj.toISOString().split('T')[0];
+            } else {
+                lwcTime = item.time;
+            }
+
+            if (!timeSet.has(lwcTime)) {
+                timeSet.add(lwcTime);
+                uniqueData.push({ 
+                    time: lwcTime, 
+                    open: item.open, 
+                    high: item.high, 
+                    low: item.low, 
+                    close: item.close 
+                });
+            }
+        }
+
+        uniqueData.sort((a, b) => {
+            if (typeof a.time === 'string') {
+                return new Date(a.time).getTime() - new Date(b.time).getTime();
+            }
+            return a.time - b.time;
+        });
+        
+        candleSeries.setData(uniqueData);
+        console.log("Success with 1d:", uniqueData.length);
+        document.body.innerHTML += "<p>Success</p>";
+    }).catch(e => {
+        console.error(e);
+        document.body.innerHTML += "<p>Error: " + e.message + "</p>";
+    });
+</script>
+</body>
+</html>
+
+
+--- FILE: ./frontend/index.html ---
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CryptoSignal Pro | 虛擬貨幣買賣信號</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@500;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- 側邊欄 -->
+        <aside class="sidebar glass-panel">
+            <div class="logo">
+                <span class="glow-text">CryptoSignal</span>
+                <span class="pro-badge">PRO</span>
+            </div>
+
+            <nav class="nav-menu">
+                <a href="#" class="nav-item active" onclick="return false;">🔥 實時監測</a>
+                <a href="#" class="nav-item" onclick="alert('📈 多圖表版將於 Phase 3 開放！'); return false;">📈 多圖表版</a>
+                <a href="#" class="nav-item" onclick="alert('🏆 會員中心將於 Phase 3 開放！'); return false;">🏆 會員中心</a>
+                <a href="#" class="nav-item" onclick="alert('⚙️ 策略參數將於 Phase 3 開放！'); return false;">⚙️ 策略參數</a>
+                <button class="btn-tutorial-open" id="open-tutorial">📖 快速上手教學</button>
+            </nav>
+
+            <div class="market-panel">
+                <label for="market-select">市場</label>
+                <select id="market-select">
+                    <option value="crypto">虛擬幣</option>
+                    <option value="stock" selected>台股</option>
+                </select>
+                <div id="stock-input-row" class="stock-input-row" style="display: none;">
+                    <input id="stock-symbol-input" type="text" placeholder="輸入股票代碼 (例：2330)" />
+                    <button id="stock-load-btn">載入</button>
+                </div>
+            </div>
+
+            <div class="system-status">
+                <div class="status-indicator" id="status-dot"></div>
+                <span id="connection-status">系統連線中...</span>
+                <div id="last-update">等待數據</div>
+            </div>
+        </aside>
+
+        <!-- 主內容區 -->
+        <main class="main-content">
+            <header class="top-bar">
+                <h1>實時買賣點信號 (多時間框架共振)</h1>
+                <div class="user-profile">
+                    <span class="vip-tag">💎 Elite 會員</span>
+                </div>
+            </header>
+
+            <div class="dashboard-grid">
+                <!-- 主信號卡片 -->
+                <div class="signal-card glass-panel" id="card-btc">
+                    <div class="card-header">
+                        <h2 id="main-idx-title">BTC/USDT</h2>
+                        <span class="price-value glow-text" id="price-btc">Fetching...</span>
+                    </div>
+
+                    <div class="timeframe-sections">
+                        <!-- 1D 區域 -->
+                        <div class="tf-slot">
+                            <div class="tf-title">
+                                日線 (1D) 戰略波段
+                                <span class="info-tooltip"
+                                    data-tip="動能分數 (0-100)：≥70 強勢信號 / 50-69 中等傾向 / 30-49 弱勢觀望 / <30 多空不明。綠色=做多、紅色=做空、灰色=無方向。">?</span>
+                            </div>
+                            <div class="tf-content" id="tf-btc-1d">
+                                <div class="score-ring">
+                                    <svg viewBox="0 0 36 36" class="circular-chart">
+                                        <path class="circle-bg"
+                                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                        <path class="circle" id="ring-btc-1d" stroke-dasharray="0, 100"
+                                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                        <text x="18" y="20.35" class="percentage" id="score-btc-1d">0</text>
+                                    </svg>
+                                </div>
+                                <div class="signal-details">
+                                    <div class="signal-direction" id="dir-btc-1d">計算中</div>
+                                    <div class="signal-level" id="lvl-btc-1d">Loading</div>
+                                    <div class="score-breakdown">
+                                        買: <span id="buy-btc-1d">0</span> | 賣: <span id="sell-btc-1d">0</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 4H 區域 -->
+                        <div class="tf-slot">
+                            <div class="tf-title">
+                                4小時 (4H) 戰術進場
+                                <span class="info-tooltip"
+                                    data-tip="4H 動能：用於確認短期進出場點。≥70 為強訊號，<30 為噪音。當與日線方向一致時，稱為『共振』，勝率最高。">?</span>
+                            </div>
+                            <div class="tf-content" id="tf-btc-4h">
+                                <div class="score-ring mini">
+                                    <svg viewBox="0 0 36 36" class="circular-chart">
+                                        <path class="circle-bg"
+                                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                        <path class="circle" id="ring-btc-4h" stroke-dasharray="0, 100"
+                                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                        <text x="18" y="20.35" class="percentage" id="score-btc-4h">0</text>
+                                    </svg>
+                                </div>
+                                <div class="signal-details">
+                                    <div class="signal-direction" id="dir-btc-4h">-</div>
+                                    <div class="score-breakdown">買: <span id="buy-btc-4h">0</span> | 賣: <span
+                                            id="sell-btc-4h">0</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="resonance-alert" id="res-btc">
+                        💡 建議：等待日線與4小時產生共振。
+                    </div>
+                </div>
+
+                <!-- 交易圖表區塊 -->
+                <div class="chart-container glass-panel">
+                    <div class="card-header">
+                        <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap; flex: 1;">
+                            <h2 id="chart-title" class="normal-title">BTC 即時走勢圖</h2>
+                            <h2 id="chart-symbol" class="fullscreen-title">BTC/USDT</h2>
+
+                            <div class="info-tooltip">
+                                <span class="info-icon">?</span>
+                                <div class="tooltip-content strategy-legend">
+                                    <h4>🎯 戰略足跡說明</h4>
+                                    <ul>
+                                        <li><strong>🚀 建倉指令</strong>：K 線突破均線 + 趨勢多頭 + RSI 強勢 (>62)。</li>
+                                        <li><strong>💎 加碼機會</strong>：多頭趨勢回測均線支撐 + RSI 冷卻完畢。</li>
+                                        <li><strong>🛑 清倉警告</strong>：價格跌破長期生命線 (EMA 99)。</li>
+                                        <li><strong>🟢 單純箭頭</strong>：初期動能轉向，建議小倉位觀察。</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <!-- 全屏快速切換幣別 -->
+                            <div class="h-symbol-switcher" id="h-symbol-switcher">
+                                <button onclick="window.changeSymbol('BTC/USDT')">BTC</button>
+                                <button onclick="window.changeSymbol('ETH/USDT')">ETH</button>
+                                <button onclick="window.changeSymbol('SOL/USDT')">SOL</button>
+                            </div>
+
+                            <!-- 全屏模式下顯示的精簡資訊欄 -->
+                            <div id="header-mini-stats" class="header-mini-stats">
+                                <div class="h-core-data">
+                                    <span class="h-price" id="h-price-btc">--</span>
+                                    <div class="h-badge">1D: <span id="h-score-1d">0</span>分</div>
+                                    <div class="h-badge">4H: <span id="h-score-4h">0</span>分</div>
+                                    <span class="h-signal" id="h-signal-text">--</span>
+                                </div>
+                                <div class="h-advice" id="h-advice-text">--</div>
+                            </div>
+                        </div>
+                        <div class="chart-toggles-wrapper">
+                            <div class="chart-toggles">
+                                <button class="active">1D</button>
+                                <button>4H</button>
+                                <button>1H</button>
+                            </div>
+                            <button id="btn-chart-expand" class="expand-btn" title="全屏切換">
+                                <span id="expand-icon">⛶</span>
+                            </button>
+                        </div>
+                    </div>
+                    <!-- 使用 Lightweight Charts -->
+                    <div id="tv-chart" style="width: 100%; height: 300px; margin-top: 15px;"></div>
+
+                    <!-- 靜態圖例 -->
+                    <div class="static-legend">
+                        <div class="sl-item"><span>🚀</span> 建倉 (強勢金叉)</div>
+                        <div class="sl-item"><span>💎</span> 加碼 (多頭回測)</div>
+                        <div class="sl-item"><span>🛑</span> 清倉 (趨勢反轉)</div>
+                        <div class="sl-item"><span>🟢</span> 初期轉強 (觀察)</div>
+                    </div>
+
+                    <!-- 指標控制面板 -->
+                    <div class="indicator-controls">
+                        <div class="ic-item">
+                            <label class="switch">
+                                <input type="checkbox" id="enable-vol" checked>
+                                <span class="slider"></span>
+                            </label>
+                            <span class="ic-label">成交量 (VOL)</span>
+                        </div>
+                        <div class="ic-item">
+                            <label class="switch">
+                                <input type="checkbox" id="enable-ema-short" checked>
+                                <span class="slider"></span>
+                            </label>
+                            <span class="ic-label">短期均線</span>
+                            <input type="number" id="val-ema-short" value="25" class="ic-input">
+                        </div>
+                        <div class="ic-item">
+                            <label class="switch">
+                                <input type="checkbox" id="enable-ema-long">
+                                <span class="slider"></span>
+                            </label>
+                            <span class="ic-label">長期均線</span>
+                            <input type="number" id="val-ema-long" value="99" class="ic-input">
+                        </div>
+                        <div class="ic-item">
+                            <label class="switch">
+                                <input type="checkbox" id="enable-bbands">
+                                <span class="slider"></span>
+                            </label>
+                            <span class="ic-label">布林帶 (BB)</span>
+                            <input type="number" id="val-bb-p" value="20" class="ic-input" title="週期">
+                            <input type="number" id="val-bb-s" value="2" class="ic-input" title="標準差" step="0.1">
+                        </div>
+                        <div class="ic-item">
+                            <label class="switch">
+                                <input type="checkbox" id="enable-rsi">
+                                <span class="slider"></span>
+                            </label>
+                            <span class="ic-label">RSI 指數</span>
+                            <input type="number" id="val-rsi" value="14" class="ic-input">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 其他幣種微縮卡片 -->
+            <div class="mini-cards-row">
+                <!-- BTC (為了一致性也可以加入) -->
+                <div class="mini-card glass-panel" id="card-btc-mini" style="cursor: pointer;"
+                    onclick="window.changeSymbol('BTC/USDT')">
+                    <div class="mc-head">
+                        <h3>BTC/USDT</h3> <span id="price-btc-mini" class="glow-text">...</span>
+                    </div>
+                    <div class="mc-body">1D: <span id="dir-btc-mini-1d">--</span> (<span
+                            id="score-btc-mini-1d">0</span>分)</div>
+                </div>
+                <!-- ETH -->
+                <div class="mini-card glass-panel" id="card-eth" style="cursor: pointer;"
+                    onclick="window.changeSymbol('ETH/USDT')">
+                    <div class="mc-head">
+                        <h3>ETH/USDT</h3> <span id="price-eth" class="glow-text">...</span>
+                    </div>
+                    <div class="mc-body">1D: <span id="dir-eth-1d">--</span> (<span id="score-eth-1d">0</span>分)</div>
+                </div>
+                <!-- SOL -->
+                <div class="mini-card glass-panel" id="card-sol" style="cursor: pointer;"
+                    onclick="window.changeSymbol('SOL/USDT')">
+                    <div class="mc-head">
+                        <h3>SOL/USDT</h3> <span id="price-sol" class="glow-text">...</span>
+                    </div>
+                    <div class="mc-body">1D: <span id="dir-sol-1d">--</span> (<span id="score-sol-1d">0</span>分)</div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
+    <script src="app.js"></script>
+
+    <!-- 教學 Modal -->
+    <div class="modal-overlay" id="tutorial-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>如何使用 CryptoSignal Pro？</h2>
+                <div class="close-btn" id="close-tutorial">&times;</div>
+            </div>
+
+            <div class="tutorial-body">
+                <div class="tutorial-step">
+                    <h4>📊 動能分數怎麼讀？</h4>
+                    <p>圓形圖中的數字是 <span class="tutorial-highlight">動能分數 (0-100)</span>。<br>
+                        ● <span class="tutorial-highlight">≥70 強勢信號</span>：多個指標共振，值得積極操作。<br>
+                        ● <span class="tutorial-highlight">50-69 中等傾向</span>：有一定方向，但可等更好時機。<br>
+                        ● <span class="tutorial-highlight">30-49 弱勢觀望</span>：方向偏弱，不建議進場。<br>
+                        ● <span class="tutorial-highlight">&lt;30 多空不明</span>：噪音區，保持空倉。
+                    </p>
+                </div>
+
+                <div class="tutorial-step">
+                    <h4>🟢🔴 顏色代表什麼？</h4>
+                    <p>● <span class="tutorial-highlight">綠色 = 做多趨勢</span>：多方動能勝出。<br>
+                        ● <span class="tutorial-highlight">紅色 = 做空趨勢</span>：空方壓力大，應規避做多。<br>
+                        ● <span class="tutorial-highlight">灰色 = 無方向</span>：分數太低，任何操作都像賭博。</p>
+                </div>
+
+                <div class="tutorial-step">
+                    <h4>🎯 核心獲利術：多時框共振</h4>
+                    <p>當 <span class="tutorial-highlight">1D</span> 與 <span class="tutorial-highlight">4H</span>
+                        方向完全一致且分數 ≥50 時，稱為「共振」，是進場的高勝率時機！</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>
+
+--- FILE: ./frontend/style.css ---
+/* Google Fonts: Inter (數據), Outfit (標題) */
+:root {
+    --bg-dark: #0f172a;
+    /* 深沉黑藍底色 */
+    --bg-card: rgba(30, 41, 59, 0.7);
+    /* 毛玻璃卡片底色 */
+    --border-color: rgba(255, 255, 255, 0.1);
+    --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+
+    --primary: #3b82f6;
+    /* 首選藍色 */
+    --glow-primary: rgba(59, 130, 246, 0.5);
+
+    --buy-color: #10b981;
+    /* 買入綠 */
+    --glow-buy: rgba(16, 185, 129, 0.6);
+
+    --sell-color: #ef4444;
+    /* 賣出紅 */
+    --glow-sell: rgba(239, 68, 68, 0.6);
+
+    --neutral-color: #94a3b8;
+    /* 中性灰 */
+
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--bg-dark);
+    color: var(--text-main);
+    background-image:
+        radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.08), transparent 25%),
+        radial-gradient(circle at 85% 30%, rgba(16, 185, 129, 0.05), transparent 25%);
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+h1,
+h2,
+h3,
+.glow-text {
+    font-family: 'Outfit', sans-serif;
+}
+
+.glass-panel {
+    background: var(--bg-card);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    box-shadow: var(--glass-shadow);
+}
+
+.app-container {
+    display: flex;
+    height: 100vh;
+}
+
+/* Sidebar */
+.sidebar {
+    width: 250px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border-color);
+    border-radius: 0;
+}
+
+.market-panel {
+    margin-top: 18px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.market-panel label {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.market-panel select {
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(0, 0, 0, 0.25);
+    color: var(--text-main);
+}
+
+.market-panel .stock-input-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.market-panel .stock-input-row input {
+    flex: 1;
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(0, 0, 0, 0.25);
+    color: var(--text-main);
+}
+
+.market-panel .stock-input-row button {
+    padding: 8px 10px;
+    border-radius: 10px;
+    border: none;
+    background: rgba(59, 130, 246, 0.8);
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.market-panel .stock-input-row button:hover {
+    background: rgba(59, 130, 246, 1);
+}
+
+.logo {
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 40px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.glow-text {
+    background: linear-gradient(90deg, #60a5fa, #34d399);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+}
+
+.pro-badge {
+    font-size: 10px;
+    background: linear-gradient(135deg, #f59e0b, #ea580c);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: bold;
+}
+
+.nav-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex: 1;
+}
+
+.nav-item {
+    text-decoration: none;
+    color: var(--text-muted);
+    padding: 12px 16px;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    font-weight: 500;
+}
+
+.nav-item:hover,
+.nav-item.active {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-main);
+}
+
+.nav-item.active {
+    border-left: 3px solid var(--primary);
+}
+
+.system-status {
+    margin-top: auto;
+    padding: 16px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.status-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    background-color: var(--buy-color);
+    border-radius: 50%;
+    margin-right: 6px;
+    box-shadow: 0 0 8px var(--glow-buy);
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+    }
+
+    70% {
+        transform: scale(1);
+        box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+    }
+
+    100% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+    }
+}
+
+.stock-input-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.stock-input-row input {
+    width: 120px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background: rgba(0, 0, 0, 0.25);
+    color: var(--text-main);
+}
+
+.stock-input-row button {
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: none;
+    background: rgba(59, 130, 246, 0.8);
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.stock-input-row button:hover {
+    background: rgba(59, 130, 246, 1);
+}
+
+/* Main Content */
+.main-content {
+    flex: 1;
+    padding: 32px;
+    overflow-y: auto;
+    position: relative;
+}
+
+.top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 32px;
+}
+
+.vip-tag {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 14px;
+    font-weight: 600;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+.card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding: 24px 24px 0 24px;
+}
+
+.price-value {
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.timeframe-sections {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 0 24px 24px 24px;
+}
+
+.tf-slot {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.tf-title {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+    font-weight: 600;
+}
+
+.tf-content {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+/* 圓形進度條 (信心分數) */
+.score-ring {
+    width: 80px;
+    height: 80px;
+}
+
+.score-ring.mini {
+    width: 60px;
+    height: 60px;
+}
+
+.circular-chart {
+    display: block;
+    margin: 0 auto;
+    max-width: 100%;
+    max-height: 250px;
+}
+
+.circle-bg {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.1);
+    stroke-width: 3.8;
+}
+
+.circle {
+    fill: none;
+    stroke: var(--primary);
+    stroke-width: 3.8;
+    stroke-linecap: round;
+    transition: stroke-dasharray 1s ease-out, stroke 0.5s ease;
+}
+
+.percentage {
+    fill: #fff;
+    font-family: 'Outfit', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    text-anchor: middle;
+}
+
+.signal-details {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.signal-direction {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.signal-direction.buy {
+    color: var(--buy-color);
+}
+
+.signal-direction.sell {
+    color: var(--sell-color);
+}
+
+.signal-direction.weak {
+    color: #fbbf24;
+    /* 琥珀黃：弱信號警示 */
+}
+
+.signal-level {
+    font-size: 14px;
+    color: #fbbf24;
+    font-weight: 600;
+}
+
+.score-breakdown {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.score-breakdown span {
+    font-family: monospace;
+}
+
+.resonance-alert {
+    margin: 0 24px 24px 24px;
+    padding: 12px;
+    background: rgba(59, 130, 246, 0.1);
+    border-left: 4px solid var(--primary);
+    border-radius: 4px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.resonance-alert.buy {
+    background: rgba(16, 185, 129, 0.1);
+    border-left-color: var(--buy-color);
+}
+
+.resonance-alert.sell {
+    background: rgba(239, 68, 68, 0.1);
+    border-left-color: var(--sell-color);
+}
+
+.mini-cards-row {
+    display: flex;
+    gap: 20px;
+}
+
+.mini-card {
+    flex: 1;
+    padding: 20px;
+}
+
+.mc-head {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.mc-head h3 {
+    font-size: 16px;
+    color: var(--text-muted);
+}
+
+.chart-toggles button {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    padding: 4px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.chart-toggles button.active {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+}
+
+/* --- Tooltip & Tutorial UI --- */
+.info-tooltip {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: help;
+}
+
+.info-icon {
+    background: rgba(255, 255, 255, 0.1);
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+}
+
+.tooltip-content {
+    display: none;
+    position: absolute;
+    top: 25px;
+    left: 0;
+    background: #1e222d;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 16px;
+    width: 280px;
+    z-index: 1000;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+}
+
+.info-tooltip:hover .tooltip-content {
+    display: block;
+}
+
+.info-tooltip:hover::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1e293b;
+    color: #f8fafc;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    white-space: pre-wrap;
+    width: 220px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    z-index: 1000;
+}
+
+/* Modal 教學視窗 */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 3000;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.modal-content {
+    background: #1e293b;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 40px;
+    border-radius: 24px;
+    max-width: 650px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    transform: scale(0.9) translateY(20px);
+    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal-overlay.active .modal-content {
+    transform: scale(1) translateY(0);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 25px;
+}
+
+.modal-header h2 {
+    font-size: 24px;
+    background: linear-gradient(90deg, #60a5fa, #34d399);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.close-btn {
+    cursor: pointer;
+    font-size: 32px;
+    color: var(--text-muted);
+    line-height: 1;
+}
+
+.tutorial-step {
+    margin-bottom: 25px;
+    padding: 20px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 16px;
+    border-left: 4px solid var(--primary);
+}
+
+.tutorial-step h4 {
+    color: #f8fafc;
+    margin-bottom: 10px;
+    font-size: 16px;
+}
+
+.tutorial-step p {
+    color: var(--text-muted);
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.tutorial-highlight {
+    color: #34d399;
+    font-weight: 600;
+}
+
+.btn-tutorial-open {
+    margin-top: 15px;
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    color: #60a5fa;
+    padding: 12px;
+    border-radius: 12px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.btn-tutorial-open:hover {
+    background: rgba(59, 130, 246, 0.2);
+    transform: translateY(-2px);
+}
+
+/* --- 技術指標控制面板 --- */
+.indicator-controls {
+    display: flex;
+    gap: 24px;
+    padding: 16px 24px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    background: rgba(0, 0, 0, 0.1);
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.ic-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.ic-label {
+    font-weight: 500;
+}
+
+.ic-input {
+    width: 45px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    color: white;
+    padding: 3px 6px;
+    font-size: 12px;
+    text-align: center;
+}
+
+/* Switch Toggle 樣式 */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 34px;
+    height: 18px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(255, 255, 255, 0.1);
+    transition: .3s;
+    border-radius: 18px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 12px;
+    width: 12px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .3s;
+    border-radius: 50%;
+}
+
+input:checked+.slider {
+    background-color: var(--primary);
+}
+
+input:checked+.slider:before {
+    transform: translateX(16px);
+}
+
+/* --- 走勢圖戰略圖例 --- */
+.strategy-legend h4 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    color: var(--primary);
+}
+
+.strategy-legend ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.strategy-legend li {
+    font-size: 12px;
+    margin-bottom: 10px;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+.strategy-legend li strong {
+    color: white;
+}
+
+/* 靜態標籤列 */
+.static-legend {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 15px;
+    padding: 12px;
+    background: rgba(0, 0, 0, 0.2);
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.sl-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.sl-item span {
+    font-size: 14px;
+}
+
+/* --- 全屏模式深度優化 --- */
+.dashboard-grid.fullscreen-mode {
+    grid-template-columns: 1fr;
+}
+
+.dashboard-grid.fullscreen-mode .signal-card,
+.dashboard-grid.fullscreen-mode .top-bar,
+.dashboard-grid.fullscreen-mode~.mini-cards-row {
+    display: none !important;
+}
+
+body:has(.fullscreen-mode) .main-content {
+    padding-top: 10px;
+}
+
+/* 標題切換：全屏時隱藏普通標題，顯示簡約幣別 */
+.fullscreen-title {
+    display: none;
+}
+
+.dashboard-grid.fullscreen-mode .normal-title {
+    display: none;
+}
+
+.dashboard-grid.fullscreen-mode .fullscreen-title {
+    display: block;
+    color: var(--text-main);
+    font-weight: 800;
+    border-right: 2px solid rgba(255, 255, 255, 0.1);
+    padding-right: 15px;
+}
+
+/* 幣別切換按鈕區 (僅全屏顯示) */
+.h-symbol-switcher {
+    display: none;
+    gap: 8px;
+}
+
+.dashboard-grid.fullscreen-mode .h-symbol-switcher {
+    display: flex;
+}
+
+.h-symbol-switcher button {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-muted);
+    padding: 3px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.h-symbol-switcher button:hover {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+/* 全屏資訊欄佈局：核心數據 + 換行建議 */
+.header-mini-stats {
+    display: none;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    padding-left: 15px;
+}
+
+.dashboard-grid.fullscreen-mode .header-mini-stats {
+    display: flex;
+}
+
+.h-core-data {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.h-price {
+    font-family: 'Inter', sans-serif;
+    font-weight: 700;
+    color: #3b82f6;
+    font-size: 18px;
+}
+
+.h-badge {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-muted);
+}
+
+.h-badge span {
+    font-weight: bold;
+    color: white;
+}
+
+.h-signal {
+    font-weight: bold;
+    font-size: 13px;
+    padding: 1px 8px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.h-signal.buy {
+    color: var(--buy-color);
+}
+
+.h-signal.sell {
+    color: var(--sell-color);
+}
+
+.h-signal.weak {
+    color: #fbbf24;
+}
+
+/* 重要：戰略建議換行顯示 */
+.h-advice {
+    white-space: normal;
+    word-break: break-word;
+    line-height: 1.4;
+    max-width: 600px;
+    font-size: 12px;
+    color: var(--text-main);
+    background: rgba(59, 130, 246, 0.05);
+    padding: 3px 10px;
+    border-radius: 6px;
+}
+
+/* 右側控制組優化 */
+.chart-toggles-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.expand-btn {
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    color: var(--primary);
+    padding: 6px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.expand-btn:hover {
+    background: var(--primary);
+    color: white;
+}
+
+/* 尺寸回彈的核心修復 */
+.dashboard-grid:not(.fullscreen-mode) .chart-container {
+    width: 100% !important;
+    height: auto !important;
+}
+
+.dashboard-grid:not(.fullscreen-mode) #tv-chart {
+    height: 300px !important;
+}
+
+.dashboard-grid.fullscreen-mode .chart-container {
+    height: calc(100vh - 20px) !important;
+    display: flex;
+    flex-direction: column;
+}
+
+.dashboard-grid.fullscreen-mode #tv-chart {
+    flex: 1;
+    /* 自動填滿剩餘高度 */
+    height: 100% !important;
+}
+
+
+/* 終極 Grid 溢出修復 */
+.chart-container,
+.signal-card {
+    min-width: 0;
+}
+
+--- FILE: ./frontend/app.js ---
+// WebSocket 連線與狀態管理
+const ws = new WebSocket(`ws://${window.location.host}/ws/signals`);
+let currentSymbol = '2330.TW';
+let currentTimeframe = '1d';
+let currentMarket = 'stock';
+let lastServerData = [];
+// 走勢圖系列
+let chart = null;
+let candleSeries = null;
+let emaShortSeries = null;
+let emaLongSeries = null;
+let bbUpperSeries = null, bbMidSeries = null, bbLowerSeries = null;
+let rsiSeries = null;
+let cachedCandles = [];
+// 記憶圖表的縮放狀態
+let isInitialChartLoad = true;
+let chartVisibleRange = null;
+
+// Debug 日誌系統 (清空以移除干擾)
+function logDebug(msg) {
+    console.log(msg);
+}
+
+// UI 元素
+const ui = {
+    btc: {
+        price: document.getElementById('price-btc'),
+        res_alert: document.getElementById('res-btc'),
+        d1: {
+            score: document.getElementById('score-btc-1d'),
+            ring: document.getElementById('ring-btc-1d'),
+            dir: document.getElementById('dir-btc-1d'),
+            lvl: document.getElementById('lvl-btc-1d'),
+            buy: document.getElementById('buy-btc-1d'),
+            sell: document.getElementById('sell-btc-1d')
+        },
+        h4: {
+            score: document.getElementById('score-btc-4h'),
+            ring: document.getElementById('ring-btc-4h'),
+            dir: document.getElementById('dir-btc-4h'),
+            buy: document.getElementById('buy-btc-4h')
+        }
+    },
+    eth: {
+        price: document.getElementById('price-eth'),
+        dir1d: document.getElementById('dir-eth-1d'),
+        score1d: document.getElementById('score-eth-1d')
+    },
+    sol: {
+        price: document.getElementById('price-sol'),
+        dir1d: document.getElementById('dir-sol-1d'),
+        score1d: document.getElementById('score-sol-1d')
+    },
+    btcm: {
+        price: document.getElementById('price-btc-mini'),
+        dir1d: document.getElementById('dir-btc-mini-1d'),
+        score1d: document.getElementById('score-btc-mini-1d')
+    },
+    status: document.getElementById('last-update'),
+    connStatus: document.getElementById('connection-status'),
+    statusDot: document.getElementById('status-dot')
+};
+
+// 初始化 TradingView 圖表
+function initChart() {
+    logDebug("Starting initChart...");
+    const container = document.getElementById('tv-chart');
+    if (!container) {
+        logDebug("ERROR: #tv-chart not found!");
+        return;
+    }
+
+    try {
+        if (typeof LightweightCharts === 'undefined') {
+            logDebug("ERROR: LightweightCharts library not loaded!");
+            return;
+        }
+
+        chart = LightweightCharts.createChart(container, {
+            width: container.clientWidth || 600,
+            height: 300,
+            layout: {
+                background: { type: 'solid', color: '#131722' },
+                textColor: '#d1d4dc',
+            },
+            localization: {
+                locale: 'zh-TW',
+                // 自動偵測使用者瀏覽器時區
+                timeFormatter: (timestamp) => {
+                    return new Date(timestamp * 1000).toLocaleString('zh-TW', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: false
+                    });
+                },
+            },
+            grid: {
+                vertLines: { color: 'rgba(42, 46, 57, 0.5)' },
+                horzLines: { color: 'rgba(42, 46, 57, 0.5)' },
+            },
+            rightPriceScale: {
+                borderColor: 'rgba(197, 203, 206, 0.8)',
+            },
+            timeScale: {
+                borderColor: 'rgba(197, 203, 206, 0.8)',
+                timeVisible: true,
+                secondsVisible: false,
+            },
+        });
+
+        logDebug("Chart object created.");
+
+        // 終極備援方案：偵測並嘗試所有可能的方法
+        if (typeof chart.addCandlestickSeries === 'function') {
+            candleSeries = chart.addCandlestickSeries({
+                upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
+            });
+            logDebug("Series: Used addCandlestickSeries");
+        } else if (typeof chart.addSeries === 'function') {
+            // 嘗試 V4 字串定義方式，捕捉內部的 undefined 錯誤
+            try {
+                // 如果 LightweightCharts.SeriesType 消失了，試著直接用字串 'Candlestick'
+                const type = (LightweightCharts.SeriesType && LightweightCharts.SeriesType.Candlestick) ?
+                    LightweightCharts.SeriesType.Candlestick : 'Candlestick';
+                candleSeries = chart.addSeries(type, {
+                    upColor: '#26a69a', downColor: '#ef5350',
+                });
+                logDebug("Series: Used addSeries(" + type + ")");
+            } catch (err) {
+                logDebug("addSeries Logic Error: " + err.message);
+            }
+        }
+
+        // --- 加入成交量序列 ---
+        volumeSeries = chart.addHistogramSeries({
+            color: '#26a69a',
+            priceFormat: { type: 'volume' },
+            priceScaleId: '',
+        });
+        chart.priceScale('').applyOptions({
+            scaleMargins: { top: 0.8, bottom: 0 },
+        });
+
+        // --- 加入均線序列 ---
+        emaShortSeries = chart.addLineSeries({
+            color: '#fbbf24',
+            lineWidth: 1,
+            title: 'EMA Short',
+        });
+
+        emaLongSeries = chart.addLineSeries({
+            color: '#3b82f6',
+            lineWidth: 1,
+            title: 'EMA Long',
+        });
+
+        // --- 加入布林帶 ---
+        const bbOpt = { lineWidth: 1, lastValueVisible: false, priceLineVisible: false };
+        bbUpperSeries = chart.addLineSeries({ ...bbOpt, color: 'rgba(156, 39, 176, 0.6)', title: 'BB Upper' });
+        bbMidSeries = chart.addLineSeries({ ...bbOpt, color: 'rgba(158, 158, 158, 0.4)', title: 'BB Mid' });
+        bbLowerSeries = chart.addLineSeries({ ...bbOpt, color: 'rgba(156, 39, 176, 0.6)', title: 'BB Lower' });
+
+        // --- 加入 RSI (獨立座標軸) ---
+        rsiSeries = chart.addLineSeries({
+            color: '#26c6da',
+            lineWidth: 1,
+            title: 'RSI',
+            priceScaleId: 'rsi-scale',
+        });
+        chart.priceScale('rsi-scale').applyOptions({
+            scaleMargins: { top: 0.1, bottom: 0.7 }, // 將 RSI 置於上方不重疊 (或改到底部)
+            visible: false, // 預設隱藏
+        });
+
+        if (!candleSeries) {
+            // 列出所有可用的 add 方法以便診斷
+            const methods = Object.keys(chart).filter(k => k.startsWith('add')).join(', ');
+            logDebug("ERROR: No series method found. Available: " + (methods || "None"));
+        } else {
+            logDebug("Success: Chart and Series ready.");
+            // 綁定指標控制面板事件
+            initIndicatorControls();
+        }
+    } catch (e) {
+        logDebug("Init Error: " + e.message);
+    }
+
+    // Resize observer
+    new ResizeObserver(entries => {
+        if (entries.length === 0 || entries[0].target !== container) { return; }
+        const newRect = entries[0].contentRect;
+        chart.applyOptions({ height: newRect.height, width: newRect.width });
+    }).observe(container);
+
+
+    // 綁定圖表時間框架切換按鈕
+    const btns = document.querySelectorAll('.chart-toggles button');
+    btns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            btns.forEach(b => b.classList.remove('active'));
+            e.target.classList.add('active');
+            let tf = e.target.textContent.toLowerCase();
+            currentTimeframe = tf;
+            loadChartData(tf, true);
+        });
+    });
+
+    initExpandLogic();
+}
+
+// Stock helper: 中英文名稱對照表（可擴充）
+const stockNames = {
+    '2330.TW': '台積電',
+    '0050.TW': '元大台灣50',
+    '2303.TW': '聯電',
+    '2317.TW': '鴻海',
+    '2412.TW': '中華電',
+};
+
+const quickSymbolButtons = {
+    crypto: [
+        { symbol: 'BTC/USDT', label: 'BTC' },
+        { symbol: 'ETH/USDT', label: 'ETH' },
+        { symbol: 'SOL/USDT', label: 'SOL' },
+    ],
+    stock: [
+        { symbol: '2330.TW', label: '2330' },
+        { symbol: '0050.TW', label: '0050' },
+        { symbol: '2303.TW', label: '2303' },
+    ],
+};
+
+function renderSymbolSwitcher(market) {
+    const container = document.getElementById('h-symbol-switcher');
+    if (!container) return;
+    const list = quickSymbolButtons[market] || [];
+    container.innerHTML = list.map(item =>
+        `<button onclick="window.changeSymbol('${item.symbol}','${market}')">${item.label}</button>`
+    ).join('');
+}
+
+async function fetchStockInfo(symbol) {
+    try {
+        const res = await fetch(`/api/stock-info?symbol=${encodeURIComponent(symbol)}`);
+        if (!res.ok) return null;
+        return await res.json();
+    } catch (e) {
+        return null;
+    }
+}
+
+// 切換幣種 / 市場的對外函數
+window.changeSymbol = async function (sym, market = 'crypto') {
+    const isSymbolChanged = (currentSymbol !== sym || currentMarket !== market);
+    currentSymbol = sym;
+    currentMarket = market;
+
+    const baseSym = sym.split('/')[0].split('.')[0];
+    const compName = market === 'stock' ? (stockNames[sym] || '') : '';
+
+    // 更新標題
+    const headerTitle = document.getElementById('main-idx-title');
+    const chartTitle = document.getElementById('chart-title');
+    const chartSymbol = document.getElementById('chart-symbol');
+
+    if (headerTitle) headerTitle.textContent = market === 'stock' ? `台股 ${baseSym}` : sym;
+    if (chartTitle) chartTitle.textContent = market === 'stock'
+        ? `${baseSym}${compName ? ' ' + compName : ''} 走勢圖`
+        : `${baseSym} 即時走勢圖`;
+    if (chartSymbol) chartSymbol.textContent = market === 'stock'
+        ? `${baseSym}${compName ? ' · ' + compName : ''}`
+        : sym;
+
+    // 顯示/隱藏股票輸入欄
+    const stockRow = document.getElementById('stock-input-row');
+    const marketSelect = document.getElementById('market-select');
+    if (stockRow) stockRow.style.display = market === 'stock' ? 'flex' : 'none';
+    if (marketSelect) marketSelect.value = market;
+
+    // 顯示/隱藏虛擬幣即時信號卡片 (但切換時仍保留卡片結構避免跑版)
+    const signalCard = document.getElementById('card-btc');
+    const symbolSwitcher = document.getElementById('h-symbol-switcher');
+    const miniCards = document.querySelector('.mini-cards-row');
+    if (signalCard) signalCard.style.display = 'block';
+    if (symbolSwitcher) symbolSwitcher.style.display = 'flex';
+    if (miniCards) miniCards.style.display = market === 'crypto' ? 'flex' : 'none';
+
+    // 若切到股票，清空即時信號內容，避免顯示錯誤數值
+    if (market === 'stock') {
+        clearSignalCard();
+    }
+
+    // 重新載入圖表資料，且如果是切換幣種，就強制縮放
+    renderSymbolSwitcher(market);
+    await loadChartData(currentTimeframe, isSymbolChanged);
+
+    // 若是切換到股票，嘗試取得公司名稱並更新標題
+    if (market === 'stock') {
+        if (!compName) {
+            const info = await fetchStockInfo(sym);
+            if (info && info.name) {
+                stockNames[sym] = info.name;
+                if (chartTitle) chartTitle.textContent = `${baseSym} ${info.name} 走勢圖`;
+                if (chartSymbol) chartSymbol.textContent = `${baseSym} · ${info.name}`;
+            }
+        }
+    }
+
+    // 只在 Crypto 模式下顯示即時訊號卡片
+    if (market === 'crypto' && lastServerData.length > 0) {
+        processData(lastServerData);
+    }
+};
+
+function clearSignalCard() {
+    ui.status.textContent = '台股模式：無即時信號';
+    ui.btc.price.textContent = '--';
+
+    const clearRing = (ringEl, scoreEl, dirEl, scoreTextEl) => {
+        if (ringEl) ringEl.style.strokeDasharray = '0, 100';
+        if (scoreEl) scoreEl.textContent = '--';
+        if (dirEl) dirEl.textContent = 'N/A';
+        if (scoreTextEl) scoreTextEl.textContent = 'N/A';
+    };
+
+    clearRing(ui.btc.d1.ring, ui.btc.d1.score, ui.btc.d1.dir, ui.btc.d1.lvl);
+    clearRing(ui.btc.h4.ring, ui.btc.h4.score, ui.btc.h4.dir, null);
+
+    if (ui.btc.res_alert) {
+        ui.btc.res_alert.className = 'resonance-alert';
+        ui.btc.res_alert.innerHTML = '<em>台股模式下暫不提供即時策略訊號</em>';
+    }
+}
+
+function initExpandLogic() {
+    const btn = document.getElementById('btn-chart-expand');
+    const grid = document.querySelector('.dashboard-grid');
+    const icon = document.getElementById('expand-icon');
+
+    if (!btn || !grid) return;
+
+    btn.onclick = () => {
+        grid.classList.toggle('fullscreen-mode');
+        const isFull = grid.classList.contains('fullscreen-mode');
+        icon.textContent = isFull ? '❐' : '⛶';
+
+        // 觸發多次 Resizing 以確保絕對恢復
+        const doResize = () => {
+            if (chart) {
+                const container = document.getElementById('tv-chart');
+                chart.resize(container.clientWidth, container.clientHeight);
+                chart.timeScale().fitContent();
+            }
+        };
+
+        // 立即執行一次，過渡中執行一次，結束再執行一次
+        doResize();
+        setTimeout(doResize, 150);
+        setTimeout(doResize, 400);
+    };
+
+    // 監聽視窗大小變化
+    window.addEventListener('resize', () => {
+        if (chart) {
+            const container = document.getElementById('tv-chart');
+            chart.resize(container.clientWidth, container.clientHeight);
+        }
+    });
+}
+
+// 初始化指標面板監聽
+function initIndicatorControls() {
+    const ids = [
+        'enable-vol', 'enable-ema-short', 'val-ema-short',
+        'enable-ema-long', 'val-ema-long',
+        'enable-bbands', 'val-bb-p', 'val-bb-s',
+        'enable-rsi', 'val-rsi'
+    ];
+    ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('change', () => refreshIndicators());
+            if (el.tagName === 'INPUT' && el.type === 'number') {
+                el.addEventListener('input', () => refreshIndicators());
+            }
+        }
+    });
+}
+
+// 載入歷史 K 線資料 (移除 fitContent 以記憶視野)
+async function loadChartData(tf, forceFit = false) {
+    if (!candleSeries) return;
+    try {
+        const res = await fetch(`/api/chart?symbol=${currentSymbol}&timeframe=${tf}&market=${currentMarket}`);
+        if (!res.ok) throw new Error("API Status: " + res.status);
+        const data = await res.json();
+
+        if (data && data.length > 0) {
+            data.sort((a, b) => a.time - b.time);
+            const cleanData = [];
+            let lastT = 0;
+            for (const item of data) {
+                if (item.time > lastT) {
+                    cleanData.push({
+                        time: item.time,
+                        open: parseFloat(item.open),
+                        high: parseFloat(item.high),
+                        low: parseFloat(item.low),
+                        close: parseFloat(item.close),
+                        rawVolume: parseFloat(item.volume || 0) // 重要：保留原始成交量
+                    });
+                    lastT = item.time;
+                }
+            }
+
+
+            candleSeries.setData(cleanData);
+            cachedCandles = cleanData; // 存入快取
+
+            // 套用目前的指標設定
+            refreshIndicators();
+
+            // --- 生成並設定歷史訊號標記 ---
+            if (candleSeries) {
+                const markers = generateHistoricalMarkers(cleanData);
+                candleSeries.setMarkers(markers);
+            }
+
+            // 首次載入或切換 symbol/market 時自動調整可見範圍
+            if (isInitialChartLoad || forceFit) {
+                setTimeout(() => {
+                    if (chart && chart.timeScale) chart.timeScale().fitContent();
+                    isInitialChartLoad = false;
+                }, 50);
+            }
+        }
+    } catch (e) {
+        console.error("Chart load failed", e);
+    }
+}
+
+// 根據 UI 設定刷新所有技術指標
+function refreshIndicators() {
+    if (!cachedCandles || cachedCandles.length === 0) return;
+
+    // 1. 成交量
+    if (volumeSeries) {
+        const isVolEnabled = document.getElementById('enable-vol').checked;
+        if (isVolEnabled) {
+            const volData = cachedCandles.map(d => ({
+                time: d.time,
+                value: d.rawVolume || 0, // 我們需要在 cleanData 存入原始 volume
+                color: d.close >= d.open ? 'rgba(38, 166, 154, 0.5)' : 'rgba(239, 83, 80, 0.5)'
+            }));
+            volumeSeries.setData(volData);
+        } else {
+            volumeSeries.setData([]);
+        }
+    }
+
+    // 2. 短期 EMA
+    if (emaShortSeries) {
+        const isShortEnabled = document.getElementById('enable-ema-short').checked;
+        const period = parseInt(document.getElementById('val-ema-short').value) || 25;
+        if (isShortEnabled && cachedCandles.length > period) {
+            emaShortSeries.setData(calculateEMA(cachedCandles, period));
+        } else {
+            emaShortSeries.setData([]);
+        }
+    }
+
+    // 3. 長期 EMA
+    if (emaLongSeries) {
+        const isLongEnabled = document.getElementById('enable-ema-long').checked;
+        const period = parseInt(document.getElementById('val-ema-long').value) || 99;
+        if (isLongEnabled && cachedCandles.length > period) {
+            emaLongSeries.setData(calculateEMA(cachedCandles, period));
+        } else {
+            emaLongSeries.setData([]);
+        }
+    }
+
+    // 4. 布林帶
+    if (bbUpperSeries) {
+        const isBBEnabled = document.getElementById('enable-bbands').checked;
+        const p = parseInt(document.getElementById('val-bb-p').value) || 20;
+        const s = parseFloat(document.getElementById('val-bb-s').value) || 2;
+        if (isBBEnabled && cachedCandles.length > p) {
+            const bb = calculateBBands(cachedCandles, p, s);
+            bbUpperSeries.setData(bb.map(d => ({ time: d.time, value: d.upper })));
+            bbMidSeries.setData(bb.map(d => ({ time: d.time, value: d.mid })));
+            bbLowerSeries.setData(bb.map(d => ({ time: d.time, value: d.lower })));
+        } else {
+            bbUpperSeries.setData([]); bbMidSeries.setData([]); bbLowerSeries.setData([]);
+        }
+    }
+
+    // 5. RSI
+    if (rsiSeries) {
+        const isRSIEnabled = document.getElementById('enable-rsi').checked;
+        const p = parseInt(document.getElementById('val-rsi').value) || 14;
+        if (isRSIEnabled && cachedCandles.length > p) {
+            chart.priceScale('rsi-scale').applyOptions({ visible: true });
+            rsiSeries.setData(calculateRSI(cachedCandles, p));
+        } else {
+            chart.priceScale('rsi-scale').applyOptions({ visible: false });
+            rsiSeries.setData([]);
+        }
+    }
+}
+
+// 指標計算函數庫
+function calculateEMA(data, period) {
+    const k = 2 / (period + 1);
+    let emaData = [];
+    if (data.length === 0) return [];
+    let prevEma = data[0].close;
+    for (let i = 0; i < data.length; i++) {
+        prevEma = (data[i].close * k) + (prevEma * (1 - k));
+        emaData.push({ time: data[i].time, value: prevEma });
+    }
+    return emaData;
+}
+
+function calculateBBands(data, period, stdDev) {
+    let bb = [];
+    for (let i = period - 1; i < data.length; i++) {
+        const subset = data.slice(i - period + 1, i + 1);
+        const avg = subset.reduce((acc, d) => acc + d.close, 0) / period;
+        const squareDiffs = subset.map(d => Math.pow(d.close - avg, 2));
+        const sd = Math.sqrt(squareDiffs.reduce((acc, d) => acc + d, 0) / period);
+        bb.push({
+            time: data[i].time,
+            mid: avg,
+            upper: avg + stdDev * sd,
+            lower: avg - stdDev * sd
+        });
+    }
+    return bb;
+}
+
+function calculateRSI(data, period) {
+    let rsi = [];
+    let gains = 0, losses = 0;
+    for (let i = 1; i <= period; i++) {
+        const diff = data[i].close - data[i - 1].close;
+        if (diff >= 0) gains += diff; else losses -= diff;
+    }
+    let avgGain = gains / period; let avgLoss = losses / period;
+
+    for (let i = period + 1; i < data.length; i++) {
+        const diff = data[i].close - data[i - 1].close;
+        let gain = diff >= 0 ? diff : 0;
+        let loss = diff < 0 ? -diff : 0;
+        avgGain = (avgGain * (period - 1) + gain) / period;
+        avgLoss = (avgLoss * (period - 1) + loss) / period;
+        const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+        rsi.push({ time: data[i].time, value: 100 - (100 / (1 + rs)) });
+    }
+    return rsi;
+}
+
+// 生成歷史戰略標記
+function generateHistoricalMarkers(data) {
+    if (data.length < 100) return [];
+
+    const markers = [];
+    const ema25 = calculateEMA(data, 25);
+    const ema99 = calculateEMA(data, 99);
+    const rsi = calculateRSI(data, 14);
+
+    // 從第 100 根開始算，才有完整的均線數據
+    for (let i = 100; i < data.length; i++) {
+        const item = data[i];
+        const prev = data[i - 1];
+        const rsiVal = rsi.find(r => r.time === item.time)?.value || 50;
+        const e25Val = ema25.find(e => e.time === item.time)?.value;
+        const e99Val = ema99.find(e => e.time === item.time)?.value;
+
+        if (!e25Val || !e99Val) continue;
+
+        // --- [戰略判定] ---
+        const isBullish = item.close > e25Val && e25Val > e99Val; // 多頭排列
+        const isStrong = rsiVal > 62; // 強勢動能
+
+        // 判定反轉/清倉
+        if (prev.close >= e99Val && item.close < e99Val) {
+            markers.push({
+                time: item.time,
+                position: 'aboveBar',
+                color: '#ef5350',
+                shape: 'arrowDown',
+                text: '清倉 🛑',
+            });
+        }
+        // 判定建倉 (只有在強勢多頭排列時才顯示文字)
+        else if (prev.close <= e25Val && item.close > e25Val) {
+            const highQuality = isBullish && isStrong;
+            markers.push({
+                time: item.time,
+                position: 'belowBar',
+                color: highQuality ? '#26a69a' : 'rgba(38, 166, 154, 0.4)',
+                shape: 'arrowUp',
+                text: highQuality ? '建倉 🚀' : '', // 弱勢時不給文字指令，避免誤導
+                size: highQuality ? 1.2 : 0.8
+            });
+        }
+        // 判定加碼 (只在強勢趨勢中給予文字)
+        else if (item.close >= e25Val && item.low <= e25Val && rsiVal < 60 && rsiVal > 45 && isBullish) {
+            if (markers.length === 0 || i - data.indexOf(data.find(d => d.time === markers[markers.length - 1].time)) > 8) {
+                const isGreatSetup = rsiVal > 50;
+                markers.push({
+                    time: item.time,
+                    position: 'belowBar',
+                    color: '#26c6da',
+                    shape: 'arrowUp',
+                    text: isGreatSetup ? '加碼 💎' : '',
+                    size: isGreatSetup ? 1 : 0.7
+                });
+            }
+        }
+    }
+    return markers;
+}
+
+// === 核心：信號語意分級系統 ===
+// 將原始的「分數 + 方向」轉換為使用者能立即理解的語意標籤
+function getSignalLabel(direction, confidence) {
+    const score = parseFloat(confidence) || 0;
+
+    if (direction === 'BUY') {
+        if (score >= 70) return { text: '🟢 強勢做多', css: 'buy', level: '極強信號', brief: 'STRONG BUY' };
+        if (score >= 50) return { text: '🟢 做多傾向', css: 'buy', level: '中等信號', brief: 'BUY' };
+        if (score >= 30) return { text: '🟡 弱多觀望', css: 'weak', level: '弱信號', brief: 'WEAK BUY' };
+        return { text: '⚪ 多空不明', css: '', level: '無信號', brief: 'NEUTRAL' };
+    }
+    if (direction === 'SELL') {
+        if (score >= 70) return { text: '🔴 強勢做空', css: 'sell', level: '極強警告', brief: 'STRONG SELL' };
+        if (score >= 50) return { text: '🔴 做空傾向', css: 'sell', level: '中等警告', brief: 'SELL' };
+        if (score >= 30) return { text: '🟡 弱空觀望', css: 'weak', level: '弱信號', brief: 'WEAK SELL' };
+        return { text: '⚪ 多空不明', css: '', level: '無信號', brief: 'NEUTRAL' };
+    }
+    return { text: '⚪ 觀望', css: '', level: '無信號', brief: 'NEUTRAL' };
+}
+
+// 根據分數與方向更新圓環和顏色
+function updateRing(ringElement, textElement, score, direction) {
+    const val = Math.max(0, Math.min(100, score));
+    textElement.textContent = val;
+    ringElement.style.strokeDasharray = `${val}, 100`;
+
+    // 弱信號使用灰色，讓使用者直覺知道「這個分數不具參考價值」
+    let color = '#94a3b8'; // 無信號灰
+    if (val >= 30) {
+        if (direction === 'BUY') color = val >= 50 ? '#10b981' : '#6ee7b7'; // 強綠 / 淡綠
+        if (direction === 'SELL') color = val >= 50 ? '#ef4444' : '#fca5a5'; // 強紅 / 淡紅
+    }
+    ringElement.style.stroke = color;
+}
+
+function updateDirection(el, dir, level, confidence) {
+    const label = getSignalLabel(dir, confidence);
+    el.textContent = label.text;
+    el.className = 'signal-direction ' + (label.css || '');
+
+    // 更新信號等級文字
+    if (el.nextElementSibling && el.nextElementSibling.classList.contains('signal-level')) {
+        el.nextElementSibling.textContent = label.level;
+    }
+}
+
+// 處理伺服器資料
+function processData(serverData) {
+    // 只在 Crypto 模式下才處理即時信號
+    if (currentMarket !== 'crypto') return;
+
+    // data 應該是 array of {symbol: 'BTC/USDT', signals: { '1d': {...}, '4h': {...} }}
+    if (!Array.isArray(serverData)) return;
+    lastServerData = serverData;
+
+    serverData.forEach(item => {
+        const symbol = item.symbol;
+        const sigs = item.signals;
+
+        // 更新主畫面的大卡片
+        if (symbol === currentSymbol && sigs['1d']) {
+            ui.btc.price.textContent = `$${sigs['1d'].price.toLocaleString()}`;
+            ui.status.textContent = `最後更新: ${sigs['1d'].timestamp}`;
+
+            // 1D Update
+            const d1 = sigs['1d'];
+            updateRing(ui.btc.d1.ring, ui.btc.d1.score, d1.confidence, d1.direction);
+            updateDirection(ui.btc.d1.dir, d1.direction, d1.level, d1.confidence);
+            ui.btc.d1.buy.textContent = d1.buy_score;
+            ui.btc.d1.sell.textContent = d1.sell_score;
+
+            // --- 更新全屏模式 Header 精簡面板 ---
+            const hPrice = document.getElementById('h-price-btc');
+            const hS1d = document.getElementById('h-score-1d');
+            if (hPrice) hPrice.textContent = `$${parseFloat(d1.price).toLocaleString()}`;
+            if (hS1d) {
+                hS1d.textContent = d1.confidence;
+                const color = d1.direction === 'BUY' ? '#10b981' : d1.direction === 'SELL' ? '#ef4444' : '#94a3b8';
+                hS1d.style.color = color;
+            }
+
+            // --- 即時同步圖表價格 (讓右邊紅標籤與左邊同步) ---
+            if (candleSeries && d1.price) {
+                const nowUnix = Math.floor(Date.now() / 1000);
+                const t = currentTimeframe === '1d' ? new Date().toISOString().split('T')[0] : nowUnix;
+                try {
+                    const price = parseFloat(d1.price);
+                    candleSeries.update({
+                        time: t,
+                        open: price, high: price, low: price, close: price
+                    });
+                    // 同步更新成交量 (即時資料通常不帶成交量，這裡用 0 或保持)
+                    if (volumeSeries) {
+                        volumeSeries.update({ time: t, value: 0 }); // WebSocket 目前暫無即時成交量，先占位
+                    }
+                } catch (e) { /* 靜默忽略 */ }
+            }
+            // ------------------------------------------
+
+            // 4H Update
+            if (sigs['4h']) {
+                const h4 = sigs['4h'];
+                updateRing(ui.btc.h4.ring, ui.btc.h4.score, h4.confidence, h4.direction);
+                updateDirection(ui.btc.h4.dir, h4.direction, null, h4.confidence);
+                ui.btc.h4.buy.textContent = h4.buy_score;
+                const sell4hEl = document.getElementById('sell-btc-4h');
+                if (sell4hEl) sell4hEl.textContent = h4.sell_score;
+
+                // --- 更新全屏模式 Header 精簡面板 ---
+                const hS4h = document.getElementById('h-score-4h');
+                if (hS4h) {
+                    hS4h.textContent = h4.confidence;
+                    const color = h4.direction === 'BUY' ? '#10b981' : h4.direction === 'SELL' ? '#ef4444' : '#94a3b8';
+                    hS4h.style.color = color;
+                }
+
+                // --- 專業戰略指令系統 ---
+                const currentRSI = rsiSeries && cachedCandles.length > 0 ? calculateRSI(cachedCandles, 14).pop()?.value : 50;
+                const currentEMA25 = emaShortSeries && cachedCandles.length > 0 ? calculateEMA(cachedCandles, parseInt(document.getElementById('val-ema-short').value) || 25).pop()?.value : null;
+                const currentEMA99 = emaLongSeries && cachedCandles.length > 0 ? calculateEMA(cachedCandles, parseInt(document.getElementById('val-ema-long').value) || 99).pop()?.value : null;
+                const price = parseFloat(d1.price);
+
+                const avgScore = (parseFloat(d1.confidence) + parseFloat(h4.confidence)) / 2;
+                const isOverheated = d1.direction === 'BUY' && currentRSI > 78;
+                const isPullback = d1.direction === 'BUY' && h4.direction === 'BUY' && currentRSI < 55 && currentRSI > 40 &&
+                    currentEMA25 && (Math.abs(price - currentEMA25) / currentEMA25 < 0.008);
+                const isReversal = (d1.direction !== 'BUY' && currentEMA99 && price < currentEMA99);
+
+                if (isReversal && d1.direction === 'SELL') {
+                    ui.btc.res_alert.className = 'resonance-alert sell';
+                    ui.btc.res_alert.innerHTML = '🚨 <strong>趨勢反轉確認</strong>：價格跌破長期支撐線且動能轉空，建議【全數清倉】或反手做空。';
+                } else if (d1.direction === 'BUY' && h4.direction === 'BUY') {
+                    ui.btc.res_alert.className = 'resonance-alert buy';
+                    if (isOverheated) {
+                        ui.btc.res_alert.innerHTML = '🎯 <strong>過熱提醒</strong>：趨勢強勁但短期乖離率過大，【嚴禁追高】，請等待回調。';
+                    } else if (isPullback) {
+                        ui.btc.res_alert.innerHTML = '💎 <strong>優勢加碼點</strong>：多頭趨勢中的回踩確認，適合【分批進場】或【加碼部位】。';
+                    } else if (avgScore > 75) {
+                        ui.btc.res_alert.innerHTML = '🚀 <strong>金叉噴發點</strong>：強勢共振引爆，【初期進場】的黃金時機，勝率極高。';
+                    } else if (avgScore < 50) {
+                        ui.btc.res_alert.innerHTML = '⚠️ <strong>動能不足</strong>：長短期方向雖一致，但總體分數（' + avgScore.toFixed(1) + '）較低，目前【勝率不穩】，建議保持觀望。';
+                    } else {
+                        ui.btc.res_alert.innerHTML = '🎯 <strong>強烈信號 (共振)</strong>：日線與4小時方向一致且動能充沛，是絕佳的趨勢交易機會！';
+                    }
+                } else if (d1.direction === 'SELL' && h4.direction === 'SELL') {
+                    ui.btc.res_alert.className = 'resonance-alert sell';
+                    const avgScore = (parseFloat(d1.confidence) + parseFloat(h4.confidence)) / 2;
+                    if (avgScore < 50) {
+                        ui.btc.res_alert.innerHTML = '⚠️ <strong>弱勢空頭</strong>：空方動能不強（' + avgScore.toFixed(1) + '），目前【勝率較低】，建議空倉觀察，避免頻繁交易。';
+                    } else {
+                        ui.btc.res_alert.innerHTML = '🚨 <strong>強烈危險 (共振)</strong>：空頭趨勢共振，請注意風險，切勿在此盲目抄底！';
+                    }
+                } else {
+                    ui.btc.res_alert.className = 'resonance-alert';
+                    ui.btc.res_alert.innerHTML = '💡 <strong>戰略觀望</strong>：長短期方向不一致，市場正處於多空拉鋸，【空倉等待】是最佳策略。';
+                }
+            }
+
+            // --- 同步全屏 Header 的訊號文字與建議 ---
+            syncFullscreenHeader(symbol, d1.direction, d1.confidence, ui.btc.res_alert.innerHTML);
+
+            // 圖表會在切換選單或啟動時透過 /api/chart 載入歷史資料
+            // 若需要即時加上一根，實務上可在此呼叫 candleSeries.update()
+        }
+
+        // 小卡片更新
+        // 小卡片使用語意標籤，讓使用者一眼判讀
+        if (symbol === 'BTC/USDT' && sigs['1d']) {
+            const lbl = getSignalLabel(sigs['1d'].direction, sigs['1d'].confidence);
+            ui.btcm.price.textContent = `$${sigs['1d'].price.toLocaleString()}`;
+            ui.btcm.dir1d.textContent = lbl.brief;
+            ui.btcm.score1d.textContent = sigs['1d'].confidence;
+        }
+        if (symbol === 'ETH/USDT' && sigs['1d']) {
+            const lbl = getSignalLabel(sigs['1d'].direction, sigs['1d'].confidence);
+            ui.eth.price.textContent = `$${sigs['1d'].price.toLocaleString()}`;
+            ui.eth.dir1d.textContent = lbl.brief;
+            ui.eth.score1d.textContent = sigs['1d'].confidence;
+        }
+        if (symbol === 'SOL/USDT' && sigs['1d']) {
+            const lbl = getSignalLabel(sigs['1d'].direction, sigs['1d'].confidence);
+            ui.sol.price.textContent = `$${sigs['1d'].price.toLocaleString()}`;
+            ui.sol.dir1d.textContent = lbl.brief;
+            ui.sol.score1d.textContent = sigs['1d'].confidence;
+        }
+    });
+}
+
+function syncFullscreenHeader(symbol, dir, confidence, adviceHtml) {
+    const elSig = document.getElementById('h-signal-text');
+    const elAdv = document.getElementById('h-advice-text');
+    const elSym = document.getElementById('chart-symbol');
+
+    if (elSym) elSym.textContent = symbol;
+
+    if (elSig) {
+        const lbl = getSignalLabel(dir, confidence);
+        elSig.textContent = lbl.text;
+        elSig.className = 'h-signal ' + (lbl.css || '');
+    }
+    if (elAdv) {
+        elAdv.innerHTML = adviceHtml;
+    }
+}
+
+// WebSocket 監聽
+ws.onmessage = (event) => {
+    try {
+        const payload = JSON.parse(event.data);
+        if (payload.type === 'init' || payload.type === 'update') {
+            processData(payload.data);
+        }
+    } catch (e) {
+        console.error("Data parse error", e);
+    }
+};
+
+ws.onopen = () => {
+    ui.status.textContent = '連線成功，等待數據推播...';
+    if (ui.connStatus) ui.connStatus.textContent = '✅ 系統正常 (Online)';
+};
+
+ws.onclose = () => {
+    ui.status.textContent = '連線中斷，請稍後。';
+    if (ui.connStatus) {
+        ui.connStatus.textContent = '❌ 連線中斷 (Offline)';
+        ui.connStatus.style.color = '#ef4444';
+    }
+    if (ui.statusDot) ui.statusDot.style.animation = 'none';
+};
+
+// 頁面載入完成
+document.addEventListener('DOMContentLoaded', () => {
+    initChart();
+
+    // --- 市場選擇 (虛擬幣 / 台股) ---
+    const marketSelect = document.getElementById('market-select');
+    const stockInput = document.getElementById('stock-symbol-input');
+    const stockLoadBtn = document.getElementById('stock-load-btn');
+
+    const loadStock = () => {
+        if (!stockInput) return;
+        const raw = stockInput.value.trim();
+        if (!raw) return;
+        const symbol = raw.includes('.') ? raw : `${raw}.TW`;
+        window.changeSymbol(symbol, 'stock');
+    };
+
+    if (marketSelect) {
+        marketSelect.addEventListener('change', (e) => {
+            const m = e.target.value;
+            if (m === 'crypto') {
+                window.changeSymbol('BTC/USDT', 'crypto');
+            } else {
+                // default to 台股 2330
+                const defaultStock = '2330.TW';
+                if (stockInput) stockInput.value = '2330';
+                window.changeSymbol(defaultStock, 'stock');
+            }
+        });
+    }
+
+    if (stockLoadBtn) {
+        stockLoadBtn.addEventListener('click', loadStock);
+    }
+
+    if (stockInput) {
+        stockInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') loadStock();
+        });
+    }
+
+    // --- 教學 Modal 控制 ---
+    const modal = document.getElementById('tutorial-modal');
+    const openBtn = document.getElementById('open-tutorial');
+    const closeBtn = document.getElementById('close-tutorial');
+
+    if (openBtn && modal) {
+        openBtn.addEventListener('click', () => {
+            modal.classList.add('active');
+        });
+    }
+
+    if (closeBtn && modal) {
+        closeBtn.addEventListener('click', () => {
+            modal.classList.remove('active');
+        });
+    }
+
+    // 點擊背景也可關閉
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) modal.classList.remove('active');
+        });
+    }
+
+    // 初始化時設定正確顯示 (crypto / stock)
+    window.changeSymbol(currentSymbol, currentMarket);
+});
+
+
+--- FILE: ./backend/config.py ---
+# 全域配置
+import os
+from dataclasses import dataclass, field
+from typing import Dict, List
+
+@dataclass
+class ExchangeConfig:
+    """交易所配置"""
+    name: str = "binance"
+    rate_limit: int = 1200  # ms between requests
+
+@dataclass 
+class IndicatorWeights:
+    """指標權重配置（滿分100）"""
+    rsi: float = 15.0
+    macd: float = 20.0
+    bollinger: float = 15.0
+    mfi: float = 10.0
+    ema_cross: float = 15.0
+    volume: float = 15.0
+    adx: float = 10.0
+
+    def to_dict(self) -> Dict[str, float]:
+        return {
+            'rsi': self.rsi,
+            'macd': self.macd,
+            'bollinger': self.bollinger,
+            'mfi': self.mfi,
+            'ema_cross': self.ema_cross,
+            'volume': self.volume,
+            'adx': self.adx,
+        }
+
+@dataclass
+class SignalConfig:
+    """信號等級門檻"""
+    extreme_strong: float = 90.0   # 極強信號
+    strong: float = 70.0          # 強信號
+    moderate: float = 50.0        # 中等信號
+    weak: float = 30.0            # 弱信號
+
+@dataclass
+class TimeframeConfig:
+    """時間框架配置"""
+    short_term: List[str] = field(default_factory=lambda: ['5m', '15m', '1h'])
+    medium_term: List[str] = field(default_factory=lambda: ['4h', '1d'])
+    long_term: List[str] = field(default_factory=lambda: ['1d', '1w'])
+
+@dataclass
+class AppConfig:
+    """應用程式總配置"""
+    exchange: ExchangeConfig = field(default_factory=ExchangeConfig)
+    weights: IndicatorWeights = field(default_factory=IndicatorWeights)
+    signal: SignalConfig = field(default_factory=SignalConfig)
+    timeframe: TimeframeConfig = field(default_factory=TimeframeConfig)
+    default_symbols: List[str] = field(default_factory=lambda: [
+        'BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT'
+    ])
+
+# 全域配置實例
+config = AppConfig()
+
+
+--- FILE: ./backend/__init__.py ---
+
+
+--- FILE: ./backend/backtest_pyramiding.py ---
+
+
+--- FILE: ./backend/main.py ---
+"""
+FastAPI 主程式 - 即時信號伺服器 (Phase 2)
+
+負責：
+1. 提供 REST API 獲取最新信號
+2. 透過 WebSocket 推送即時價格與信號更新
+3. 提供靜態網頁 (Frontend Dashboard) 的伺服
+"""
+
+import sys
+import os
+import asyncio
+from typing import Dict, Any, List
+from datetime import datetime
+import pandas as pd
+import ccxt.async_support as ccxt_async
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
+import io
+import urllib.request
+from datetime import timedelta
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from signals.aggregator import SignalAggregator
+from backend.data.twse_fetcher import TWSEFetcher
+
+app = FastAPI(title="CryptoSignal Pro API", version="1.0.0")
+
+# 允許跨域
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 掛載前端靜態檔案
+frontend_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "frontend")
+os.makedirs(frontend_path, exist_ok=True)
+app.mount("/dashboard", StaticFiles(directory=frontend_path, html=True), name="frontend")
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def broadcast(self, message: str):
+        for connection in self.active_connections:
+            try:
+                await connection.send_text(message)
+            except:
+                pass
+
+manager = ConnectionManager()
+aggregator = SignalAggregator()
+
+# 全域狀態
+current_signals = {}
+symbols_to_track = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+timeframes = ["1d", "4h", "1h"]
+
+async def fetch_ohlcv_async(exchange, symbol, timeframe, limit=200):
+    try:
+        ohlcv = await exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
+        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+        df.set_index('timestamp', inplace=True)
+        return df
+    except Exception as e:
+        print(f"Error fetching {symbol} {timeframe}: {e}")
+        return None
+
+async def background_signal_updater():
+    """背景任務：定期抓取資料並更新信號"""
+    exchange = ccxt_async.binance({'enableRateLimit': True})
+    
+    while True:
+        try:
+            timestamp_now = datetime.now().strftime("%H:%M:%S")
+            updates = []
+            
+            for symbol in symbols_to_track:
+                symbol_data = {"symbol": symbol, "signals": {}}
+                
+                # 同時抓取多個時間框架
+                tasks = [fetch_ohlcv_async(exchange, symbol, tf) for tf in timeframes]
+                results = await asyncio.gather(*tasks)
+                
+                for tf, df in zip(timeframes, results):
+                    if df is not None and len(df) > 0:
+                        # 分析信號
+                        signal = aggregator.analyze(df, symbol=symbol, timeframe=tf)
+                        
+                        signal_data = {
+                            "timeframe": tf,
+                            "price": round(signal.price, 2),
+                            "direction": signal.direction,
+                            "confidence": round(signal.confidence, 1),
+                            "level": signal.signal_level,
+                            "buy_score": round(signal.buy_score, 1),
+                            "sell_score": round(signal.sell_score, 1),
+                            "timestamp": timestamp_now,
+                            "last_candle": {
+                                "open": float(df['open'].iloc[-1]),
+                                "high": float(df['high'].iloc[-1]),
+                                "low": float(df['low'].iloc[-1]),
+                                "close": float(df['close'].iloc[-1]),
+                            }
+                        }
+                        symbol_data["signals"][tf] = signal_data
+                
+                current_signals[symbol] = symbol_data
+                updates.append(symbol_data)
+            
+            # 廣播給所有前端客戶端
+            import json
+            await manager.broadcast(json.dumps({"type": "update", "data": updates}))
+            
+        except Exception as e:
+            print(f"背景任務錯誤: {e}")
+            
+        # 等待 30 秒後再次更新（展示用可調低以增加即時感）
+        await asyncio.sleep(30)
+        
+    await exchange.close()
+
+@app.on_event("startup")
+async def startup_event():
+    # 啟動背景更新任務
+    asyncio.create_task(background_signal_updater())
+
+def fetch_stooq_ohlcv(symbol: str, start_date: datetime, end_date: datetime, limit: int = 200):
+    """使用 Stooq 下載台股日線歷史資料（較少被封鎖）。"""
+    if '.' not in symbol:
+        symbol = f"{symbol}.TW"
+    stooq_code = symbol.replace('.', '').lower()  # e.g. 2330.tw -> 2330tw
+
+    url = (
+        f"https://stooq.com/q/d/l/?s={stooq_code}"
+        f"&d1={start_date.strftime('%Y%m%d')}"
+        f"&d2={end_date.strftime('%Y%m%d')}"
+        f"&i=d"
+    )
+
+    try:
+        import ssl
+        context = ssl._create_unverified_context()
+        raw = urllib.request.urlopen(url, timeout=15, context=context).read().decode('utf-8')
+        df = pd.read_csv(io.StringIO(raw), parse_dates=['Date'])
+        df.rename(columns={
+            'Date': 'timestamp',
+            'Open': 'open',
+            'High': 'high',
+            'Low': 'low',
+            'Close': 'close',
+            'Volume': 'volume',
+        }, inplace=True)
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df.set_index('timestamp', inplace=True)
+        if len(df) > limit:
+            df = df.tail(limit)
+        return df
+    except Exception as e:
+        print(f"Stooq fetch error ({symbol}): {e}")
+        return None
+
+
+def fetch_yahoo_ohlcv(symbol: str, timeframe: str = "1d", limit: int = 200):
+    """使用 Yahoo Finance 下載台股歷史 K 線資料（僅用於補充）。"""
+    if '.' not in symbol:
+        symbol = f"{symbol}.TW"
+
+    interval_map = {
+        '1d': '1d',
+        '4h': '1h',
+        '1h': '1h',
+    }
+    interval = interval_map.get(timeframe, '1d')
+
+    end = int(datetime.now().timestamp())
+    start = int((datetime.now() - timedelta(days=365)).timestamp())
+    url = (
+        f"https://query1.finance.yahoo.com/v7/finance/download/{symbol}"
+        f"?period1={start}&period2={end}&interval={interval}&events=history&includeAdjustedClose=true"
+    )
+
+    try:
+        import ssl
+        context = ssl._create_unverified_context()
+        raw = urllib.request.urlopen(url, timeout=15, context=context).read().decode('utf-8')
+        df = pd.read_csv(io.StringIO(raw), parse_dates=['Date'])
+        df.rename(columns={
+            'Date': 'timestamp',
+            'Open': 'open',
+            'High': 'high',
+            'Low': 'low',
+            'Close': 'close',
+            'Volume': 'volume',
+        }, inplace=True)
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df.set_index('timestamp', inplace=True)
+        if len(df) > limit:
+            df = df.tail(limit)
+        return df
+    except Exception as e:
+        print(f"Yahoo fetch error ({symbol}): {e}")
+        return None
+
+
+def fetch_stock_name(symbol: str):
+    """查詢台股公司名稱（如：台積電）。"""
+    if '.' not in symbol:
+        symbol = f"{symbol}.TW"
+    url = f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{symbol}?modules=price"
+    try:
+        import ssl, json
+        context = ssl._create_unverified_context()
+        raw = urllib.request.urlopen(url, timeout=15, context=context).read().decode('utf-8')
+        payload = json.loads(raw)
+        name = payload.get('quoteSummary', {}).get('result', [{}])[0].get('price', {}).get('longName')
+        return name
+    except Exception as e:
+        print(f"Stock name fetch error ({symbol}): {e}")
+        return None
+
+
+def fetch_twse_daily(symbol: str, limit: int = 200, months: int = 12):
+    """從台灣證交所官方 API 下載每日收盤資料。
+
+    目前會從當月往回抓指定月數，並回傳最近 `limit` 筆資料。
+    此 API 不需授權，適合拿來做歷史日線。（但不適合高頻或分鐘級）
+    """
+    if '.' in symbol:
+        symbol = symbol.split('.')[0]
+
+    def month_iter(year, month, count):
+        for _ in range(count):
+            yield year, month
+            month -= 1
+            if month == 0:
+                month = 12
+                year -= 1
+
+    collected = []
+    now = datetime.now()
+    for year, month in month_iter(now.year, now.month, months):
+        date_param = f"{year}{month:02d}01"
+        url = (
+            f"https://www.twse.com.tw/exchangeReport/STOCK_DAY?response=csv"
+            f"&date={date_param}&stockNo={symbol}"
+        )
+        try:
+            import ssl
+            context = ssl._create_unverified_context()
+            raw_bytes = urllib.request.urlopen(url, timeout=15, context=context).read()
+            raw = raw_bytes.decode('big5', errors='ignore')
+
+            # TWSE 會回傳一些說明文字，真正的 CSV 以「日期,成交股數,...」開頭
+            lines = [l for l in raw.splitlines() if l.strip()]
+            idx = next((i for i, l in enumerate(lines) if '日期' in l and '成交股數' in l), None)
+            if idx is None:
+                continue
+            csv_text = '\n'.join(lines[idx:])
+            df = pd.read_csv(io.StringIO(csv_text))
+
+            # 清理資料
+            df = df.rename(columns={
+                '日期': 'date',
+                '開盤價': 'open',
+                '最高價': 'high',
+                '最低價': 'low',
+                '收盤價': 'close',
+                '成交股數': 'volume',
+            })
+            df = df[['date', 'open', 'high', 'low', 'close', 'volume']]
+
+            def parse_twse_date(v):
+                try:
+                    parts = v.split('/')
+                    if len(parts) == 3:
+                        y = int(parts[0]) + 1911
+                        m = int(parts[1])
+                        d = int(parts[2])
+                        return pd.Timestamp(year=y, month=m, day=d)
+                except Exception:
+                    pass
+                return pd.NaT
+
+            df['date'] = df['date'].astype(str).apply(parse_twse_date)
+
+            # 可能有 '--' 表示漲停跌停，可轉成 NaN
+            df = df.replace({'--': None})
+            df = df.dropna(subset=['date', 'open', 'high', 'low', 'close'])
+            # 去掉千分位逗號
+            for col in ['open', 'high', 'low', 'close', 'volume']:
+                df[col] = df[col].astype(str).str.replace(',', '').astype(float)
+
+            collected.append(df)
+            # 如果資料量夠了就跳
+            if sum(len(x) for x in collected) >= limit:
+                break
+        except Exception as e:
+            print(f"TWSE fetch error ({symbol} {date_param}): {e}")
+            continue
+
+    if not collected:
+        return None
+
+    df_all = pd.concat(collected, ignore_index=True)
+    df_all = df_all.sort_values(by='date')
+    if len(df_all) > limit:
+        df_all = df_all.tail(limit)
+
+    df_all.set_index('date', inplace=True)
+    return df_all
+
+
+@app.get("/api/stock-info")
+async def get_stock_info(symbol: str):
+    """提供簡易股票名稱查詢，用於前端顯示。"""
+    name = fetch_stock_name(symbol)
+    return {"symbol": symbol, "name": name or ""}
+
+
+@app.get("/api/chart")
+async def get_chart_data(symbol: str = "BTC/USDT", timeframe: str = "1d", market: str = "crypto"):
+    if market == 'stock':
+        # 優先嘗試台灣證交所官方日線資料 (穩定且真實)
+        df = fetch_twse_daily(symbol, limit=200, months=24)
+
+        # 若 TWSE 失敗，再退回 Yahoo / Stooq
+        if df is None:
+            df = fetch_yahoo_ohlcv(symbol, timeframe, limit=200)
+
+        if df is None:
+            start_date = datetime.now() - timedelta(days=365)
+            end_date = datetime.now()
+            df = fetch_stooq_ohlcv(symbol, start_date, end_date, limit=200)
+            if df is not None:
+                print(f"Fetched stock data from Stooq for {symbol}")
+
+        # 若仍失敗，退回到本地示例資料（用 BTC 代替）
+        if df is None:
+            try:
+                project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                local_csv = os.path.join(project_root, 'data', 'btc_daily_7y.csv')
+                df = pd.read_csv(local_csv, index_col='timestamp', parse_dates=True).tail(200)
+                print(f"Stock data fetch failed; using local BTC sample data for {symbol} (file={local_csv})")
+            except Exception as e:
+                print(f"Fallback local data load failed: {e}")
+                df = None
+
+        if df is not None:
+            data = []
+            for idx, row in df.iterrows():
+                data.append({
+                    "time": int(idx.timestamp()),
+                    "open": float(row['open']),
+                    "high": float(row['high']),
+                    "low": float(row['low']),
+                    "close": float(row['close']),
+                    "volume": float(row.get('volume', 0) or 0)
+                })
+            return data
+        return []
+
+    exchange = ccxt_async.binance({'enableRateLimit': True})
+    try:
+        df = await fetch_ohlcv_async(exchange, symbol, timeframe, limit=200)
+        await exchange.close()
+        if df is not None:
+            data = []
+            for idx, row in df.iterrows():
+                data.append({
+                    "time": int(idx.timestamp()),
+                    "open": float(row['open']),
+                    "high": float(row['high']),
+                    "low": float(row['low']),
+                    "close": float(row['close']),
+                    "volume": float(row['volume'])
+                })
+            return data
+        return []
+    except Exception as e:
+        print(f"Chart fetch error: {e}")
+        await exchange.close()
+        return []
+
+@app.get("/api/signals")
+async def get_signals():
+    """獲取最新信號"""
+    return current_signals
+
+@app.websocket("/ws/signals")
+async def websocket_endpoint(websocket: WebSocket):
+    """WebSocket 終端，推送即時信號"""
+    await manager.connect(websocket)
+    try:
+        # 連線成功先推送一次目前狀態
+        import json
+        if current_signals:
+            await websocket.send_text(json.dumps({"type": "init", "data": list(current_signals.values())}))
+        
+        while True:
+            # 保持連線
+            data = await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
+
+if __name__ == "__main__":
+    import uvicorn
+    # 直接啟動 Server
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
+
+--- FILE: ./backend/run_backtest.py ---
+"""
+BTC 七年回測主程式
+
+功能：
+1. 透過 CCXT 下載 BTC/USDT 歷史 K 線數據（最多 7 年）
+2. 針對短期、中期、長期分別回測
+3. 測試不同信號門檻的效果
+4. 產出完整回測報告
+"""
+
+import sys
+import os
+import time
+from datetime import datetime, timedelta
+from typing import List, Dict
+
+import pandas as pd
+import ccxt
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from backtest.engine import BacktestEngine, BacktestResult
+
+
+def fetch_historical_data(
+    symbol: str = "BTC/USDT",
+    timeframe: str = "1d",
+    since_years: int = 7,
+    exchange_id: str = "binance",
+) -> pd.DataFrame:
+    """
+    從交易所下載歷史 K 線數據
+    
+    Args:
+        symbol: 交易對
+        timeframe: K 線週期 (1d, 4h, 1h 等)
+        since_years: 下載多少年的數據
+        exchange_id: 交易所
+    Returns:
+        DataFrame with columns: open, high, low, close, volume
+    """
+    print(f"\n📡 正在從 {exchange_id} 下載 {symbol} {timeframe} 數據...")
+    print(f"   回溯期間: {since_years} 年")
+    
+    exchange_class = getattr(ccxt, exchange_id)
+    exchange = exchange_class({
+        'enableRateLimit': True,
+        'options': {'defaultType': 'spot'},
+    })
+    
+    # 計算起始時間
+    since = int((datetime.now() - timedelta(days=since_years * 365)).timestamp() * 1000)
+    
+    all_ohlcv = []
+    fetch_since = since
+    batch_count = 0
+    
+    while True:
+        try:
+            ohlcv = exchange.fetch_ohlcv(symbol, timeframe, since=fetch_since, limit=1000)
+            if not ohlcv:
+                break
+            
+            all_ohlcv.extend(ohlcv)
+            batch_count += 1
+            
+            # 更新 since 到最後一根 K 線之後
+            fetch_since = ohlcv[-1][0] + 1
+            
+            if batch_count % 5 == 0:
+                print(f"   已下載 {len(all_ohlcv)} 根 K 線...")
+            
+            # 如果取回的數量少於 limit，表示已經到最新
+            if len(ohlcv) < 1000:
+                break
+            
+            time.sleep(exchange.rateLimit / 1000)
+            
+        except Exception as e:
+            print(f"   ⚠️ 下載錯誤: {e}")
+            time.sleep(2)
+            continue
+    
+    # 轉換為 DataFrame
+    df = pd.DataFrame(all_ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+    df.set_index('timestamp', inplace=True)
+    df = df[~df.index.duplicated(keep='first')]
+    df.sort_index(inplace=True)
+    
+    print(f"   ✅ 下載完成！共 {len(df)} 根 K 線")
+    print(f"   期間: {df.index[0]} ~ {df.index[-1]}")
+    
+    return df
+
+
+def save_data(df: pd.DataFrame, filename: str):
+    """儲存數據到 CSV"""
+    filepath = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', filename)
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    df.to_csv(filepath)
+    print(f"   💾 數據已儲存: {filepath}")
+    return filepath
+
+
+def load_data(filename: str) -> pd.DataFrame:
+    """從 CSV 載入數據"""
+    filepath = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', filename)
+    if os.path.exists(filepath):
+        df = pd.read_csv(filepath, index_col='timestamp', parse_dates=True)
+        print(f"   📂 從快取載入: {filepath} ({len(df)} 根 K 線)")
+        return df
+    return None
+
+
+def run_comprehensive_backtest():
+    """執行完整回測"""
+    
+    print("=" * 70)
+    print("🚀 CryptoSignal Pro — BTC 七年回測")
+    print("=" * 70)
+    
+    # ── 1. 準備數據 ──
+    # 日線數據（中長期回測）
+    daily_data = load_data('btc_daily_7y.csv')
+    if daily_data is None:
+        daily_data = fetch_historical_data('BTC/USDT', '1d', since_years=7)
+        save_data(daily_data, 'btc_daily_7y.csv')
+    
+    # 4 小時線數據（中期回測）—— 只能取約2年
+    h4_data = load_data('btc_4h_2y.csv')
+    if h4_data is None:
+        h4_data = fetch_historical_data('BTC/USDT', '4h', since_years=2)
+        save_data(h4_data, 'btc_4h_2y.csv')
+    
+    # 1 小時線數據（短期回測）—— 只能取約1年
+    h1_data = load_data('btc_1h_1y.csv')
+    if h1_data is None:
+        h1_data = fetch_historical_data('BTC/USDT', '1h', since_years=1)
+        save_data(h1_data, 'btc_1h_1y.csv')
+    
+    all_results: List[BacktestResult] = []
+    
+    # ── 2. 回測場景 (優化版：尋找高頻率+穩健獲利的商業最佳解) ──
+    scenarios = [
+        # (名稱, 數據, 時間框架, 買入門檻, 賣出門檻, 停損%, 停利%, 類別)
+        ("短期-突破", h1_data, "1h", 40, 40, 4.0, 8.0, "短期"),
+        ("中期-波段(4H)", h4_data, "4h", 45, 45, 6.0, 15.0, "中期"),
+        ("中期-波段(4H放寬)", h4_data, "4h", 35, 35, 8.0, 20.0, "中期"),
+        
+        # 重點測試：日線級別。降低門檻增加交易次數，縮小停損停利優化勝率
+        ("日線-順勢波段", daily_data, "1d", 45, 45, 12.0, 25.0, "長中"),
+        ("日線-高頻(門檻40)", daily_data, "1d", 40, 40, 15.0, 30.0, "長中"),
+        ("日線-超高頻(門檻30)", daily_data, "1d", 30, 30, 15.0, 35.0, "長中"),
+        
+        # 模擬三重濾網概念 (嚴格大趨勢停損)
+        ("日線-嚴格停損", daily_data, "1d", 40, 40, 8.0, 35.0, "長中"),
+    ]
+    
+    for name, data, tf, buy_th, sell_th, sl, tp, category in scenarios:
+        print(f"\n{'─' * 70}")
+        print(f"📋 場景: {name} ({category})")
+        print(f"{'─' * 70}")
+        
+        engine = BacktestEngine()
+        result = engine.run(
+            df=data,
+            symbol="BTC/USDT",
+            timeframe=tf,
+            buy_threshold=buy_th,
+            sell_threshold=sell_th,
+            stop_loss_pct=sl,
+            take_profit_pct=tp,
+        )
+        all_results.append((name, category, result))
+        print(result.report())
+    
+    # ── 3. 綜合比較報告 ──
+    print("\n" + "=" * 70)
+    print("📊 綜合比較報告")
+    print("=" * 70)
+    
+    print(f"\n{'場景':<20} {'類別':<6} {'交易次數':<8} {'勝率':<8} "
+          f"{'累計獲利':<12} {'最大回撤':<10} {'夏普比率':<10} {'獲利因子':<10}")
+    print("-" * 84)
+    
+    for name, category, result in all_results:
+        print(f"{name:<20} {category:<6} {result.total_trades:<8} "
+              f"{result.win_rate:<8.1f}% {result.total_profit_pct:<12.2f}% "
+              f"{result.max_drawdown_pct:<10.2f}% {result.sharpe_ratio:<10.2f} "
+              f"{result.profit_factor:<10.2f}")
+    
+    # ── 4. 最佳策略推薦 ──
+    print("\n" + "=" * 70)
+    print("🏆 最佳策略推薦")
+    print("=" * 70)
+    
+    # 按勝率排序
+    sorted_by_winrate = sorted(all_results, key=lambda x: x[2].win_rate, reverse=True)
+    print(f"\n📈 勝率最高: {sorted_by_winrate[0][0]} ({sorted_by_winrate[0][2].win_rate:.1f}%)")
+    
+    # 按累計獲利排序
+    sorted_by_profit = sorted(all_results, key=lambda x: x[2].total_profit_pct, reverse=True)
+    print(f"💰 獲利最高: {sorted_by_profit[0][0]} ({sorted_by_profit[0][2].total_profit_pct:.2f}%)")
+    
+    # 按夏普比率排序
+    sorted_by_sharpe = sorted(all_results, key=lambda x: x[2].sharpe_ratio, reverse=True)
+    print(f"⚖️  風險調節最佳: {sorted_by_sharpe[0][0]} (夏普比率: {sorted_by_sharpe[0][2].sharpe_ratio:.2f})")
+    
+    # ── 5. 儲存報告 ──
+    report_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        'data', 'backtest_report.txt'
+    )
+    with open(report_path, 'w', encoding='utf-8') as f:
+        f.write(f"CryptoSignal Pro — BTC 回測報告\n")
+        f.write(f"產生時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+        for name, category, result in all_results:
+            f.write(f"\n{'─' * 70}\n")
+            f.write(f"場景: {name} ({category})\n")
+            f.write(result.report())
+            f.write("\n")
+    
+    print(f"\n💾 完整報告已儲存: {report_path}")
+    print("\n✅ 所有回測完成！")
+    
+    return all_results
+
+
+if __name__ == "__main__":
+    results = run_comprehensive_backtest()
+
+
+--- FILE: ./backend/short_backtest_final.py ---
+
+
+--- FILE: ./backend/indicators/adx.py ---
+"""ADX (平均趨向指標) 插件"""
+
+import pandas as pd
+import numpy as np
+from .base import BaseIndicator, IndicatorSignal, SignalType
+from .registry import register_indicator
+
+
+@register_indicator('adx')
+class ADXIndicator(BaseIndicator):
+    """
+    ADX - Average Directional Index
+    
+    用於判斷趨勢強度：
+    - ADX > 25: 趨勢明確
+    - ADX < 20: 無趨勢（震盪）
+    - +DI > -DI: 多方主導
+    - -DI > +DI: 空方主導
+    """
+
+    def __init__(self, max_score: float = 10.0, params: dict = None):
+        default_params = {
+            'period': 14,
+            'trend_threshold': 25,
+            'strong_trend': 40,
+        }
+        if params:
+            default_params.update(params)
+        super().__init__(name='ADX', max_score=max_score, params=default_params)
+
+    def calculate(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        period = self.params['period']
+        
+        # 手寫 ADX 公式
+        th = df['high']
+        tl = df['low']
+        tc = df['close']
+        
+        tr = pd.concat([
+            th - tl,
+            (th - tc.shift(1)).abs(),
+            (tl - tc.shift(1)).abs()
+        ], axis=1).max(axis=1)
+        atr = tr.rolling(window=period).mean() # Simplified smoothing
+        
+        up_move = th - th.shift(1)
+        down_move = tl.shift(1) - tl
+        
+        plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0)
+        minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0)
+        
+        plus_di = 100 * (pd.Series(plus_dm, index=df.index).rolling(window=period).mean() / atr)
+        minus_di = 100 * (pd.Series(minus_dm, index=df.index).rolling(window=period).mean() / atr)
+        
+        dx = 100 * (plus_di - minus_di).abs() / (plus_di + minus_di)
+        df['adx'] = dx.rolling(window=period).mean()
+        df['plus_di'] = plus_di
+        df['minus_di'] = minus_di
+        
+        return df
+
+    def generate_signal(self, df: pd.DataFrame) -> IndicatorSignal:
+        required = ['adx', 'plus_di', 'minus_di']
+        if not all(c in df.columns for c in required):
+            return IndicatorSignal(
+                self.name, SignalType.NEUTRAL, 0, 0, {}, "ADX 數據不足"
+            )
+
+        adx = df['adx'].iloc[-1]
+        plus_di = df['plus_di'].iloc[-1]
+        minus_di = df['minus_di'].iloc[-1]
+
+        if any(pd.isna(v) for v in [adx, plus_di, minus_di]):
+            return IndicatorSignal(
+                self.name, SignalType.NEUTRAL, 0, 0, {}, "ADX 數據不足"
+            )
+
+        details = {'adx': adx, 'plus_di': plus_di, 'minus_di': minus_di}
+        trend_th = self.params['trend_threshold']
+        strong_th = self.params['strong_trend']
+
+        # 強趨勢 + 多方主導
+        if adx >= strong_th and plus_di > minus_di:
+            score = self._scale_score(self.max_score)
+            return IndicatorSignal(
+                self.name, SignalType.STRONG_BUY, score, adx, details,
+                f"ADX={adx:.1f} 強烈趨勢 + 多方主導（+DI={plus_di:.1f} > -DI={minus_di:.1f}）"
+            )
+        # 強趨勢 + 空方主導
+        elif adx >= strong_th and minus_di > plus_di:
+            score = self._scale_score(self.max_score)
+            return IndicatorSignal(
+                self.name, SignalType.STRONG_SELL, score, adx, details,
+                f"ADX={adx:.1f} 強烈趨勢 + 空方主導（-DI={minus_di:.1f} > +DI={plus_di:.1f}）"
+            )
+        # 趨勢確立 + 多方
+        elif adx >= trend_th and plus_di > minus_di:
+            score = self._scale_score(self.max_score * 0.7)
+            return IndicatorSignal(
+                self.name, SignalType.BUY, score, adx, details,
+                f"ADX={adx:.1f} 趨勢確立 + 多方主導"
+            )
+        # 趨勢確立 + 空方
+        elif adx >= trend_th and minus_di > plus_di:
+            score = self._scale_score(self.max_score * 0.7)
+            return IndicatorSignal(
+                self.name, SignalType.SELL, score, adx, details,
+                f"ADX={adx:.1f} 趨勢確立 + 空方主導"
+            )
+        # 無趨勢（震盪市場）
+        else:
+            return IndicatorSignal(
+                self.name, SignalType.NEUTRAL, 0, adx, details,
+                f"ADX={adx:.1f} 趨勢不明確（<{trend_th}），市場震盪中"
+            )
+
+
+--- FILE: ./backend/indicators/registry.py ---
+"""
+指標插件自動註冊器
+
+使用裝飾器模式自動註冊所有指標插件，
+讓新增指標時只需要繼承 BaseIndicator 並加上 @register_indicator 即可。
+"""
+
+from typing import Dict, Type, List, Optional
+from .base import BaseIndicator
+
+
+class IndicatorRegistry:
+    """指標插件註冊表"""
+    
+    _indicators: Dict[str, Type[BaseIndicator]] = {}
+
+    @classmethod
+    def register(cls, name: str):
+        """裝飾器：註冊指標插件"""
+        def decorator(indicator_cls: Type[BaseIndicator]):
+            cls._indicators[name] = indicator_cls
+            return indicator_cls
+        return decorator
+
+    @classmethod
+    def get(cls, name: str) -> Optional[Type[BaseIndicator]]:
+        """取得指定名稱的指標類別"""
+        return cls._indicators.get(name)
+
+    @classmethod
+    def get_all(cls) -> Dict[str, Type[BaseIndicator]]:
+        """取得所有已註冊的指標"""
+        return cls._indicators.copy()
+
+    @classmethod
+    def create_all(cls, weights: Optional[Dict[str, float]] = None) -> List[BaseIndicator]:
+        """
+        建立所有已註冊指標的實例
+        
+        Args:
+            weights: 指標權重字典，e.g. {'rsi': 15.0, 'macd': 20.0}
+        """
+        instances = []
+        for name, indicator_cls in cls._indicators.items():
+            max_score = weights.get(name, 15.0) if weights else 15.0
+            instances.append(indicator_cls(max_score=max_score))
+        return instances
+
+    @classmethod
+    def list_names(cls) -> List[str]:
+        """列出所有已註冊的指標名稱"""
+        return list(cls._indicators.keys())
+
+
+# 方便使用的裝飾器別名
+register_indicator = IndicatorRegistry.register
+
+
+--- FILE: ./backend/indicators/macd.py ---
+"""MACD (移動平均收斂發散) 插件"""
+
+import pandas as pd
+from .base import BaseIndicator, IndicatorSignal, SignalType
+from .registry import register_indicator
+
+
+@register_indicator('macd')
+class MACDIndicator(BaseIndicator):
+    """
+    MACD - Moving Average Convergence Divergence
+    
+    買入：MACD線上穿信號線（黃金交叉）+ 柱狀圖翻正
+    賣出：MACD線下穿信號線（死亡交叉）+ 柱狀圖翻負
+    """
+
+    def __init__(self, max_score: float = 20.0, params: dict = None):
+        default_params = {
+            'fast': 12,
+            'slow': 26,
+            'signal': 9,
+        }
+        if params:
+            default_params.update(params)
+        super().__init__(name='MACD', max_score=max_score, params=default_params)
+
+    def calculate(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        fast = self.params['fast']
+        slow = self.params['slow']
+        signal = self.params['signal']
+        
+        # 手寫 MACD 公式
+        ema_fast = df['close'].ewm(span=fast, adjust=False).mean()
+        ema_slow = df['close'].ewm(span=slow, adjust=False).mean()
+        
+        df['macd'] = ema_fast - ema_slow
+        df['macd_signal'] = df['macd'].ewm(span=signal, adjust=False).mean()
+        df['macd_histogram'] = df['macd'] - df['macd_signal']
+        
+        return df
+
+    def generate_signal(self, df: pd.DataFrame) -> IndicatorSignal:
+        required = ['macd', 'macd_signal', 'macd_histogram']
+        if not all(c in df.columns for c in required):
+            return IndicatorSignal(
+                self.name, SignalType.NEUTRAL, 0, 0, {}, "MACD 數據不足"
+            )
+
+        if len(df) < 2:
+            return IndicatorSignal(
+                self.name, SignalType.NEUTRAL, 0, 0, {}, "MACD 數據不足"
+            )
+
+        macd = df['macd'].iloc[-1]
+        signal = df['macd_signal'].iloc[-1]
+        hist = df['macd_histogram'].iloc[-1]
+        prev_macd = df['macd'].iloc[-2]
+        prev_signal = df['macd_signal'].iloc[-2]
+        prev_hist = df['macd_histogram'].iloc[-2]
+
+        if any(pd.isna(v) for v in [macd, signal, hist, prev_macd, prev_signal, prev_hist]):
+            return IndicatorSignal(
+                self.name, SignalType.NEUTRAL, 0, 0, {}, "MACD 數據不足"
+            )
+
+        details = {
+            'macd': macd, 'signal': signal, 'histogram': hist,
+            'prev_histogram': prev_hist,
+        }
+
+        # 黃金交叉：MACD 由下往上穿越信號線
+        golden_cross = prev_macd <= prev_signal and macd > signal
+        # 死亡交叉：MACD 由上往下穿越信號線
+        death_cross = prev_macd >= prev_signal and macd < signal
+        # 柱狀圖翻正
+        hist_turn_positive = prev_hist <= 0 and hist > 0
+        # 柱狀圖翻負
+        hist_turn_negative = prev_hist >= 0 and hist < 0
+
+        # 強烈買入：黃金交叉 + 柱狀圖翻正
+        if golden_cross and hist > 0:
+            score = self._scale_score(self.max_score)
+            return IndicatorSignal(
+                self.name, SignalType.STRONG_BUY, score, macd, details,
+                "MACD 黃金交叉 + 柱狀圖翻正 → 強烈買入"
+            )
+        # 買入：柱狀圖翻正（非交叉但動能反轉）
+        elif hist_turn_positive:
+            score = self._scale_score(self.max_score * 0.7)
+            return IndicatorSignal(
+                self.name, SignalType.BUY, score, macd, details,
+                "MACD 柱狀圖翻正，動能反轉向上"
+            )
+        # 柱狀圖遞增（趨勢增強）
+        elif hist > 0 and hist > prev_hist:
+            score = self._scale_score(self.max_score * 0.4)
+            return IndicatorSignal(
+                self.name, SignalType.BUY, score, macd, details,
+                "MACD 柱狀圖持續增長，多方動能增強"
+            )
+        # 強烈賣出：死亡交叉 + 柱狀圖翻負
+        elif death_cross and hist < 0:
+            score = self._scale_score(self.max_score)
+            return IndicatorSignal(
+                self.name, SignalType.STRONG_SELL, score, macd, details,
+                "MACD 死亡交叉 + 柱狀圖翻負 → 強烈賣出"
+            )
+        # 賣出：柱狀圖翻負
+        elif hist_turn_negative:
+            score = self._scale_score(self.max_score * 0.7)
+            return IndicatorSignal(
+                self.name, SignalType.SELL, score, macd, details,
+                "MACD 柱狀圖翻負，動能反轉向下"
+            )
+        # 柱狀圖遞減（空方增強）
+        elif hist < 0 and hist < prev_hist:
+            score = self._scale_score(self.max_score * 0.4)
+            return IndicatorSignal(
+                self.name, SignalType.SELL, score, macd, details,
+                "MACD 柱狀圖持續下降，空方動能增強"
+            )
+        else:
+            return IndicatorSignal(
+                self.name, SignalType.NEUTRAL, 0, macd, details,
+                "MACD 無明顯信號"
+            )
+
+
+--- FILE: ./backend/indicators/ema.py ---
+"""EMA Cross (指數移動平均線交叉) 插件"""
+
+import pandas as pd
+from .base import BaseIndicator, IndicatorSignal, SignalType
+from .registry import register_indicator
+
+
+@register_indicator('ema_cross')
+class EMACrossIndicator(BaseIndicator):
+    """
+    EMA 交叉策略
+    
+    短期：EMA9/EMA21 交叉
+    長期：EMA50/EMA200 交叉（黃金/死亡交叉）
+    """
+
+    def __init__(self, max_score: float = 15.0, params: dict = None):
+        default_params = {
+            'fast_period': 9,
+            'slow_period': 21,
+            'long_fast': 50,
+            'long_slow': 200,
+        }
+        if params:
+            default_params.update(params)
+        super().__init__(name='EMA Cross', max_score=max_score, params=default_params)
+
+    def calculate(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        fp = self.params['fast_period']
+        sp = self.params['slow_period']
+        lf = self.params['long_fast']
+        ls = self.params['long_slow']
+        
+        # 使用 pandas ewm 實作 EMA
+        df[f'ema_{fp}'] = df['close'].ewm(span=fp, adjust=False).mean()
+        df[f'ema_{sp}'] = df['close'].ewm(span=sp, adjust=False).mean()
+        df[f'ema_{lf}'] = df['close'].ewm(span=lf, adjust=False).mean()
+        df[f'ema_{ls}'] = df['close'].ewm(span=ls, adjust=False).mean()
+        return df
+
+    def generate_signal(self, df: pd.DataFrame) -> IndicatorSignal:
+        fp = self.params['fast_period']
+        sp = self.params['slow_period']
+        lf = self.params['long_fast']
+        ls = self.params['long_slow']
+        
+        fast_col = f'ema_{fp}'
+        slow_col = f'ema_{sp}'
+        long_fast_col = f'ema_{lf}'
+        long_slow_col = f'ema_{ls}'
+
+        if not all(c in df.columns for c in [fast_col, slow_col]):
+            return IndicatorSignal(
+                self.name, SignalType.NEUTRAL, 0, 0, {}, "EMA 數據不足"
+            )
+
+        if len(df) < 2:
+            return IndicatorSignal(
+                self.name, SignalType.NEUTRAL, 0, 0, {}, "EMA 數據不足"
+            )
+
+        ema_fast = df[fast_col].iloc[-1]
+        ema_slow = df[slow_col].iloc[-1]
+        prev_ema_fast = df[fast_col].iloc[-2]
+        prev_ema_slow = df[slow_col].iloc[-2]
+
+        if any(pd.isna(v) for v in [ema_fast, ema_slow, prev_ema_fast, prev_ema_slow]):
+            return IndicatorSignal(
+                self.name, SignalType.NEUTRAL, 0, 0, {}, "EMA 數據不足"
+            )
+
+        details = {
+            f'ema_{fp}': ema_fast, f'ema_{sp}': ema_slow,
+        }
+
+        # 檢查長期 EMA 交叉
+        has_long = long_fast_col in df.columns and long_slow_col in df.columns
+        long_golden = False
+        long_death = False
+        
+        if has_long and len(df) >= 2:
+            lf_now = df[long_fast_col].iloc[-1]
+            ls_now = df[long_slow_col].iloc[-1]
+            lf_prev = df[long_fast_col].iloc[-2]
+            ls_prev = df[long_slow_col].iloc[-2]
+            if not any(pd.isna(v) for v in [lf_now, ls_now, lf_prev, ls_prev]):
+                long_golden = lf_prev <= ls_prev and lf_now > ls_now
+                long_death = lf_prev >= ls_prev and lf_now < ls_now
+                details[f'ema_{lf}'] = lf_now
+                details[f'ema_{ls}'] = ls_now
+
+        # 短期黃金交叉
+        golden_cross = prev_ema_fast <= prev_ema_slow and ema_fast > ema_slow
+        # 短期死亡交叉
+        death_cross = prev_ema_fast >= prev_ema_slow and ema_fast < ema_slow
+
+        # 長期黃金交叉（權重更大）
+        if long_golden:
+            score = self._scale_score(self.max_score)
+            return IndicatorSignal(
+                self.name, SignalType.STRONG_BUY, score, ema_fast, details,
+                f"EMA{lf} 上穿 EMA{ls}（長期黃金交叉）→ 極強買入"
+            )
+        elif long_death:
+            score = self._scale_score(self.max_score)
+            return IndicatorSignal(
+                self.name, SignalType.STRONG_SELL, score, ema_fast, details,
+                f"EMA{lf} 下穿 EMA{ls}（長期死亡交叉）→ 極強賣出"
+            )
+        elif golden_cross:
+            score = self._scale_score(self.max_score * 0.75)
+            return IndicatorSignal(
+                self.name, SignalType.BUY, score, ema_fast, details,
+                f"EMA{fp} 上穿 EMA{sp}（短期黃金交叉）"
+            )
+        elif death_cross:
+            score = self._scale_score(self.max_score * 0.75)
+            return IndicatorSignal(
+                self.name, SignalType.SELL, score, ema_fast, details,
+                f"EMA{fp} 下穿 EMA{sp}（短期死亡交叉）"
+            )
+        # EMA 多頭排列
+        elif ema_fast > ema_slow:
+            gap_pct = (ema_fast - ema_slow) / ema_slow * 100
+            score = self._scale_score(self.max_score * min(0.4, gap_pct / 5))
+            return IndicatorSignal(
+                self.name, SignalType.BUY, score, ema_fast, details,
+                f"EMA 多頭排列（快線高於慢線 {gap_pct:.2f}%）"
+            )
+        elif ema_fast < ema_slow:
+            gap_pct = (ema_slow - ema_fast) / ema_slow * 100
+            score = self._scale_score(self.max_score * min(0.4, gap_pct / 5))
+            return IndicatorSignal(
+                self.name, SignalType.SELL, score, ema_fast, details,
+                f"EMA 空頭排列（快線低於慢線 {gap_pct:.2f}%）"
+            )
+        else:
+            return IndicatorSignal(
+                self.name, SignalType.NEUTRAL, 0, ema_fast, details,
+                "EMA 無明顯交叉信號"
+            )
+
+
+--- FILE: ./backend/indicators/__init__.py ---
+
+
+--- FILE: ./backend/indicators/volume.py ---
+"""Volume (成交量分析) 插件"""
+
+import pandas as pd
+import numpy as np
+from .base import BaseIndicator, IndicatorSignal, SignalType
+from .registry import register_indicator
+
+
+@register_indicator('volume')
+class VolumeIndicator(BaseIndicator):
+    """
+    成交量綜合分析
+    
+    包含：OBV (On-Balance Volume), 成交量均線, 量能爆發偵測
+    """
+
+    def __init__(self, max_score: float = 15.0, params: dict = None):
+        default_params = {
+            'ma_period': 20,
+            'spike_multiplier': 2.0,   # 量能爆發倍數
+            'obv_ma_period': 20,
+        }
+        if params:
+            default_params.update(params)
+        super().__init__(name='Volume', max_score=max_score, params=default_params)
+
+    def calculate(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        ma_period = self.params['ma_period']
+        
+        # 成交量移動平均
+        df['volume_ma'] = df['volume'].rolling(window=ma_period).mean()
+        # 成交量比率
+        df['volume_ratio'] = df['volume'] / df['volume_ma']
+        
+        # 手寫 OBV 公式
+        diff = df['close'].diff()
+        direction = np.sign(diff).fillna(0)
+        df['obv'] = (direction * df['volume']).cumsum()
+        
+        df['obv_ma'] = df['obv'].rolling(window=self.params['obv_ma_period']).mean()
+        # 判斷陽線陰線
+        df['is_bullish'] = df['close'] > df['open']
+        return df
+
+    def generate_signal(self, df: pd.DataFrame) -> IndicatorSignal:
+        required = ['volume_ma', 'volume_ratio', 'is_bullish']
+        if not all(c in df.columns for c in required):
+            return IndicatorSignal(
+                self.name, SignalType.NEUTRAL, 0, 0, {}, "成交量數據不足"
+            )
+
+        vol = df['volume'].iloc[-1]
+        vol_ratio = df['volume_ratio'].iloc[-1]
+        is_bullish = df['is_bullish'].iloc[-1]
+        spike_mult = self.params['spike_multiplier']
+
+        if pd.isna(vol_ratio):
+            return IndicatorSignal(
+                self.name, SignalType.NEUTRAL, 0, 0, {}, "成交量數據不足"
+            )
+
+        details = {
+            'volume': vol,
+            'volume_ratio': vol_ratio,
+            'is_bullish': bool(is_bullish),
+        }
+
+        # OBV 趨勢分析
+        obv_bullish = False
+        obv_bearish = False
+        if 'obv' in df.columns and 'obv_ma' in df.columns:
+            obv = df['obv'].iloc[-1]
+            obv_ma = df['obv_ma'].iloc[-1]
+            if not pd.isna(obv) and not pd.isna(obv_ma):
+                obv_bullish = obv > obv_ma
+                obv_bearish = obv < obv_ma
+                details['obv'] = obv
+                details['obv_ma'] = obv_ma
+
+        # 量能爆發 + 陽線 = 強烈買入信號
+        if vol_ratio >= spike_mult and is_bullish:
+            score = self._scale_score(self.max_score)
+            extra = "（OBV 確認多方趨勢）" if obv_bullish else ""
+            return IndicatorSignal(
+                self.name, SignalType.STRONG_BUY, score, vol_ratio, details,
+                f"量能爆發 {vol_ratio:.1f}x + 陽線 → 多方主力進場{extra}"
+            )
+        # 量能爆發 + 陰線 = 強烈賣出信號
+        elif vol_ratio >= spike_mult and not is_bullish:
+            score = self._scale_score(self.max_score)
+            extra = "（OBV 確認空方趨勢）" if obv_bearish else ""
+            return IndicatorSignal(
+                self.name, SignalType.STRONG_SELL, score, vol_ratio, details,
+                f"量能爆發 {vol_ratio:.1f}x + 陰線 → 空方主力出貨{extra}"
+            )
+        # 放量 + 陽線
+        elif vol_ratio >= 1.5 and is_bullish:
+            score = self._scale_score(self.max_score * 0.6)
+            return IndicatorSignal(
+                self.name, SignalType.BUY, score, vol_ratio, details,
+                f"成交量放大 {vol_ratio:.1f}x + 陽線"
+            )
+        # 放量 + 陰線
+        elif vol_ratio >= 1.5 and not is_bullish:
+            score = self._scale_score(self.max_score * 0.6)
+            return IndicatorSignal(
+                self.name, SignalType.SELL, score, vol_ratio, details,
+                f"成交量放大 {vol_ratio:.1f}x + 陰線"
+            )
+        # OBV 趨勢確認（輕微信號）
+        elif obv_bullish:
+            score = self._scale_score(self.max_score * 0.25)
+            return IndicatorSignal(
+                self.name, SignalType.BUY, score, vol_ratio, details,
+                f"OBV 處於上升趨勢，量能正常（{vol_ratio:.1f}x）"
+            )
+        elif obv_bearish:
+            score = self._scale_score(self.max_score * 0.25)
+            return IndicatorSignal(
+                self.name, SignalType.SELL, score, vol_ratio, details,
+                f"OBV 處於下降趨勢，量能正常（{vol_ratio:.1f}x）"
+            )
+        else:
+            return IndicatorSignal(
+                self.name, SignalType.NEUTRAL, 0, vol_ratio, details,
+                f"成交量正常（{vol_ratio:.1f}x），無明顯信號"
+            )
+
+
+--- FILE: ./backend/indicators/taiwan_stock.py ---
+from .base import Indicator
+from .rsi import RSI
+from .macd import MACD
+from .bollinger import BollingerBands
+from .ema import EMA
+
+class TaiwanStockAlgorithm(Indicator):
+    """
+    台股專屬演算法，根據多種技術指標計算分數。
+    """
+
+    def __init__(self, data):
+        super().__init__(data)
+        self.rsi = RSI(data)
+        self.macd = MACD(data)
+        self.bollinger = BollingerBands(data)
+        self.ema = EMA(data)
+
+    def calculate_score(self):
+        """
+        計算台股分數，根據技術指標的信號加權計算。
+        """
+        rsi_score = self._rsi_score()
+        macd_score = self._macd_score()
+        bollinger_score = self._bollinger_score()
+        ema_score = self._ema_score()
+
+        # 總分數加權計算
+        total_score = (rsi_score * 0.3 +
+                       macd_score * 0.3 +
+                       bollinger_score * 0.2 +
+                       ema_score * 0.2)
+        return total_score
+
+    def _rsi_score(self):
+        rsi_value = self.rsi.calculate()
+        if rsi_value < 30:
+            return 1  # 超賣
+        elif rsi_value > 70:
+            return -1  # 超買
+        return 0
+
+    def _macd_score(self):
+        macd_line, signal_line = self.macd.calculate()
+        if macd_line > signal_line:
+            return 1  # 多頭
+        elif macd_line < signal_line:
+            return -1  # 空頭
+        return 0
+
+    def _bollinger_score(self):
+        upper, middle, lower = self.bollinger.calculate()
+        price = self.data['close'][-1]
+        if price > upper:
+            return -1  # 超買
+        elif price < lower:
+            return 1  # 超賣
+        return 0
+
+    def _ema_score(self):
+        ema_value = self.ema.calculate()
+        price = self.data['close'][-1]
+        if price > ema_value:
+            return 1  # 多頭
+        elif price < ema_value:
+            return -1  # 空頭
+        return 0
+
+--- FILE: ./backend/indicators/mfi.py ---
+"""MFI (資金流量指標) 插件"""
+
+import pandas as pd
+from .base import BaseIndicator, IndicatorSignal, SignalType
+from .registry import register_indicator
+
+
+@register_indicator('mfi')
+class MFIIndicator(BaseIndicator):
+    """
+    MFI - Money Flow Index（量價合一的 RSI）
+    
+    買入：MFI < 20（資金超賣）
+    賣出：MFI > 80（資金超買）
+    """
+
+    def __init__(self, max_score: float = 10.0, params: dict = None):
+        default_params = {
+            'period': 14,
+            'oversold': 20,
+            'overbought': 80,
+        }
+        if params:
+            default_params.update(params)
+        super().__init__(name='MFI', max_score=max_score, params=default_params)
+
+    def calculate(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        period = self.params['period']
+        
+        # 手寫 MFI 公式
+        tp = (df['high'] + df['low'] + df['close']) / 3
+        mf = tp * df['volume']
+        
+        diff = tp.diff()
+        positive_mf = mf.where(diff > 0, 0)
+        negative_mf = mf.where(diff < 0, 0)
+        
+        pos_mf_sum = positive_mf.rolling(window=period).sum()
+        neg_mf_sum = negative_mf.rolling(window=period).sum()
+        
+        mfr = pos_mf_sum / neg_mf_sum
+        df['mfi'] = 100 - (100 / (1 + mfr))
+        
+        return df
+
+    def generate_signal(self, df: pd.DataFrame) -> IndicatorSignal:
+        if 'mfi' not in df.columns or df['mfi'].isna().all():
+            return IndicatorSignal(
+                self.name, SignalType.NEUTRAL, 0, 0, {}, "MFI 數據不足"
+            )
+
+        mfi = df['mfi'].iloc[-1]
+        if pd.isna(mfi):
+            return IndicatorSignal(
+                self.name, SignalType.NEUTRAL, 0, 0, {}, "MFI 數據不足"
+            )
+
+        details = {'mfi': mfi}
+
+        if mfi < self.params['oversold']:
+            ratio = (self.params['oversold'] - mfi) / self.params['oversold']
+            score = self._scale_score(self.max_score * (0.6 + 0.4 * ratio))
+            return IndicatorSignal(
+                self.name, SignalType.STRONG_BUY if mfi < 10 else SignalType.BUY,
+                score, mfi, details,
+                f"MFI={mfi:.1f} 資金超賣（<{self.params['oversold']}），大量資金流出"
+            )
+        elif mfi > self.params['overbought']:
+            ratio = (mfi - self.params['overbought']) / (100 - self.params['overbought'])
+            score = self._scale_score(self.max_score * (0.6 + 0.4 * ratio))
+            return IndicatorSignal(
+                self.name, SignalType.STRONG_SELL if mfi > 90 else SignalType.SELL,
+                score, mfi, details,
+                f"MFI={mfi:.1f} 資金超買（>{self.params['overbought']}），大量資金流入"
+            )
+        else:
+            return IndicatorSignal(
+                self.name, SignalType.NEUTRAL, 0, mfi, details,
+                f"MFI={mfi:.1f} 資金流量正常"
+            )
+
+
+--- FILE: ./backend/indicators/rsi.py ---
+"""RSI (相對強弱指標) 插件"""
+
+import pandas as pd
+from .base import BaseIndicator, IndicatorSignal, SignalType
+from .registry import register_indicator
+
+
+@register_indicator('rsi')
+class RSIIndicator(BaseIndicator):
+    """
+    RSI - Relative Strength Index
+    
+    買入：RSI < 30（超賣區）
+    賣出：RSI > 70（超買區）
+    極端買入：RSI < 20
+    極端賣出：RSI > 80
+    """
+
+    def __init__(self, max_score: float = 15.0, params: dict = None):
+        default_params = {
+            'period': 14,
+            'oversold': 30,
+            'overbought': 70,
+            'extreme_oversold': 20,
+            'extreme_overbought': 80,
+        }
+        if params:
+            default_params.update(params)
+        super().__init__(name='RSI', max_score=max_score, params=default_params)
+
+    def calculate(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        period = self.params['period']
+        
+        # 手寫 RSI 公式 (Standard Wilder's Smoothing)
+        delta = df['close'].diff()
+        gain = (delta.where(delta > 0, 0)).fillna(0)
+        loss = (-delta.where(delta < 0, 0)).fillna(0)
+        
+        avg_gain = gain.rolling(window=period, min_periods=period).mean()
+        avg_loss = loss.rolling(window=period, min_periods=period).mean()
+        
+        # Wilder's smoothing version
+        # for i in range(period, len(df)):
+        #     avg_gain.iloc[i] = (avg_gain.iloc[i-1] * (period - 1) + gain.iloc[i]) / period
+        #     avg_loss.iloc[i] = (avg_loss.iloc[i-1] * (period - 1) + loss.iloc[i]) / period
+        
+        rs = avg_gain / avg_loss
+        df[f'rsi_{period}'] = 100 - (100 / (1 + rs))
+        return df
+
+    def generate_signal(self, df: pd.DataFrame) -> IndicatorSignal:
+        period = self.params['period']
+        col = f'rsi_{period}'
+        
+        if col not in df.columns or df[col].isna().all():
+            return IndicatorSignal(
+                indicator_name=self.name, signal_type=SignalType.NEUTRAL,
+                score=0, value=0, details={}, reason="RSI 數據不足"
+            )
+
+        rsi = df[col].iloc[-1]
+        prev_rsi = df[col].iloc[-2] if len(df) > 1 else rsi
+
+        if pd.isna(rsi):
+            return IndicatorSignal(
+                indicator_name=self.name, signal_type=SignalType.NEUTRAL,
+                score=0, value=0, details={}, reason="RSI 數據不足"
+            )
+
+        details = {'rsi': rsi, 'prev_rsi': prev_rsi}
+
+        # 極端超賣
+        if rsi < self.params['extreme_oversold']:
+            score = self._scale_score(self.max_score)
+            return IndicatorSignal(
+                self.name, SignalType.STRONG_BUY, score, rsi, details,
+                f"RSI={rsi:.1f} 極端超賣區（<{self.params['extreme_oversold']}）"
+            )
+        # 超賣
+        elif rsi < self.params['oversold']:
+            ratio = (self.params['oversold'] - rsi) / (self.params['oversold'] - self.params['extreme_oversold'])
+            score = self._scale_score(self.max_score * (0.5 + 0.5 * ratio))
+            return IndicatorSignal(
+                self.name, SignalType.BUY, score, rsi, details,
+                f"RSI={rsi:.1f} 進入超賣區（<{self.params['oversold']}）"
+            )
+        # 極端超買
+        elif rsi > self.params['extreme_overbought']:
+            score = self._scale_score(self.max_score)
+            return IndicatorSignal(
+                self.name, SignalType.STRONG_SELL, score, rsi, details,
+                f"RSI={rsi:.1f} 極端超買區（>{self.params['extreme_overbought']}）"
+            )
+        # 超買
+        elif rsi > self.params['overbought']:
+            ratio = (rsi - self.params['overbought']) / (self.params['extreme_overbought'] - self.params['overbought'])
+            score = self._scale_score(self.max_score * (0.5 + 0.5 * ratio))
+            return IndicatorSignal(
+                self.name, SignalType.SELL, score, rsi, details,
+                f"RSI={rsi:.1f} 進入超買區（>{self.params['overbought']}）"
+            )
+        # RSI 接近超賣（反轉上升中）
+        elif rsi < 40 and prev_rsi < rsi:
+            score = self._scale_score(self.max_score * 0.3)
+            return IndicatorSignal(
+                self.name, SignalType.BUY, score, rsi, details,
+                f"RSI={rsi:.1f} 從低位回升中"
+            )
+        # RSI 接近超買（開始下降）
+        elif rsi > 60 and prev_rsi > rsi:
+            score = self._scale_score(self.max_score * 0.3)
+            return IndicatorSignal(
+                self.name, SignalType.SELL, score, rsi, details,
+                f"RSI={rsi:.1f} 從高位開始回落"
+            )
+        else:
+            return IndicatorSignal(
+                self.name, SignalType.NEUTRAL, 0, rsi, details,
+                f"RSI={rsi:.1f} 處於中性區間"
+            )
+
+
+--- FILE: ./backend/indicators/bollinger.py ---
+"""Bollinger Bands (布林帶) 插件"""
+
+import pandas as pd
+from .base import BaseIndicator, IndicatorSignal, SignalType
+from .registry import register_indicator
+
+
+@register_indicator('bollinger')
+class BollingerIndicator(BaseIndicator):
+    """
+    Bollinger Bands
+    
+    買入：價格觸及下軌（超賣），尤其是帶寬收窄後爆發
+    賣出：價格觸及上軌（超買）
+    """
+
+    def __init__(self, max_score: float = 15.0, params: dict = None):
+        default_params = {
+            'period': 20,
+            'std_dev': 2.0,
+        }
+        if params:
+            default_params.update(params)
+        super().__init__(name='Bollinger Bands', max_score=max_score, params=default_params)
+
+    def calculate(self, df: pd.DataFrame) -> pd.DataFrame:
+        df = df.copy()
+        period = self.params['period']
+        std_dev = self.params['std_dev']
+        
+        # 手寫布林帶公式
+        df['bb_middle'] = df['close'].rolling(window=period).mean()
+        df['bb_std'] = df['close'].rolling(window=period).std()
+        df['bb_upper'] = df['bb_middle'] + (df['bb_std'] * std_dev)
+        df['bb_lower'] = df['bb_middle'] - (df['bb_std'] * std_dev)
+        
+        df['bb_bandwidth'] = (df['bb_upper'] - df['bb_lower']) / df['bb_middle']
+        df['bb_percent'] = (df['close'] - df['bb_lower']) / (df['bb_upper'] - df['bb_lower'])
+        
+        return df
+
+    def generate_signal(self, df: pd.DataFrame) -> IndicatorSignal:
+        required = ['bb_lower', 'bb_middle', 'bb_upper', 'bb_percent']
+        if not all(c in df.columns for c in required):
+            return IndicatorSignal(
+                self.name, SignalType.NEUTRAL, 0, 0, {}, "布林帶數據不足"
+            )
+
+        close = df['close'].iloc[-1]
+        bb_lower = df['bb_lower'].iloc[-1]
+        bb_upper = df['bb_upper'].iloc[-1]
+        bb_middle = df['bb_middle'].iloc[-1]
+        bb_pct = df['bb_percent'].iloc[-1]
+
+        if any(pd.isna(v) for v in [close, bb_lower, bb_upper, bb_pct]):
+            return IndicatorSignal(
+                self.name, SignalType.NEUTRAL, 0, 0, {}, "布林帶數據不足"
+            )
+
+        details = {
+            'close': close, 'bb_lower': bb_lower, 'bb_upper': bb_upper,
+            'bb_middle': bb_middle, 'bb_percent': bb_pct,
+        }
+
+        # 價格跌破下軌
+        if close <= bb_lower:
+            score = self._scale_score(self.max_score)
+            return IndicatorSignal(
+                self.name, SignalType.STRONG_BUY, score, bb_pct, details,
+                f"價格跌破布林帶下軌，%B={bb_pct:.2f} → 極度超賣"
+            )
+        # 價格接近下軌 (bb_percent < 0.1)
+        elif bb_pct < 0.1:
+            score = self._scale_score(self.max_score * 0.8)
+            return IndicatorSignal(
+                self.name, SignalType.BUY, score, bb_pct, details,
+                f"價格接近布林帶下軌，%B={bb_pct:.2f}"
+            )
+        # 價格在下軌附近且回升
+        elif bb_pct < 0.2:
+            score = self._scale_score(self.max_score * 0.5)
+            return IndicatorSignal(
+                self.name, SignalType.BUY, score, bb_pct, details,
+                f"價格在布林帶下部區域，%B={bb_pct:.2f}"
+            )
+        # 價格突破上軌
+        elif close >= bb_upper:
+            score = self._scale_score(self.max_score)
+            return IndicatorSignal(
+                self.name, SignalType.STRONG_SELL, score, bb_pct, details,
+                f"價格突破布林帶上軌，%B={bb_pct:.2f} → 極度超買"
+            )
+        # 價格接近上軌
+        elif bb_pct > 0.9:
+            score = self._scale_score(self.max_score * 0.8)
+            return IndicatorSignal(
+                self.name, SignalType.SELL, score, bb_pct, details,
+                f"價格接近布林帶上軌，%B={bb_pct:.2f}"
+            )
+        elif bb_pct > 0.8:
+            score = self._scale_score(self.max_score * 0.5)
+            return IndicatorSignal(
+                self.name, SignalType.SELL, score, bb_pct, details,
+                f"價格在布林帶上部區域，%B={bb_pct:.2f}"
+            )
+        else:
+            return IndicatorSignal(
+                self.name, SignalType.NEUTRAL, 0, bb_pct, details,
+                f"價格在布林帶中部，%B={bb_pct:.2f}"
+            )
+
+
+--- FILE: ./backend/indicators/base.py ---
+"""
+指標插件基底類別 (Base Indicator Plugin)
+
+所有技術指標都必須繼承此類別，實現 calculate() 和 generate_signal() 方法。
+這確保了插件架構的一致性和可擴展性。
+"""
+
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any, Dict, Optional
+import pandas as pd
+
+
+class SignalType(Enum):
+    """信號類型"""
+    STRONG_BUY = "STRONG_BUY"      # 強烈買入
+    BUY = "BUY"                     # 買入
+    NEUTRAL = "NEUTRAL"             # 中性
+    SELL = "SELL"                   # 賣出
+    STRONG_SELL = "STRONG_SELL"    # 強烈賣出
+
+
+@dataclass
+class IndicatorSignal:
+    """單一指標產出的信號"""
+    indicator_name: str          # 指標名稱
+    signal_type: SignalType      # 信號類型
+    score: float                 # 分數 (0–100，衡量該指標的信號強度)
+    value: float                 # 指標當前數值
+    details: Dict[str, Any]      # 詳細資訊（如 RSI 值、MACD 柱狀圖等）
+    reason: str                  # 產出信號的原因說明
+
+    def __repr__(self):
+        return (f"IndicatorSignal({self.indicator_name}: "
+                f"{self.signal_type.value}, score={self.score:.1f}, "
+                f"reason='{self.reason}')")
+
+
+class BaseIndicator(ABC):
+    """
+    指標插件基底類別
+    
+    所有自定義指標必須繼承此類別並實現：
+      - calculate(df): 在 DataFrame 上計算指標列
+      - generate_signal(df): 根據計算結果產生買賣信號
+    """
+
+    def __init__(self, name: str, max_score: float = 15.0, params: Optional[Dict] = None):
+        """
+        Args:
+            name: 指標名稱
+            max_score: 此指標可貢獻的最高分數
+            params: 可配置參數
+        """
+        self.name = name
+        self.max_score = max_score
+        self.params = params or {}
+
+    @abstractmethod
+    def calculate(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        計算指標並將結果新增為 DataFrame 的新欄位。
+        
+        Args:
+            df: 包含 OHLCV 資料的 DataFrame
+                必須包含: open, high, low, close, volume
+        Returns:
+            df: 新增了指標欄位的 DataFrame
+        """
+        pass
+
+    @abstractmethod
+    def generate_signal(self, df: pd.DataFrame) -> IndicatorSignal:
+        """
+        根據最新一行的指標數值產生買賣信號。
+        
+        Args:
+            df: 已經過 calculate() 處理的 DataFrame
+        Returns:
+            IndicatorSignal: 包含信號類型、分數和原因
+        """
+        pass
+
+    def _scale_score(self, raw_score: float) -> float:
+        """將原始分數縮放到 [0, max_score] 範圍"""
+        return max(0.0, min(self.max_score, raw_score))
+
+    def get_params(self) -> Dict:
+        """取得指標參數"""
+        return self.params.copy()
+
+    def set_params(self, params: Dict):
+        """更新指標參數"""
+        self.params.update(params)
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}(name='{self.name}', max_score={self.max_score})"
+
+
+--- FILE: ./backend/signals/aggregator.py ---
+"""
+信號聚合引擎
+
+負責：
+1. 載入所有指標插件
+2. 對 DataFrame 執行所有指標計算
+3. 聚合多指標信號為統一的信心評分
+"""
+
+import sys
+import os
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional, Tuple
+import pandas as pd
+
+# 確保 import 路徑正確
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from indicators.base import BaseIndicator, IndicatorSignal, SignalType
+from indicators.registry import IndicatorRegistry
+
+# 匯入所有指標插件以觸發註冊
+from indicators import rsi, macd, bollinger, mfi, ema, volume, adx
+
+
+@dataclass
+class AggregatedSignal:
+    """聚合後的綜合信號"""
+    timestamp: pd.Timestamp
+    symbol: str
+    timeframe: str
+    
+    # 買入信號
+    buy_score: float = 0.0          # 買入總分 (0–100)
+    buy_signals: List[IndicatorSignal] = field(default_factory=list)
+    
+    # 賣出信號
+    sell_score: float = 0.0         # 賣出總分 (0–100)
+    sell_signals: List[IndicatorSignal] = field(default_factory=list)
+    
+    # 中性信號
+    neutral_signals: List[IndicatorSignal] = field(default_factory=list)
+    
+    # 最終判斷
+    direction: str = "NEUTRAL"     # BUY, SELL, NEUTRAL
+    confidence: float = 0.0        # 信心度 (0–100)
+    signal_level: str = "無信號"    # 極強/強/中等/弱/無
+    price: float = 0.0
+    
+    @property
+    def all_signals(self) -> List[IndicatorSignal]:
+        return self.buy_signals + self.sell_signals + self.neutral_signals
+
+    def summary(self) -> str:
+        """產出信號摘要"""
+        emoji = {"BUY": "🟢", "SELL": "🔴", "NEUTRAL": "⚪"}.get(self.direction, "⚪")
+        lines = [
+            f"{emoji} [{self.symbol}] {self.timeframe} | {self.direction} | "
+            f"信心度: {self.confidence:.1f}分 ({self.signal_level})",
+            f"   價格: ${self.price:,.2f}",
+            f"   買入分數: {self.buy_score:.1f} | 賣出分數: {self.sell_score:.1f}",
+        ]
+        if self.buy_signals:
+            lines.append("   📈 買入因素:")
+            for s in self.buy_signals:
+                lines.append(f"      +{s.score:.1f}分 {s.indicator_name}: {s.reason}")
+        if self.sell_signals:
+            lines.append("   📉 賣出因素:")
+            for s in self.sell_signals:
+                lines.append(f"      +{s.score:.1f}分 {s.indicator_name}: {s.reason}")
+        return "\n".join(lines)
+
+
+class SignalAggregator:
+    """信號聚合器"""
+
+    def __init__(self, weights: Optional[Dict[str, float]] = None):
+        """
+        Args:
+            weights: 指標權重，e.g. {'rsi': 15, 'macd': 20, ...}
+        """
+        default_weights = {
+            'rsi': 15.0, 'macd': 20.0, 'bollinger': 15.0,
+            'mfi': 10.0, 'ema_cross': 15.0, 'volume': 15.0, 'adx': 10.0,
+        }
+        self.weights = weights or default_weights
+        self.indicators: List[BaseIndicator] = IndicatorRegistry.create_all(self.weights)
+        
+        # 信號等級門檻
+        self.thresholds = {
+            'extreme_strong': 90.0,
+            'strong': 70.0,
+            'moderate': 50.0,
+            'weak': 30.0,
+        }
+
+    def calculate_all(self, df: pd.DataFrame) -> pd.DataFrame:
+        """在 DataFrame 上執行所有指標計算"""
+        for indicator in self.indicators:
+            try:
+                df = indicator.calculate(df)
+            except Exception as e:
+                print(f"  ⚠️ {indicator.name} 計算錯誤: {e}")
+        return df
+
+    def generate_signals(self, df: pd.DataFrame, symbol: str = "",
+                         timeframe: str = "") -> AggregatedSignal:
+        """產出聚合信號"""
+        result = AggregatedSignal(
+            timestamp=df.index[-1] if isinstance(df.index, pd.DatetimeIndex) else pd.Timestamp.now(),
+            symbol=symbol,
+            timeframe=timeframe,
+            price=df['close'].iloc[-1],
+        )
+
+        for indicator in self.indicators:
+            try:
+                signal = indicator.generate_signal(df)
+                if signal.signal_type in (SignalType.STRONG_BUY, SignalType.BUY):
+                    result.buy_score += signal.score
+                    result.buy_signals.append(signal)
+                elif signal.signal_type in (SignalType.STRONG_SELL, SignalType.SELL):
+                    result.sell_score += signal.score
+                    result.sell_signals.append(signal)
+                else:
+                    result.neutral_signals.append(signal)
+            except Exception as e:
+                print(f"  ⚠️ {indicator.name} 信號生成錯誤: {e}")
+
+        # 計算最終方向和信心度
+        if result.buy_score > result.sell_score:
+            result.direction = "BUY"
+            result.confidence = result.buy_score
+        elif result.sell_score > result.buy_score:
+            result.direction = "SELL"
+            result.confidence = result.sell_score
+        else:
+            result.direction = "NEUTRAL"
+            result.confidence = 0
+
+        # 設定信號等級
+        if result.confidence >= self.thresholds['extreme_strong']:
+            result.signal_level = "極強信號"
+        elif result.confidence >= self.thresholds['strong']:
+            result.signal_level = "強信號"
+        elif result.confidence >= self.thresholds['moderate']:
+            result.signal_level = "中等信號"
+        elif result.confidence >= self.thresholds['weak']:
+            result.signal_level = "弱信號"
+        else:
+            result.signal_level = "無信號"
+
+        return result
+
+    def analyze(self, df: pd.DataFrame, symbol: str = "",
+                timeframe: str = "") -> AggregatedSignal:
+        """一站式分析：計算指標 + 產出信號"""
+        df = self.calculate_all(df)
+        return self.generate_signals(df, symbol, timeframe)
+
+
+--- FILE: ./backend/signals/__init__.py ---
+
+
+--- FILE: ./backend/business/__init__.py ---
+
+
+--- FILE: ./backend/backtest/__init__.py ---
+
+
+--- FILE: ./backend/backtest/engine.py ---
+"""
+回測引擎 (Backtesting Engine)
+
+核心功能：
+1. 載入歷史 OHLCV 數據
+2. 滑動窗口逐 K 線計算信號
+3. 模擬交易並記錄績效
+4. 產出詳細回測報告
+"""
+
+import sys
+import os
+import json
+from dataclasses import dataclass, field
+from typing import List, Dict, Optional, Tuple
+from datetime import datetime
+import pandas as pd
+import numpy as np
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from signals.aggregator import SignalAggregator, AggregatedSignal
+
+
+@dataclass
+class Trade:
+    """單筆交易紀錄"""
+    entry_time: pd.Timestamp
+    entry_price: float
+    entry_score: float
+    entry_reason: str
+    direction: str          # BUY / SELL (做多 / 做空)
+    
+    exit_time: Optional[pd.Timestamp] = None
+    exit_price: Optional[float] = None
+    exit_score: Optional[float] = None
+    exit_reason: str = ""
+    
+    profit_pct: float = 0.0
+    profit_usd: float = 0.0
+    holding_days: float = 0.0
+
+    @property
+    def is_closed(self) -> bool:
+        return self.exit_time is not None
+
+    def close(self, exit_time, exit_price, exit_score=0, exit_reason=""):
+        self.exit_time = exit_time
+        self.exit_price = exit_price
+        self.exit_score = exit_score
+        self.exit_reason = exit_reason
+        
+        if self.direction == "BUY":
+            self.profit_pct = (exit_price - self.entry_price) / self.entry_price * 100
+        else:  # SHORT
+            self.profit_pct = (self.entry_price - exit_price) / self.entry_price * 100
+        
+        self.profit_usd = self.profit_pct / 100 * self.entry_price
+        self.holding_days = (exit_time - self.entry_time).total_seconds() / 86400
+
+
+@dataclass
+class BacktestResult:
+    """回測結果報告"""
+    symbol: str
+    timeframe: str
+    period: str
+    signal_threshold: float
+    
+    # 整體績效 
+    total_trades: int = 0
+    winning_trades: int = 0
+    losing_trades: int = 0
+    win_rate: float = 0.0
+    
+    # 獲利
+    total_profit_pct: float = 0.0
+    avg_profit_pct: float = 0.0
+    avg_win_pct: float = 0.0
+    avg_loss_pct: float = 0.0
+    max_profit_pct: float = 0.0
+    max_loss_pct: float = 0.0
+    
+    # 風險指標
+    max_drawdown_pct: float = 0.0
+    sharpe_ratio: float = 0.0
+    profit_factor: float = 0.0
+    
+    # 持倉
+    avg_holding_days: float = 0.0
+    
+    # 交易明細
+    trades: List[Trade] = field(default_factory=list)
+    
+    # 信號統計
+    total_buy_signals: int = 0
+    total_sell_signals: int = 0
+    
+    def report(self) -> str:
+        """產出文字報告"""
+        lines = [
+            "=" * 70,
+            f"📊 回測報告 | {self.symbol} | {self.timeframe} | {self.period}",
+            f"   信號門檻: ≥ {self.signal_threshold} 分",
+            "=" * 70,
+            "",
+            f"【交易統計】",
+            f"  總交易次數:   {self.total_trades}",
+            f"  勝出交易:     {self.winning_trades}",
+            f"  虧損交易:     {self.losing_trades}",
+            f"  ✅ 勝率:       {self.win_rate:.1f}%",
+            "",
+            f"【獲利表現】",
+            f"  累計獲利:     {self.total_profit_pct:+.2f}%",
+            f"  平均每筆獲利: {self.avg_profit_pct:+.2f}%",
+            f"  平均勝出獲利: {self.avg_win_pct:+.2f}%",
+            f"  平均虧損:     {self.avg_loss_pct:+.2f}%",
+            f"  最大單筆獲利: {self.max_profit_pct:+.2f}%",
+            f"  最大單筆虧損: {self.max_loss_pct:+.2f}%",
+            "",
+            f"【風險指標】",
+            f"  最大回撤:     {self.max_drawdown_pct:.2f}%",
+            f"  夏普比率:     {self.sharpe_ratio:.2f}",
+            f"  獲利因子:     {self.profit_factor:.2f}",
+            "",
+            f"【持倉統計】",
+            f"  平均持倉天數: {self.avg_holding_days:.1f} 天",
+            "",
+            f"【信號統計】",
+            f"  買入信號總數: {self.total_buy_signals}",
+            f"  賣出信號總數: {self.total_sell_signals}",
+            "=" * 70,
+        ]
+        return "\n".join(lines)
+
+
+class BacktestEngine:
+    """回測引擎"""
+
+    def __init__(self, weights: Optional[Dict[str, float]] = None):
+        self.aggregator = SignalAggregator(weights=weights)
+
+    def run(
+        self,
+        df: pd.DataFrame,
+        symbol: str = "BTC/USDT",
+        timeframe: str = "1d",
+        buy_threshold: float = 50.0,
+        sell_threshold: float = 50.0,
+        stop_loss_pct: float = 5.0,
+        take_profit_pct: float = 15.0,
+        lookback: int = 200,
+    ) -> BacktestResult:
+        """
+        執行回測
+        
+        Args:
+            df: 歷史 OHLCV DataFrame
+            symbol: 交易對
+            timeframe: 時間框架
+            buy_threshold: 買入信號門檻分數
+            sell_threshold: 賣出信號門檻分數
+            stop_loss_pct: 停損百分比
+            take_profit_pct: 停利百分比
+            lookback: 每次計算指標時使用的回溯行數
+        """
+        print(f"\n🔄 開始回測 {symbol} ({timeframe})...")
+        print(f"   數據範圍: {df.index[0]} ~ {df.index[-1]}")
+        print(f"   總 K 線數: {len(df)}")
+        print(f"   買入門檻: {buy_threshold}分 | 賣出門檻: {sell_threshold}分")
+        print(f"   停損: {stop_loss_pct}% | 停利: {take_profit_pct}%")
+        
+        trades: List[Trade] = []
+        current_trade: Optional[Trade] = None
+        buy_signals_count = 0
+        sell_signals_count = 0
+        equity_curve = []
+        peak_equity = 100.0
+        max_drawdown = 0.0
+        
+        # 確保有足夠的回溯數據
+        start_idx = max(lookback, 200)
+        total_bars = len(df) - start_idx
+        report_interval = max(1, total_bars // 20)  # 每5%報告一次進度
+        
+        for i in range(start_idx, len(df)):
+            # 進度回報
+            progress = i - start_idx
+            if progress % report_interval == 0:
+                pct = progress / total_bars * 100
+                print(f"   進度: {pct:.0f}% ({progress}/{total_bars})")
+            
+            # 取出回溯窗口的數據
+            window = df.iloc[max(0, i - lookback):i + 1].copy()
+            current_time = df.index[i]
+            current_price = df['close'].iloc[i]
+            
+            # 計算所有指標
+            try:
+                window = self.aggregator.calculate_all(window)
+                signal = self.aggregator.generate_signals(window, symbol, timeframe)
+            except Exception as e:
+                continue
+            
+            # 記錄信號數
+            if signal.direction == "BUY" and signal.confidence >= buy_threshold:
+                buy_signals_count += 1
+            elif signal.direction == "SELL" and signal.confidence >= sell_threshold:
+                sell_signals_count += 1
+            
+            # 交易邏輯
+            if current_trade is None:
+                # 無持倉 → 檢查是否開倉
+                if signal.direction == "BUY" and signal.confidence >= buy_threshold:
+                    reasons = "; ".join([f"{s.indicator_name}: {s.reason}" for s in signal.buy_signals])
+                    current_trade = Trade(
+                        entry_time=current_time,
+                        entry_price=current_price,
+                        entry_score=signal.confidence,
+                        entry_reason=reasons,
+                        direction="BUY",
+                    )
+            else:
+                # 有持倉 → 檢查是否平倉
+                price_change_pct = (current_price - current_trade.entry_price) / current_trade.entry_price * 100
+                
+                should_close = False
+                close_reason = ""
+                
+                # 停損
+                if price_change_pct <= -stop_loss_pct:
+                    should_close = True
+                    close_reason = f"觸發停損 ({price_change_pct:.2f}%)"
+                # 停利
+                elif price_change_pct >= take_profit_pct:
+                    should_close = True
+                    close_reason = f"觸發停利 ({price_change_pct:.2f}%)"
+                # 賣出信號
+                elif signal.direction == "SELL" and signal.confidence >= sell_threshold:
+                    should_close = True
+                    reasons = "; ".join([f"{s.indicator_name}: {s.reason}" for s in signal.sell_signals])
+                    close_reason = f"賣出信號 ({signal.confidence:.1f}分): {reasons}"
+                
+                if should_close:
+                    current_trade.close(
+                        exit_time=current_time,
+                        exit_price=current_price,
+                        exit_score=signal.confidence,
+                        exit_reason=close_reason,
+                    )
+                    trades.append(current_trade)
+                    current_trade = None
+            
+            # 更新權益曲線（用於計算最大回撤）
+            if trades:
+                cumulative = 100.0
+                for t in trades:
+                    cumulative *= (1 + t.profit_pct / 100)
+                equity_curve.append(cumulative)
+                peak_equity = max(peak_equity, cumulative)
+                drawdown = (peak_equity - cumulative) / peak_equity * 100
+                max_drawdown = max(max_drawdown, drawdown)
+        
+        # 如果還有未平倉的交易，以最後價格平倉
+        if current_trade is not None:
+            current_trade.close(
+                exit_time=df.index[-1],
+                exit_price=df['close'].iloc[-1],
+                exit_reason="回測結束平倉",
+            )
+            trades.append(current_trade)
+        
+        # 計算統計數據
+        result = BacktestResult(
+            symbol=symbol,
+            timeframe=timeframe,
+            period=f"{df.index[0].strftime('%Y-%m-%d')} ~ {df.index[-1].strftime('%Y-%m-%d')}",
+            signal_threshold=buy_threshold,
+            trades=trades,
+            total_buy_signals=buy_signals_count,
+            total_sell_signals=sell_signals_count,
+        )
+        
+        if trades:
+            profits = [t.profit_pct for t in trades]
+            wins = [p for p in profits if p > 0]
+            losses = [p for p in profits if p <= 0]
+            
+            result.total_trades = len(trades)
+            result.winning_trades = len(wins)
+            result.losing_trades = len(losses)
+            result.win_rate = len(wins) / len(trades) * 100 if trades else 0
+            
+            result.total_profit_pct = sum(profits)
+            result.avg_profit_pct = np.mean(profits) if profits else 0
+            result.avg_win_pct = np.mean(wins) if wins else 0
+            result.avg_loss_pct = np.mean(losses) if losses else 0
+            result.max_profit_pct = max(profits) if profits else 0
+            result.max_loss_pct = min(profits) if profits else 0
+            
+            result.max_drawdown_pct = max_drawdown
+            result.avg_holding_days = np.mean([t.holding_days for t in trades])
+            
+            # 夏普比率 (假設無風險利率 0)
+            if len(profits) > 1:
+                result.sharpe_ratio = np.mean(profits) / np.std(profits) if np.std(profits) > 0 else 0
+            
+            # 獲利因子
+            total_wins = sum(wins) if wins else 0
+            total_losses = abs(sum(losses)) if losses else 0
+            result.profit_factor = total_wins / total_losses if total_losses > 0 else float('inf')
+        
+        print(f"\n✅ 回測完成！")
+        return result
+
+
+--- FILE: ./backend/api/__init__.py ---
+
+
+--- FILE: ./backend/data/__init__.py ---
+
+
+--- FILE: ./backend/data/twse_fetcher.py ---
+import requests
+import pandas as pd
+from datetime import datetime
+
+class TWSEFetcher:
+    """
+    使用台灣證券交易所 (TWSE) API 抓取台股資料。
+    """
+
+    BASE_URL = "https://www.twse.com.tw/exchangeReport/STOCK_DAY"
+
+    def fetch_stock_data(self, stock_id: str, year: int, month: int) -> pd.DataFrame:
+        """
+        從 TWSE API 抓取指定股票的月度資料。
+
+        Args:
+            stock_id (str): 股票代碼。
+            year (int): 年份。
+            month (int): 月份。
+
+        Returns:
+            pd.DataFrame: 包含日期、開盤價、收盤價等的 DataFrame。
+        """
+        params = {
+            "response": "json",
+            "date": f"{year}{month:02}01",
+            "stockNo": stock_id
+        }
+
+        response = requests.get(self.BASE_URL, params=params)
+        if response.status_code != 200:
+            raise Exception(f"API 請求失敗，狀態碼: {response.status_code}")
+
+        data = response.json()
+        if data["stat"] != "OK":
+            raise Exception(f"無法取得資料: {data['stat']}")
+
+        # 解析資料
+        records = data["data"]
+        # 動態處理欄位名稱
+        columns = data["fields"]  # 使用 API 返回的欄位名稱
+        df = pd.DataFrame(records, columns=columns)
+
+        # 處理民國年格式，轉換為西元年
+        df["日期"] = df["日期"].apply(lambda x: f"{int(x.split('/')[0]) + 1911}/{x.split('/')[1]}/{x.split('/')[2]}")
+        df["日期"] = pd.to_datetime(df["日期"], format="%Y/%m/%d")
+
+        numeric_columns = [col for col in df.columns if col not in ["日期", "漲跌價差"]]
+        df[numeric_columns] = df[numeric_columns].replace(",", "", regex=True).apply(pd.to_numeric)
+
+        return df
+
+if __name__ == "__main__":
+    # 測試抓取中鋼資料
+    fetcher = TWSEFetcher()
+    stock_id = "2002"  # 中鋼
+    year, month = 2026, 3
+    data = fetcher.fetch_stock_data(stock_id, year, month)
+    print("中鋼 2026 年 3 月資料:")
+    print(data)
+
+--- PROJECT SNAPSHOT END ---
