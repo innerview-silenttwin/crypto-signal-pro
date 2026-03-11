@@ -53,19 +53,32 @@
                 </div>
             </div>
 
-            <div class="system-status">
-                <div class="status-indicator" id="status-dot"></div>
-                <span id="connection-status">系統連線中...</span>
-                <div id="last-update">等待數據</div>
+            <!-- 最近搜尋紀錄 -->
+            <div class="history-panel">
+                <div class="history-title">
+                    <span>🕒 最近搜尋</span>
+                </div>
+                <div id="history-list" class="history-list">
+                    <!-- 紀錄會由 JS 動態生成 -->
+                    <div class="history-empty">暫無搜尋紀錄</div>
+                </div>
             </div>
+
         </aside>
 
         <!-- 主內容區 -->
         <main class="main-content">
             <header class="top-bar">
                 <h1>實時買賣點信號 (多時間框架共振)</h1>
-                <div class="user-profile">
-                    <span class="vip-tag">💎 Elite 會員</span>
+                <div class="top-bar-right">
+                    <div class="system-status-header">
+                        <div class="status-indicator" id="status-dot"></div>
+                        <span id="connection-status">系統連線中...</span>
+                        <span id="last-update" class="last-update-text">等待數據</span>
+                    </div>
+                    <div class="user-profile">
+                        <span class="vip-tag">💎 Elite 會員</span>
+                    </div>
                 </div>
             </header>
 

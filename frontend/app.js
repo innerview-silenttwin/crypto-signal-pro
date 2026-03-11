@@ -304,11 +304,76 @@ async function fetchStockInfo(symbol) {
     }
 }
 
+// --- 搜尋紀錄邏輯 ---
+let searchHistory = JSON.parse(localStorage.getItem('searchHistory') || '[]');
+
+function addToHistory(sym, market) {
+    if (!sym) return;
+    
+    // 移除相同 symbol 的舊紀錄
+    searchHistory = searchHistory.filter(item => item.sym.toLowerCase() !== sym.toLowerCase());
+    
+    // 取得展示用名稱
+    let name = '';
+    if (market === 'stock') {
+        name = stockNames[sym] || sym.split('.')[0];
+    } else if (market === 'futures') {
+        name = futuresNames[sym.split('.')[0]] || sym;
+    } else {
+        // 虛擬幣找中文名稱
+        const cnEntry = Object.entries(cryptoNames).find(([k, v]) => v === sym && !/^[A-Z/]+$/.test(k));
+        name = cnEntry ? cnEntry[0] : sym.split('/')[0];
+    }
+
+    // 加入最前面
+    searchHistory.unshift({ sym, market, name });
+    
+    // 限制最多 10 筆
+    if (searchHistory.length > 10) searchHistory.pop();
+    
+    localStorage.setItem('searchHistory', JSON.stringify(searchHistory));
+    renderHistory();
+}
+
+function renderHistory() {
+    const list = document.getElementById('history-list');
+    if (!list) return;
+    
+    // 1. 渲染側邊欄清單
+    if (searchHistory.length === 0) {
+        list.innerHTML = '<div class="history-empty">暫無搜尋紀錄</div>';
+        return;
+    }
+    
+    list.innerHTML = searchHistory.map(item => {
+        // 字數限制：最多三個字，超過則截斷
+        const displayName = item.name.length > 3 ? item.name.substring(0, 3) : item.name;
+        const isActive = currentSymbol === item.sym;
+
+        return `
+            <div class="history-grid-item ${isActive ? 'active' : ''}" 
+                 onclick="window.changeSymbol('${item.sym}', '${item.market}')"
+                 title="${item.name} (${item.sym})">
+                <div class="history-dot dot-${item.market}"></div>
+                <span class="history-name">${displayName}</span>
+            </div>
+        `;
+    }).join('');
+}
+
+function getMarketLabel(m) {
+    const labels = { 'crypto': '加密幣', 'stock': '台股', 'futures': '期貨' };
+    return labels[m] || m;
+}
+
 // 切換幣種 / 市場的對外函數
 window.changeSymbol = async function (sym, market = 'crypto') {
     const isSymbolChanged = (currentSymbol !== sym || currentMarket !== market);
     currentSymbol = sym;
     currentMarket = market;
+
+    // 加入搜尋紀錄
+    addToHistory(sym, market);
 
     const baseSym = sym.split('/')[0].split('.')[0];
     const compName = market === 'stock' ? (stockNames[sym] || '') : '';
@@ -1166,4 +1231,5 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 初始化時設定正確顯示 (crypto / stock)
     window.changeSymbol(currentSymbol, currentMarket);
+    renderHistory();
 });

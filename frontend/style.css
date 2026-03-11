@@ -178,13 +178,30 @@ h3,
     border-left: 3px solid var(--primary);
 }
 
-.system-status {
-    margin-top: auto;
-    padding: 16px;
-    background: rgba(0, 0, 0, 0.2);
-    border-radius: 8px;
+/* System Status (Header Mode) */
+.top-bar-right {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.system-status-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 50px;
     font-size: 12px;
     color: var(--text-muted);
+    backdrop-filter: blur(10px);
+}
+
+.last-update-text {
+    padding-left: 12px;
+    border-left: 1px solid rgba(255, 255, 255, 0.1);
+    font-family: monospace;
 }
 
 .status-indicator {
@@ -928,4 +945,106 @@ body:has(.fullscreen-mode) .main-content {
 .chart-container,
 .signal-card {
     min-width: 0;
+}
+
+/* 最近搜尋紀錄面板 - 二欄式專業設計 */
+.history-panel {
+    margin-top: 25px;
+    padding-top: 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+    flex-grow: 1;
+    overflow-y: auto;
+    
+    /* 專業滾動條樣式 */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(99, 102, 241, 0.3) transparent;
+}
+
+.history-panel::-webkit-scrollbar {
+    width: 4px;
+}
+
+.history-panel::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.history-panel::-webkit-scrollbar-thumb {
+    background: rgba(99, 102, 241, 0.3);
+    border-radius: 20px;
+}
+
+.history-panel::-webkit-scrollbar-thumb:hover {
+    background: rgba(99, 102, 241, 0.5);
+}
+
+.history-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    padding: 0 5px;
+}
+
+.history-list {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr); /* 兩排設計 */
+    gap: 8px;
+    padding: 2px;
+}
+
+.history-grid-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    justify-content: center;
+}
+
+.history-grid-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.15);
+    transform: translateY(-1px);
+}
+
+.history-grid-item.active {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: rgba(59, 130, 246, 0.3);
+}
+
+.history-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.dot-crypto { background: #60a5fa; box-shadow: 0 0 6px rgba(96, 165, 250, 0.5); }
+.dot-stock  { background: #34d399; box-shadow: 0 0 6px rgba(52, 211, 153, 0.5); }
+.dot-futures { background: #fbbf24; box-shadow: 0 0 6px rgba(251, 191, 36, 0.5); }
+
+.history-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #e2e8f0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.history-empty {
+    grid-column: span 2;
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 20px 0;
+}
+
+@keyframes tagSlideIn {
+    from { opacity: 0; transform: translateX(-10px); }
+    to { opacity: 1; transform: translateX(0); }
 }
