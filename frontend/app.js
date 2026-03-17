@@ -4,6 +4,11 @@ let currentSymbol = 'BTC/USDT';
 let currentTimeframe = '1d';
 let currentMarket = 'crypto';
 let lastServerData = [];
+
+// 台股 / 期貨自動更新的 timer
+let twAutoRefreshTimer = null;
+let twCountdownTimer = null;
+let heartbeatTimer = null;
 // 走勢圖系列
 let chart = null;
 let candleSeries = null;
@@ -307,22 +312,24 @@ async function fetchStockInfo(symbol) {
 // --- 搜尋紀錄邏輯 ---
 let searchHistory = JSON.parse(localStorage.getItem('searchHistory') || '[]');
 
-function addToHistory(sym, market) {
+function addToHistory(sym, market, nameInput = null) {
     if (!sym) return;
     
     // 移除相同 symbol 的舊紀錄
     searchHistory = searchHistory.filter(item => item.sym.toLowerCase() !== sym.toLowerCase());
     
     // 取得展示用名稱
-    let name = '';
-    if (market === 'stock') {
-        name = stockNames[sym] || sym.split('.')[0];
-    } else if (market === 'futures') {
-        name = futuresNames[sym.split('.')[0]] || sym;
-    } else {
-        // 虛擬幣找中文名稱
-        const cnEntry = Object.entries(cryptoNames).find(([k, v]) => v === sym && !/^[A-Z/]+$/.test(k));
-        name = cnEntry ? cnEntry[0] : sym.split('/')[0];
+    let name = nameInput;
+    if (!name) {
+        if (market === 'stock') {
+            name = stockNames[sym] || sym.split('.')[0];
+        } else if (market === 'futures') {
+            name = futuresNames[sym.split('.')[0]] || sym;
+        } else {
+            // 虛擬幣找中文名稱
+            const cnEntry = Object.entries(cryptoNames).find(([k, v]) => v === sym && !/^[A-Z/]+$/.test(k));
+            name = cnEntry ? cnEntry[0] : sym.split('/')[0];
+        }
     }
 
     // 加入最前面
@@ -366,18 +373,23 @@ function getMarketLabel(m) {
     return labels[m] || m;
 }
 
-// 切換幣種 / 市場的對外函數
 window.changeSymbol = async function (sym, market = 'crypto') {
     const isSymbolChanged = (currentSymbol !== sym || currentMarket !== market);
     currentSymbol = sym;
     currentMarket = market;
 
-    // 加入搜尋紀錄
-    addToHistory(sym, market);
-
     const baseSym = sym.split('/')[0].split('.')[0];
-    const compName = market === 'stock' ? (stockNames[sym] || '') : '';
+    let compName = market === 'stock' ? (stockNames[sym] || '') : '';
     const futName = market === 'futures' ? (futuresNames[baseSym] || '') : '';
+
+    // 若是台股且沒有快取名稱，嘗試線上查詢
+    if (market === 'stock' && !compName) {
+        const info = await fetchStockInfo(sym);
+        if (info && info.name) {
+            compName = info.name;
+            stockNames[sym] = compName;
+        }
+    }
 
     // 更新標題
     const headerTitle = document.getElementById('main-idx-title');
@@ -394,6 +406,9 @@ window.changeSymbol = async function (sym, market = 'crypto') {
     if (chartSymbol) chartSymbol.textContent =
         market === 'stock' ? `${baseSym}${compName ? ' · ' + compName : ''}` :
             market === 'futures' ? `${baseSym}${futName ? ' · ' + futName : ''}` : sym;
+
+    // 加入搜尋紀錄 (現在已經有名稱了)
+    addToHistory(sym, market, compName || (market === 'futures' ? futName : null));
 
     // 顯示/隱藏各市場輸入欄
     const stockRow = document.getElementById('stock-input-row');
@@ -424,18 +439,6 @@ window.changeSymbol = async function (sym, market = 'crypto') {
     // 重新載入圖表資料，且如果是切換幣種，就強制縮放
     renderSymbolSwitcher(market);
     await loadChartData(currentTimeframe, isSymbolChanged);
-
-    // 若是切換到股票，嘗試取得公司名稱並更新標題
-    if (market === 'stock') {
-        if (!compName) {
-            const info = await fetchStockInfo(sym);
-            if (info && info.name) {
-                stockNames[sym] = info.name;
-                if (chartTitle) chartTitle.textContent = `${baseSym} ${info.name} 走勢圖`;
-                if (chartSymbol) chartSymbol.textContent = `${baseSym} · ${info.name}`;
-            }
-        }
-    }
 
     // 台股 / 期貨：盤後信號計算
     if (market === 'stock' || market === 'futures') {
@@ -634,13 +637,36 @@ function initIndicatorControls() {
     });
 }
 
-// 載入歷史 K 線資料 (移除 fitContent 以記憶視野)
+// 載入歷史 K 線資料
 async function loadChartData(tf, forceFit = false) {
     if (!candleSeries) return;
     try {
         const res = await fetch(`/api/chart?symbol=${currentSymbol}&timeframe=${tf}&market=${currentMarket}`);
         if (!res.ok) throw new Error("API Status: " + res.status);
-        const data = await res.json();
+        const resp = await res.json();
+
+        // 新格式：{candles, data_source, next_update_in} / 舊格式：陣列
+        const isTwMarket = (currentMarket === 'stock' || currentMarket === 'futures');
+        const data = isTwMarket ? (resp.candles || []) : (Array.isArray(resp) ? resp : []);
+        const dataSource = isTwMarket ? (resp.data_source || null) : null;
+        const nextUpdateIn = isTwMarket ? (resp.next_update_in ?? 60) : null;
+
+        // 更新資料來源 badge
+        updateDataSourceBadge(dataSource, nextUpdateIn);
+
+        // 啟動自動更新機制（台股/期貨才需要）
+        if (isTwMarket && nextUpdateIn !== null) {
+            scheduleAutoRefresh(nextUpdateIn);
+        } else {
+            clearAutoRefresh();
+        }
+
+        // 若後端明確表示限流中且無資料，不更新圖表（保留舊畫面），僅等待倒數
+        if (isTwMarket && dataSource === 'rate_limited') {
+            // 圖表保持原來的資料（如果有），不清空也不報錯
+            if (ui.status) ui.status.textContent = `⏳ 60 秒限流中，${nextUpdateIn}s 後自動更新...`;
+            return;
+        }
 
         if (data && data.length > 0) {
             data.sort((a, b) => a.time - b.time);
@@ -654,39 +680,28 @@ async function loadChartData(tf, forceFit = false) {
                         high: parseFloat(item.high),
                         low: parseFloat(item.low),
                         close: parseFloat(item.close),
-                        rawVolume: parseFloat(item.volume || 0) // 重要：保留原始成交量
+                        rawVolume: parseFloat(item.volume || 0)
                     });
                     lastT = item.time;
                 }
             }
 
-
             candleSeries.setData(cleanData);
-            cachedCandles = cleanData; // 存入快取
-
-            // 套用目前的指標設定
+            cachedCandles = cleanData;
             refreshIndicators();
 
-            // --- 生成並設定歷史訊號標記 ---
             if (candleSeries) {
                 const markers = generateHistoricalMarkers(cleanData);
                 candleSeries.setMarkers(markers);
             }
 
-            // 首次載入或切換 symbol/market 時自動調整可見範圍
             if (isInitialChartLoad || forceFit) {
                 setTimeout(() => {
                     if (chart && chart.timeScale) {
-                        // 預設顯示 60 根 K 線，並在右邊留 1/4 空白 (即 20 根的寬度)
-                        // 總顯示格數 = 60 / 0.75 = 80 格
                         const totalVisibleBars = 80;
                         const rightOffset = 20;
                         const lastIndex = cleanData.length - 1;
-
-                        chart.timeScale().applyOptions({
-                            rightOffset: rightOffset,
-                        });
-
+                        chart.timeScale().applyOptions({ rightOffset });
                         chart.timeScale().setVisibleLogicalRange({
                             from: lastIndex - (totalVisibleBars - rightOffset - 1),
                             to: lastIndex + rightOffset,
@@ -695,10 +710,126 @@ async function loadChartData(tf, forceFit = false) {
                     isInitialChartLoad = false;
                 }, 50);
             }
+        } else {
+            // 找不到資料時，一律清空圖表，避免顯示舊資料造成誤會
+            clearChart();
+            if (isTwMarket) {
+                // 台股/期貨找不到資料時，不跳 alert，改成友善的狀態訊息
+                const reason = dataSource === null ? '找不到資料，請確認代碼是否正確' : '資料暫時無法取得';
+                updateDataSourceBadge(null, null);
+                if (ui.status) ui.status.textContent = `⚠️ ${currentSymbol.split('.')[0]} — ${reason}`;
+                console.warn(`TW chart: no data for ${currentSymbol} (${tf}), source=${dataSource}`);
+            } else {
+                alert(`找不到商品: ${currentSymbol}，請重新輸入正確代碼。`);
+                searchHistory = searchHistory.filter(item => item.sym !== currentSymbol);
+                localStorage.setItem('searchHistory', JSON.stringify(searchHistory));
+                renderHistory();
+            }
         }
     } catch (e) {
         console.error("Chart load failed", e);
+        clearChart();
+        if (currentMarket === 'stock' || currentMarket === 'futures') {
+            if (ui.status) ui.status.textContent = `⚠️ 載入失敗 (${currentSymbol})，請檢查代碼或連線。`;
+        } else {
+            alert(`載入失敗 (${currentSymbol})，請檢查代碼或連線。`);
+        }
     }
+}
+
+// 清空圖表所有系列（搜尋不到資料時施作）
+function clearChart() {
+    cachedCandles = [];
+    if (candleSeries)    candleSeries.setData([]);
+    if (volumeSeries)    volumeSeries.setData([]);
+    if (emaShortSeries)  emaShortSeries.setData([]);
+    if (emaLongSeries)   emaLongSeries.setData([]);
+    if (bbUpperSeries)   bbUpperSeries.setData([]);
+    if (bbMidSeries)     bbMidSeries.setData([]);
+    if (bbLowerSeries)   bbLowerSeries.setData([]);
+    if (rsiSeries)       rsiSeries.setData([]);
+    if (candleSeries)    candleSeries.setMarkers([]);
+}
+
+// ---- 資料來源 Badge + 倒數 ----
+function updateDataSourceBadge(source, nextUpdateIn) {
+    let badge = document.getElementById('data-source-badge');
+    if (!badge) {
+        // 動態建立 badge DOM
+        const header = document.querySelector('.chart-container .card-header');
+        if (!header) return;
+        badge = document.createElement('div');
+        badge.id = 'data-source-badge';
+        badge.style.cssText = [
+            'display:inline-flex', 'align-items:center', 'gap:6px',
+            'font-size:11px', 'padding:3px 10px', 'border-radius:20px',
+            'font-weight:600', 'letter-spacing:0.5px',
+            'margin-top:6px', 'transition:all 0.3s'
+        ].join(';');
+        header.insertAdjacentElement('afterend', badge);
+    }
+
+    if (!source) {
+        badge.style.display = 'none';
+        return;
+    }
+    badge.style.display = 'inline-flex';
+
+    const config = {
+        'yfinance':        { icon: '⚡', label: 'Yahoo Finance 即時', bg: 'rgba(16,185,129,0.15)', border: '#10b981', color: '#10b981' },
+        'yfinance_cache':  { icon: '📦', label: 'Yahoo Finance 快取', bg: 'rgba(251,191,36,0.15)', border: '#fbbf24', color: '#fbbf24' },
+        'twse_daily':      { icon: '🏦', label: '證交所歷史日線', bg: 'rgba(59,130,246,0.15)', border: '#3b82f6', color: '#3b82f6' },
+        'twse_daily_cache':{ icon: '📦', label: '證交所快取', bg: 'rgba(148,163,184,0.15)', border: '#94a3b8', color: '#94a3b8' },
+        'signals_cache':   { icon: '📦', label: '信號快取', bg: 'rgba(148,163,184,0.15)', border: '#94a3b8', color: '#94a3b8' },
+        'rate_limited':    { icon: '⏳', label: '限流中，等待更新', bg: 'rgba(239,68,68,0.12)', border: '#ef4444', color: '#ef4444' },
+        
+        // 盤後狀態
+        'yfinance_closed':       { icon: '🌙', label: 'Yahoo 盤後資料', bg: 'rgba(148,163,184,0.15)', border: '#94a3b8', color: '#94a3b8' },
+        'yfinance_cache_closed': { icon: '🌙', label: 'Yahoo 盤後快取', bg: 'rgba(148,163,184,0.15)', border: '#94a3b8', color: '#94a3b8' },
+        'twse_daily_closed':     { icon: '🌙', label: '證交所盤後日線', bg: 'rgba(148,163,184,0.15)', border: '#94a3b8', color: '#94a3b8' },
+    };
+    const c = config[source] || { icon: 'ℹ️', label: source, bg: 'rgba(100,100,100,0.1)', border: '#666', color: '#aaa' };
+
+    badge.style.background = c.bg;
+    badge.style.border = `1px solid ${c.border}`;
+    badge.style.color = c.color;
+
+    const countdown = (nextUpdateIn !== null && nextUpdateIn > 0)
+        ? ` · <span id="badge-countdown">${nextUpdateIn}</span>s 後更新`
+        : ` · <span id="badge-countdown">-</span>`;
+    badge.innerHTML = `${c.icon} 資料來源：${c.label}${countdown}`;
+}
+
+function startBadgeCountdown(seconds) {
+    if (twCountdownTimer) clearInterval(twCountdownTimer);
+    let remaining = seconds;
+    twCountdownTimer = setInterval(() => {
+        remaining = Math.max(0, remaining - 1);
+        const el = document.getElementById('badge-countdown');
+        if (el) el.textContent = remaining;
+        if (remaining <= 0) clearInterval(twCountdownTimer);
+    }, 1000);
+}
+
+function scheduleAutoRefresh(nextUpdateIn) {
+    // 先啟動倒數顯示
+    startBadgeCountdown(nextUpdateIn);
+    // 清除舊 timer
+    if (twAutoRefreshTimer) clearTimeout(twAutoRefreshTimer);
+    const delayMs = Math.max(nextUpdateIn * 1000, 5000);
+    twAutoRefreshTimer = setTimeout(async () => {
+        console.log('[auto-refresh] Refreshing TW chart data...');
+        await loadChartData(currentTimeframe, false);
+        // 若是台股，也順便更新信號
+        if (currentMarket === 'stock' || currentMarket === 'futures') {
+            fetchTwSignals(currentSymbol, currentMarket);
+        }
+    }, delayMs);
+}
+
+function clearAutoRefresh() {
+    if (twAutoRefreshTimer) { clearTimeout(twAutoRefreshTimer); twAutoRefreshTimer = null; }
+    if (twCountdownTimer) { clearInterval(twCountdownTimer); twCountdownTimer = null; }
 }
 
 // 根據 UI 設定刷新所有技術指標
@@ -1104,7 +1235,13 @@ ws.onmessage = (event) => {
 
 ws.onopen = () => {
     ui.status.textContent = '連線成功，等待數據推播...';
-    if (ui.connStatus) ui.connStatus.textContent = '✅ 系統正常 (Online)';
+    if (ui.connStatus) {
+        ui.connStatus.textContent = '✅ 系統正常 (Online)';
+        ui.connStatus.style.color = '';
+    }
+    if (ui.statusDot) {
+        ui.statusDot.classList.remove('offline');
+    }
 };
 
 ws.onclose = () => {
@@ -1113,12 +1250,15 @@ ws.onclose = () => {
         ui.connStatus.textContent = '❌ 連線中斷 (Offline)';
         ui.connStatus.style.color = '#ef4444';
     }
-    if (ui.statusDot) ui.statusDot.style.animation = 'none';
+    if (ui.statusDot) {
+        ui.statusDot.classList.add('offline');
+    }
 };
 
 // 頁面載入完成
 document.addEventListener('DOMContentLoaded', () => {
     initChart();
+    startHeartbeat(); // 啟動心跳探測
 
     // --- 市場選擇 (虛擬幣 / 台股) ---
     const marketSelect = document.getElementById('market-select');
@@ -1233,3 +1373,36 @@ document.addEventListener('DOMContentLoaded', () => {
     window.changeSymbol(currentSymbol, currentMarket);
     renderHistory();
 });
+// 啟動連線品質監測 (Ping Heartbeat)
+async function startHeartbeat() {
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
+    
+    heartbeatTimer = setInterval(async () => {
+        const start = Date.now();
+        try {
+            const res = await fetch('/api/ping', { cache: 'no-store' });
+            const rtt = Date.now() - start;
+            
+            if (res.ok) {
+                if (ui.statusDot) {
+                    ui.statusDot.classList.remove('offline');
+                    // RTT > 800ms 顯示黃燈，否則正常綠燈
+                    if (rtt > 800) {
+                        ui.statusDot.classList.add('slow');
+                        if (ui.connStatus) ui.connStatus.textContent = `⚠️ 連線遲緩 (${rtt}ms)`;
+                    } else {
+                        ui.statusDot.classList.remove('slow');
+                        if (ui.connStatus) ui.connStatus.textContent = '✅ 系統正常 (Online)';
+                    }
+                }
+            }
+        } catch (e) {
+            // Fetch 失敗視為離線
+            if (ui.statusDot) {
+                ui.statusDot.classList.add('offline');
+                ui.statusDot.classList.remove('slow');
+            }
+            if (ui.connStatus) ui.connStatus.textContent = '❌ 連線中斷 (Offline)';
+        }
+    }, 30000); // 30 秒偵測一次
+}

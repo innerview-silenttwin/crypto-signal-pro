@@ -12,7 +12,9 @@ import os
 import asyncio
 from typing import Dict, Any, List
 from datetime import datetime
+import time
 import pandas as pd
+import yfinance as yf
 import ccxt.async_support as ccxt_async
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
@@ -22,6 +24,7 @@ from fastapi.responses import RedirectResponse
 import io
 import urllib.request
 from datetime import timedelta
+import pytz
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -179,57 +182,7 @@ def fetch_stooq_ohlcv(symbol: str, start_date: datetime, end_date: datetime, lim
         return None
 
 
-def fetch_yahoo_ohlcv(symbol: str, timeframe: str = "1d", limit: int = 200):
-    """使用 Yahoo Finance 下載台股歷史 K 線資料（僅用於補充）。"""
-    if '.' not in symbol:
-        symbol = f"{symbol}.TW"
-
-    interval_map = {
-        '1d': '1d',
-        '4h': '1h',
-        '1h': '1h',
-    }
-    interval = interval_map.get(timeframe, '1d')
-
-    end = int(datetime.now().timestamp())
-    start = int((datetime.now() - timedelta(days=365)).timestamp())
-    url = (
-        f"https://query1.finance.yahoo.com/v7/finance/download/{symbol}"
-        f"?period1={start}&period2={end}&interval={interval}&events=history&includeAdjustedClose=true"
-    )
-
-    try:
-        import ssl
-        context = ssl._create_unverified_context()
-        raw = urllib.request.urlopen(url, timeout=15, context=context).read().decode('utf-8')
-        df = pd.read_csv(io.StringIO(raw), parse_dates=['Date'])
-        df.rename(columns={
-            'Date': 'timestamp',
-            'Open': 'open',
-            'High': 'high',
-            'Low': 'low',
-            'Close': 'close',
-            'Volume': 'volume',
-        }, inplace=True)
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
-        df.set_index('timestamp', inplace=True)
-        if len(df) > limit:
-            df = df.tail(limit)
-        return df
-    except Exception as e:
-        print(f"Yahoo fetch error ({symbol}): {e}")
-        return None
-
-
-# 台股期貨 Yahoo Finance 代碼對照表（主要嘗試 → 備用加權指數）
-# TAIFEX 自有 API 皆需 JS 動態載入，目前以加權指數 ^TWII 作為技術分析代理
-FUTURES_YAHOO_MAP = {
-    'TX':  ['^TWII'],   # 台指期（以加權指數代理，技術指標完全相同）
-    'MTX': ['^TWII'],   # 小台指（同上）
-    'TE':  ['^TWII'],   # 電子期（以加權指數近似代理）
-    'TF':  ['^TWII'],   # 金融期（以加權指數近似代理）
-}
-
+# FUTURES_NAMES 用於期貨代碼對照
 FUTURES_NAMES = {
     'TX':  '台指期',
     'MTX': '小台指',
@@ -237,74 +190,8 @@ FUTURES_NAMES = {
     'TF':  '金融期',
 }
 
-
-def _fetch_yahoo_v8(yahoo_sym: str, interval: str, start: int, end: int):
-    """Yahoo Finance v8 JSON API 內部抓取，成功回傳 DataFrame，失敗回傳 None。"""
-    import ssl, json
-    url = (
-        f"https://query1.finance.yahoo.com/v8/finance/chart/{yahoo_sym}"
-        f"?period1={start}&period2={end}&interval={interval}"
-    )
-    context = ssl._create_unverified_context()
-    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-    raw = urllib.request.urlopen(req, timeout=15, context=context).read().decode('utf-8')
-    payload = json.loads(raw)
-    result = payload.get('chart', {}).get('result', [])
-    if not result:
-        return None
-    r = result[0]
-    timestamps = r.get('timestamp', [])
-    quote   = r.get('indicators', {}).get('quote', [{}])[0]
-    opens   = quote.get('open',   [])
-    highs   = quote.get('high',   [])
-    lows    = quote.get('low',    [])
-    closes  = quote.get('close',  [])
-    volumes = quote.get('volume', [])
-
-    records = []
-    for i, ts in enumerate(timestamps):
-        c = closes[i] if i < len(closes) else None
-        if c is None:
-            continue
-        records.append({
-            'timestamp': pd.Timestamp(ts, unit='s'),
-            'open':   opens[i]   if i < len(opens)   and opens[i]   is not None else c,
-            'high':   highs[i]   if i < len(highs)   and highs[i]   is not None else c,
-            'low':    lows[i]    if i < len(lows)    and lows[i]    is not None else c,
-            'close':  c,
-            'volume': volumes[i] if i < len(volumes) and volumes[i] is not None else 0,
-        })
-    if not records:
-        return None
-    df = pd.DataFrame(records)
-    df.set_index('timestamp', inplace=True)
-    return df
-
-
 def fetch_futures_ohlcv(symbol: str, timeframe: str = "1d", limit: int = 200):
-    """抓取台股期貨歷史 K 線，依序嘗試 FUTURES_YAHOO_MAP 中各代碼。"""
-    sym_key = symbol.upper().split('.')[0]
-    candidates = FUTURES_YAHOO_MAP.get(sym_key, ['^TWII'])
-
-    interval_map = {'1d': '1d', '4h': '1h', '1h': '1h'}
-    interval = interval_map.get(timeframe, '1d')
-    days = 730 if timeframe == '1d' else 60
-
-    end   = int(datetime.now().timestamp())
-    start = int((datetime.now() - timedelta(days=days)).timestamp())
-
-    for yahoo_sym in candidates:
-        try:
-            df = _fetch_yahoo_v8(yahoo_sym, interval, start, end)
-            if df is not None and len(df) > 0:
-                print(f"Futures [{symbol}] fetched via {yahoo_sym}, rows={len(df)}")
-                if len(df) > limit:
-                    df = df.tail(limit)
-                return df
-        except Exception as e:
-            print(f"Futures try {yahoo_sym} failed: {e}")
-
-    print(f"Futures fetch: all candidates failed for {symbol}")
+    """期貨歷史資料暫時停用，待後續串接其他資料源"""
     return None
 
 
@@ -317,20 +204,49 @@ async def get_futures_info(symbol: str):
 
 
 def fetch_stock_name(symbol: str):
-    """查詢台股公司名稱（如：台積電）。"""
-    if '.' not in symbol:
-        symbol = f"{symbol}.TW"
-    url = f"https://query2.finance.yahoo.com/v10/finance/quoteSummary/{symbol}?modules=price"
+    """查詢台股公司名稱（如：台積電），並帶有常用股票快取。"""
+    raw_symbol = symbol.split('.')[0] if '.' in symbol else symbol
+    
+    # 內建台股各類股市值前十大公司對照表
+    common_stocks = {
+        # 半導體
+        '2330': '台積電', '2454': '聯發科', '2303': '聯電', '3711': '日月光投控', '2379': '瑞昱',
+        '2337': '旺宏', '2344': '華邦電', '2408': '南亞科', '3443': '創意', '3661': '世芯-KY',
+        # 電子代工/零組件/光電
+        '2317': '鴻海', '2382': '廣達', '3231': '緯創', '2308': '台達電', '2357': '華碩',
+        '2324': '仁寶', '2353': '宏碁', '3008': '大立光', '2395': '研華', '2376': '技嘉',
+        # 金融
+        '2881': '富邦金', '2882': '國泰金', '2891': '中信金', '2886': '兆豐金', '2884': '玉山金',
+        '2892': '第一金', '2885': '元大金', '2880': '華南金', '2883': '開發金', '2887': '台新金',
+        # 傳產/航運/電信等
+        '1301': '台塑', '1303': '南亞', '1326': '台化', '6505': '台塑化', '2002': '中鋼',
+        '1101': '台泥', '1102': '亞泥', '1216': '統一', '2207': '和泰車', '2412': '中華電',
+        '3045': '台灣大', '4904': '遠傳', '2603': '長榮', '2609': '陽明', '2615': '萬海'
+    }
+    
+    if raw_symbol in common_stocks:
+        return common_stocks[raw_symbol]
+        
+    # 嘗試官方 TWSE API (免授權、無反爬蟲)
     try:
-        import ssl, json
+        import urllib.request, json, ssl
         context = ssl._create_unverified_context()
-        raw = urllib.request.urlopen(url, timeout=15, context=context).read().decode('utf-8')
+        url = f"https://www.twse.com.tw/zh/api/codeQuery?query={raw_symbol}"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        raw = urllib.request.urlopen(req, timeout=10, context=context).read().decode('utf-8')
         payload = json.loads(raw)
-        name = payload.get('quoteSummary', {}).get('result', [{}])[0].get('price', {}).get('longName')
-        return name
+        
+        suggestions = payload.get('suggestions', [])
+        for s in suggestions:
+            # TWSE API 會回傳例如 "3008\t大立光"
+            parts = s.split('\t')
+            if len(parts) == 2 and parts[0] == raw_symbol:
+                return parts[1]
     except Exception as e:
-        print(f"Stock name fetch error ({symbol}): {e}")
-        return None
+        print(f"TWSE name fetch error ({raw_symbol}): {e}")
+
+    # 都找不到的話回傳原始代碼名稱
+    return None
 
 
 def fetch_twse_daily(symbol: str, limit: int = 200, months: int = 12):
@@ -426,28 +342,33 @@ def fetch_twse_daily(symbol: str, limit: int = 200, months: int = 12):
 
 @app.get("/api/tw-signals")
 async def get_tw_signals(symbol: str, market: str = "stock"):
-    """盤後計算台股 / 期貨技術信號（使用日線 8 指標引擎）。"""
+    """盤後計算台股 / 期貨技術信號（使用日線 8 指標引擎），帶 60 秒快取。"""
+    import math
+    cache_key = f"signals_{symbol}"
+    now = time.time()
+    remaining = tw_seconds_until_next()
+
+    # 若快取存在且仍在 rate limit 視窗內，直接回傳快取
+    if cache_key in signals_cache:
+        cached = signals_cache[cache_key]
+        age = now - cached["fetched_at"]
+        if age < TW_RATE_LIMIT_SEC:
+            print(f"[signals cache] {symbol} (age={int(age)}s)")
+            result = dict(cached["data"])
+            result["next_update_in"] = remaining
+            result["data_source"] = "signals_cache"
+            return result
+
     if market == 'futures':
-        df = fetch_futures_ohlcv(symbol, '1d', limit=200)
+        df = None  # 暫無可用的期貨資料源
     else:
-        # 信號端點優先使用 Yahoo v8（快速），TWSE 月份逐抓太慢
-        yahoo_sym = symbol if '.' in symbol else f"{symbol}.TW"
-        end   = int(datetime.now().timestamp())
-        start = int((datetime.now() - timedelta(days=730)).timestamp())
-        try:
-            df = _fetch_yahoo_v8(yahoo_sym, '1d', start, end)
-        except Exception:
-            df = None
-        if df is None:
-            df = fetch_yahoo_ohlcv(symbol, '1d', limit=200)
-        if df is None:
-            df = fetch_twse_daily(symbol, limit=200, months=12)
+        df = fetch_twse_daily(symbol, limit=200, months=12)
 
     if df is None or len(df) < 30:
-        return {"symbol": symbol, "signals": {}}
+        return {"symbol": symbol, "signals": {}, "next_update_in": remaining, "data_source": "twse_daily"}
 
     signal = aggregator.analyze(df, symbol=symbol, timeframe='1d')
-    return {
+    result_data = {
         "symbol": symbol,
         "signals": {
             "1d": {
@@ -459,8 +380,16 @@ async def get_tw_signals(symbol: str, market: str = "stock"):
                 "buy_score":  round(signal.buy_score, 1),
                 "sell_score": round(signal.sell_score, 1),
             }
-        }
+        },
+        "data_source": "twse_daily",
+        "next_update_in": TW_RATE_LIMIT_SEC
     }
+    # 寫入 signals cache
+    signals_cache[cache_key] = {
+        "data": result_data,
+        "fetched_at": now
+    }
+    return result_data
 
 
 @app.get("/api/stock-info")
@@ -470,66 +399,186 @@ async def get_stock_info(symbol: str):
     return {"symbol": symbol, "name": name or ""}
 
 
+# ============================================================
+# 台股 / 台指期 Rate Limiter + Cache
+# 規則：整個「台灣市場」共用一個 60 秒的請求視窗。
+# 視窗內不管哪支股票、哪個時間框架，一律回傳快取資料。
+# 視窗到期後，下一次請求會真正向 yfinance 發出網路連線。
+# ============================================================
+TW_RATE_LIMIT_SEC = 60
+
+# 全域快取字典
+# chart_cache: {"symbol_timeframe": {"candles": [...], "fetched_at": float, "source": str}}
+chart_cache: dict = {}
+# signals_cache: {"symbol": {"data": {...}, "fetched_at": float}}
+signals_cache: dict = {}
+# rate_limiter: 記錄「最後一次真實向 yfinance 發出請求」的時間戳
+# 這是整個台灣市場共用的，不區分個股
+tw_last_real_fetch: float = 0.0
+
+def tw_can_fetch_now() -> bool:
+    """判斷距上一次真實請求是否已超過 60 秒。"""
+    return (time.time() - tw_last_real_fetch) >= TW_RATE_LIMIT_SEC
+
+def tw_seconds_until_next() -> int:
+    """距下一次可請求還有幾秒。"""
+    elapsed = time.time() - tw_last_real_fetch
+    remaining = max(0, TW_RATE_LIMIT_SEC - elapsed)
+    return int(remaining)
+
+
+def is_tw_market_open() -> bool:
+    """判斷台灣市場目前是否在交易時段 (週一至五 09:00 - 14:00)。"""
+    tz = pytz.timezone('Asia/Taipei')
+    now = datetime.now(tz)
+    # 週六(5), 週日(6) 不開市
+    if now.weekday() >= 5:
+        return False
+    # 09:00 - 14:00 (含緩衝至 14:00)
+    current_time = now.time()
+    return (current_time >= datetime.strptime("09:00", "%H:%M").time() and 
+            current_time <= datetime.strptime("14:15", "%H:%M").time())
+
+@app.get("/api/ping")
+async def ping():
+    return {"status": "ok", "server_time": time.time()}
+
+def fetch_yfinance_candles(symbol: str, timeframe: str, limit: int = 200):
+    """不帶快取、直接向 yfinance 抓資料，回傳 (candles_list, source_str)。"""
+    global tw_last_real_fetch
+
+    yf_symbol = f"{symbol}.TW" if '.' not in symbol else symbol
+    print(f"[yfinance] Fetching {yf_symbol} ({timeframe})")
+
+    yf_interval = "1d"
+    period = "1y"
+    if timeframe in ["1m", "5m", "15m", "30m", "60m", "1h", "4h"]:
+        yf_interval = "60m" if timeframe in ["1h", "4h"] else timeframe
+        period = "1mo"
+
+    try:
+        ticker = yf.Ticker(yf_symbol)
+        df = ticker.history(period=period, interval=yf_interval)
+        if df.empty:
+            return None, None
+
+        if timeframe == "4h":
+            df = df.resample('4h').agg({
+                'Open': 'first', 'High': 'max',
+                'Low': 'min', 'Close': 'last', 'Volume': 'sum'
+            }).dropna()
+
+        candles = []
+        for idx, row in df.iterrows():
+            candles.append({
+                "time": int(idx.timestamp()),
+                "open": float(row['Open']),
+                "high": float(row['High']),
+                "low":  float(row['Low']),
+                "close": float(row['Close']),
+                "volume": float(row.get('Volume', 0) or 0)
+            })
+        if len(candles) > limit:
+            candles = candles[-limit:]
+
+        # 記錄本次真實請求時間
+        tw_last_real_fetch = time.time()
+        return candles, "yfinance"
+    except Exception as e:
+        print(f"[yfinance] Error for {symbol}: {e}")
+        return None, None
+
+
+def get_tw_chart_data(symbol: str, timeframe: str, limit: int = 200):
+    """
+    台股走勢圖資料取得（帶嚴格全域 Rate Limit + Cache）。
+    """
+    cache_key = f"{symbol}_{timeframe}"
+    now = time.time()
+    cached = chart_cache.get(cache_key)
+    remaining = tw_seconds_until_next()
+    market_open = is_tw_market_open()
+
+    # ============================================================
+    # 路徑 A：60 秒已過，且在交易時段，允許真實請求
+    # ============================================================
+    if tw_can_fetch_now() and market_open:
+        candles, source = fetch_yfinance_candles(symbol, timeframe, limit)
+        if candles:
+            chart_cache[cache_key] = {"candles": candles, "fetched_at": tw_last_real_fetch, "source": "yfinance"}
+            return {"candles": candles, "data_source": "yfinance", "fetched_at": tw_last_real_fetch, "next_update_in": TW_RATE_LIMIT_SEC}
+
+        # yfinance 失敗 → TWSE 每日歷史備案（僅日線）
+        if timeframe == "1d":
+            df = fetch_twse_daily(symbol, limit=limit, months=24)
+            if df is not None:
+                candles = [{"time": int(idx.timestamp()), "open": float(row['open']), "high": float(row['high']),
+                             "low": float(row['low']), "close": float(row['close']), "volume": float(row.get('volume', 0) or 0)}
+                            for idx, row in df.iterrows()]
+                chart_cache[cache_key] = {"candles": candles, "fetched_at": now, "source": "twse_daily"}
+                return {"candles": candles, "data_source": "twse_daily", "fetched_at": now, "next_update_in": TW_RATE_LIMIT_SEC}
+
+        # 有過期快取則回傳，避免空白
+        if cached:
+            return {"candles": cached["candles"], "data_source": cached["source"] + "_cache",
+                    "fetched_at": cached["fetched_at"], "next_update_in": TW_RATE_LIMIT_SEC}
+        return None
+
+    # ============================================================
+    # 路徑 B：60 秒未到 OR 盤後時段，禁止頻繁向 yfinance 請求
+    # ============================================================
+    print(f"[rate-limit] Blocked/Closed. TradeOpen={market_open}, Left={remaining}s")
+
+    # B0: 盤後時段特別處理資料來源文字
+    src_suffix = "" if market_open else "_closed"
+
+    # B1: 有快取 → 直接回傳
+    if cached:
+        return {"candles": cached["candles"], "data_source": cached["source"] + "_cache" + src_suffix,
+                "fetched_at": cached["fetched_at"], "next_update_in": remaining}
+
+    # B2: 沒有快取 + 日線 → TWSE 備案
+    if timeframe == "1d":
+        df = fetch_twse_daily(symbol, limit=limit, months=24)
+        if df is not None:
+            candles = [{"time": int(idx.timestamp()), "open": float(row['open']), "high": float(row['high']),
+                         "low": float(row['low']), "close": float(row['close']), "volume": float(row.get('volume', 0) or 0)}
+                        for idx, row in df.iterrows()]
+            return {"candles": candles, "data_source": "twse_daily" + src_suffix, "fetched_at": now, "next_update_in": remaining}
+
+    # B3: 盤後時段且非日線且無快取，最後嘗試一次 yfinance (僅此一次載入)
+    if not market_open and not cached:
+         candles, source = fetch_yfinance_candles(symbol, timeframe, limit)
+         if candles:
+            chart_cache[cache_key] = {"candles": candles, "fetched_at": now, "source": "yfinance"}
+            return {"candles": candles, "data_source": "yfinance_closed", "fetched_at": now, "next_update_in": 3600}
+
+    # B3: 沒有快取 + 非日線 + 限流中 → 回傳空，前端顯示倒數等待
+    print(f"[rate-limit] No cache/fallback for {cache_key}, returning rate_limited ({remaining}s)")
+    return {"candles": [], "data_source": "rate_limited", "fetched_at": now, "next_update_in": remaining}
+
 @app.get("/api/chart")
 async def get_chart_data(symbol: str = "BTC/USDT", timeframe: str = "1d", market: str = "crypto"):
     if market == 'futures':
-        df = fetch_futures_ohlcv(symbol, timeframe, limit=200)
-        if df is None:
-            return []
-        data = []
-        for idx, row in df.iterrows():
-            data.append({
-                "time":   int(idx.timestamp()),
-                "open":   float(row['open']),
-                "high":   float(row['high']),
-                "low":    float(row['low']),
-                "close":  float(row['close']),
-                "volume": float(row.get('volume', 0) or 0)
-            })
-        return data
+        # 期貨也使用相同的 rate limiter 機制（目前無資料源，保留架構）
+        result = get_tw_chart_data(symbol, timeframe, limit=200)
+        if result and result["candles"]:
+            return {
+                "candles": result["candles"],
+                "data_source": result["data_source"],
+                "next_update_in": result["next_update_in"]
+            }
+        return {"candles": [], "data_source": None, "next_update_in": 0}
 
     if market == 'stock':
-        # 優先嘗試台灣證交所官方日線資料 (穩定且真實)
-        df = fetch_twse_daily(symbol, limit=200, months=24)
-
-        # 若 TWSE 失敗，再退回 Yahoo / Stooq
-        if df is None:
-            df = fetch_yahoo_ohlcv(symbol, timeframe, limit=200)
-
-        if df is None:
-            start_date = datetime.now() - timedelta(days=365)
-            end_date = datetime.now()
-            df = fetch_stooq_ohlcv(symbol, start_date, end_date, limit=200)
-            if df is not None:
-                print(f"Fetched stock data from Stooq for {symbol}")
-
-        if df is not None:
-            print(f"Fetched stock data for {symbol}, rows={len(df)}")
-
-        # 若仍失敗，退回到本地示例資料（用 BTC 代替）
-        if df is None:
-            try:
-                project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                local_csv = os.path.join(project_root, 'data', 'btc_daily_7y.csv')
-                df = pd.read_csv(local_csv, index_col='timestamp', parse_dates=True).tail(200)
-                print(f"Stock data fetch failed; using local BTC sample data for {symbol} (file={local_csv})")
-            except Exception as e:
-                print(f"Fallback local data load failed: {e}")
-                df = None
-
-        if df is not None:
-            data = []
-            for idx, row in df.iterrows():
-                data.append({
-                    "time": int(idx.timestamp()),
-                    "open": float(row['open']),
-                    "high": float(row['high']),
-                    "low": float(row['low']),
-                    "close": float(row['close']),
-                    "volume": float(row.get('volume', 0) or 0)
-                })
-            return data
-        return []
+        result = get_tw_chart_data(symbol, timeframe, limit=200)
+        if result and result["candles"]:
+            return {
+                "candles": result["candles"],
+                "data_source": result["data_source"],
+                "next_update_in": result["next_update_in"]
+            }
+        return {"candles": [], "data_source": None, "next_update_in": 0}
 
     exchange = ccxt_async.binance({'enableRateLimit': True})
     try:
