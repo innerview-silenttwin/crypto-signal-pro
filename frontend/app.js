@@ -15,6 +15,7 @@ let candleSeries = null;
 let emaShortSeries = null;
 let emaLongSeries = null;
 let bbUpperSeries = null, bbMidSeries = null, bbLowerSeries = null;
+let volumeSeries = null;
 let rsiSeries = null;
 let cachedCandles = [];
 // 記憶圖表的縮放狀態
@@ -314,10 +315,10 @@ let searchHistory = JSON.parse(localStorage.getItem('searchHistory') || '[]');
 
 function addToHistory(sym, market, nameInput = null) {
     if (!sym) return;
-    
+
     // 移除相同 symbol 的舊紀錄
     searchHistory = searchHistory.filter(item => item.sym.toLowerCase() !== sym.toLowerCase());
-    
+
     // 取得展示用名稱
     let name = nameInput;
     if (!name) {
@@ -334,10 +335,10 @@ function addToHistory(sym, market, nameInput = null) {
 
     // 加入最前面
     searchHistory.unshift({ sym, market, name });
-    
+
     // 限制最多 10 筆
     if (searchHistory.length > 10) searchHistory.pop();
-    
+
     localStorage.setItem('searchHistory', JSON.stringify(searchHistory));
     renderHistory();
 }
@@ -345,13 +346,13 @@ function addToHistory(sym, market, nameInput = null) {
 function renderHistory() {
     const list = document.getElementById('history-list');
     if (!list) return;
-    
+
     // 1. 渲染側邊欄清單
     if (searchHistory.length === 0) {
         list.innerHTML = '<div class="history-empty">暫無搜尋紀錄</div>';
         return;
     }
-    
+
     list.innerHTML = searchHistory.map(item => {
         // 字數限制：最多三個字，超過則截斷
         const displayName = item.name.length > 3 ? item.name.substring(0, 3) : item.name;
@@ -396,9 +397,12 @@ window.changeSymbol = async function (sym, market = 'crypto') {
     const chartTitle = document.getElementById('chart-title');
     const chartSymbol = document.getElementById('chart-symbol');
 
+    // 清空舊價格避免錯位顯示
+    if (ui.btc.price) ui.btc.price.textContent = '載入中...';
+
     if (headerTitle) headerTitle.textContent =
-        market === 'stock' ? `台股 ${baseSym}` :
-            market === 'futures' ? `台期 ${baseSym}` : sym;
+        market === 'stock' ? `台股 ${baseSym}${compName ? ' ' + compName : ''}` :
+            market === 'futures' ? `台期 ${baseSym}${futName ? ' ' + futName : ''}` : sym;
     if (chartTitle) chartTitle.textContent =
         market === 'stock' ? `${baseSym}${compName ? ' ' + compName : ''} 走勢圖` :
             market === 'futures' ? `${baseSym} ${futName} 走勢圖` :
@@ -453,10 +457,10 @@ window.changeSymbol = async function (sym, market = 'crypto') {
 
 function clearSignalCard(market = 'stock', loading = false) {
     const modeLabel = market === 'futures' ? '台股期貨' : '台股';
-    ui.status.textContent = loading
+    if (ui.status) ui.status.textContent = loading
         ? `${modeLabel}盤後信號計算中...`
         : `${modeLabel}模式：無即時信號`;
-    ui.btc.price.textContent = loading ? '...' : '--';
+    if (ui.btc && ui.btc.price) ui.btc.price.textContent = loading ? '...' : '--';
 
     const clearRing = (ringEl, scoreEl, dirEl, scoreTextEl) => {
         if (ringEl) ringEl.style.strokeDasharray = '0, 100';
@@ -529,14 +533,16 @@ async function fetchTwSignals(symbol, market) {
         const modeLabel = market === 'futures' ? '台股期貨' : '台股';
 
         // 價格
-        ui.btc.price.textContent = `${s.price.toLocaleString()}`;
-        ui.status.textContent = `${modeLabel}盤後信號（日線）`;
+        if (ui.btc && ui.btc.price) ui.btc.price.textContent = `${s.price.toLocaleString()}`;
+        if (ui.status) ui.status.textContent = `${modeLabel}盤後信號（日線）`;
 
         // 1D 環形圖
-        updateRing(ui.btc.d1.ring, ui.btc.d1.score, s.confidence, s.direction);
-        updateDirection(ui.btc.d1.dir, s.direction, s.level, s.confidence);
-        ui.btc.d1.buy.textContent = s.buy_score;
-        ui.btc.d1.sell.textContent = s.sell_score;
+        if (ui.btc && ui.btc.d1) {
+            updateRing(ui.btc.d1.ring, ui.btc.d1.score, s.confidence, s.direction);
+            updateDirection(ui.btc.d1.dir, s.direction, s.level, s.confidence);
+            if (ui.btc.d1.buy) ui.btc.d1.buy.textContent = s.buy_score;
+            if (ui.btc.d1.sell) ui.btc.d1.sell.textContent = s.sell_score;
+        }
 
         // 4H 區域改為盤後提示（日線資料不支援真正 4H）
         if (ui.btc.h4.ring) ui.btc.h4.ring.style.strokeDasharray = '0, 100';
@@ -645,11 +651,11 @@ async function loadChartData(tf, forceFit = false) {
         if (!res.ok) throw new Error("API Status: " + res.status);
         const resp = await res.json();
 
-        // 新格式：{candles, data_source, next_update_in} / 舊格式：陣列
+        // 統一新格式解析：{candles, data_source, next_update_in}
         const isTwMarket = (currentMarket === 'stock' || currentMarket === 'futures');
-        const data = isTwMarket ? (resp.candles || []) : (Array.isArray(resp) ? resp : []);
-        const dataSource = isTwMarket ? (resp.data_source || null) : null;
-        const nextUpdateIn = isTwMarket ? (resp.next_update_in ?? 60) : null;
+        const data = resp.candles || (Array.isArray(resp) ? resp : []);
+        const dataSource = resp.data_source || (currentMarket === 'crypto' ? 'ccxt' : null);
+        const nextUpdateIn = resp.next_update_in ?? (currentMarket === 'crypto' ? null : 60);
 
         // 更新資料來源 badge
         updateDataSourceBadge(dataSource, nextUpdateIn);
@@ -740,34 +746,21 @@ async function loadChartData(tf, forceFit = false) {
 // 清空圖表所有系列（搜尋不到資料時施作）
 function clearChart() {
     cachedCandles = [];
-    if (candleSeries)    candleSeries.setData([]);
-    if (volumeSeries)    volumeSeries.setData([]);
-    if (emaShortSeries)  emaShortSeries.setData([]);
-    if (emaLongSeries)   emaLongSeries.setData([]);
-    if (bbUpperSeries)   bbUpperSeries.setData([]);
-    if (bbMidSeries)     bbMidSeries.setData([]);
-    if (bbLowerSeries)   bbLowerSeries.setData([]);
-    if (rsiSeries)       rsiSeries.setData([]);
-    if (candleSeries)    candleSeries.setMarkers([]);
+    if (candleSeries) candleSeries.setData([]);
+    if (volumeSeries) volumeSeries.setData([]);
+    if (emaShortSeries) emaShortSeries.setData([]);
+    if (emaLongSeries) emaLongSeries.setData([]);
+    if (bbUpperSeries) bbUpperSeries.setData([]);
+    if (bbMidSeries) bbMidSeries.setData([]);
+    if (bbLowerSeries) bbLowerSeries.setData([]);
+    if (rsiSeries) rsiSeries.setData([]);
+    if (candleSeries) candleSeries.setMarkers([]);
 }
 
 // ---- 資料來源 Badge + 倒數 ----
 function updateDataSourceBadge(source, nextUpdateIn) {
-    let badge = document.getElementById('data-source-badge');
-    if (!badge) {
-        // 動態建立 badge DOM
-        const header = document.querySelector('.chart-container .card-header');
-        if (!header) return;
-        badge = document.createElement('div');
-        badge.id = 'data-source-badge';
-        badge.style.cssText = [
-            'display:inline-flex', 'align-items:center', 'gap:6px',
-            'font-size:11px', 'padding:3px 10px', 'border-radius:20px',
-            'font-weight:600', 'letter-spacing:0.5px',
-            'margin-top:6px', 'transition:all 0.3s'
-        ].join(';');
-        header.insertAdjacentElement('afterend', badge);
-    }
+    const badge = document.getElementById('data-source-badge');
+    if (!badge) return;
 
     if (!source) {
         badge.style.display = 'none';
@@ -776,28 +769,30 @@ function updateDataSourceBadge(source, nextUpdateIn) {
     badge.style.display = 'inline-flex';
 
     const config = {
-        'yfinance':        { icon: '⚡', label: 'Yahoo Finance 即時', bg: 'rgba(16,185,129,0.15)', border: '#10b981', color: '#10b981' },
-        'yfinance_cache':  { icon: '📦', label: 'Yahoo Finance 快取', bg: 'rgba(251,191,36,0.15)', border: '#fbbf24', color: '#fbbf24' },
-        'twse_daily':      { icon: '🏦', label: '證交所歷史日線', bg: 'rgba(59,130,246,0.15)', border: '#3b82f6', color: '#3b82f6' },
-        'twse_daily_cache':{ icon: '📦', label: '證交所快取', bg: 'rgba(148,163,184,0.15)', border: '#94a3b8', color: '#94a3b8' },
-        'signals_cache':   { icon: '📦', label: '信號快取', bg: 'rgba(148,163,184,0.15)', border: '#94a3b8', color: '#94a3b8' },
-        'rate_limited':    { icon: '⏳', label: '限流中，等待更新', bg: 'rgba(239,68,68,0.12)', border: '#ef4444', color: '#ef4444' },
-        
+        'yfinance': { icon: '⚡', label: 'Yahoo Finance 即時', bg: 'rgba(16,185,129,0.15)', border: '#10b981', color: '#10b981' },
+        'yfinance_cache': { icon: '📦', label: 'Yahoo Finance 快取', bg: 'rgba(251,191,36,0.15)', border: '#fbbf24', color: '#fbbf24' },
+        'twse_daily': { icon: '🏦', label: '證交所歷史日線', bg: 'rgba(59,130,246,0.15)', border: '#3b82f6', color: '#3b82f6' },
+        'twse_daily_cache': { icon: '📦', label: '證交所快取', bg: 'rgba(148,163,184,0.15)', border: '#94a3b8', color: '#94a3b8' },
+        'signals_cache': { icon: '📦', label: '信號快取', bg: 'rgba(148,163,184,0.15)', border: '#94a3b8', color: '#94a3b8' },
+        'rate_limited': { icon: '⏳', label: '限流中，等待更新', bg: 'rgba(239,68,68,0.12)', border: '#ef4444', color: '#ef4444' },
+        'archive_fallback': { icon: '🗄️', label: '本地持久存檔庫', bg: 'rgba(139,92,246,0.15)', border: '#8b5cf6', color: '#8b5cf6' },
+
         // 盤後狀態
-        'yfinance_closed':       { icon: '🌙', label: 'Yahoo 盤後資料', bg: 'rgba(148,163,184,0.15)', border: '#94a3b8', color: '#94a3b8' },
+        'yfinance_closed': { icon: '🌙', label: 'Yahoo 盤後資料', bg: 'rgba(148,163,184,0.15)', border: '#94a3b8', color: '#94a3b8' },
         'yfinance_cache_closed': { icon: '🌙', label: 'Yahoo 盤後快取', bg: 'rgba(148,163,184,0.15)', border: '#94a3b8', color: '#94a3b8' },
-        'twse_daily_closed':     { icon: '🌙', label: '證交所盤後日線', bg: 'rgba(148,163,184,0.15)', border: '#94a3b8', color: '#94a3b8' },
+        'twse_daily_closed': { icon: '🌙', label: '證交所盤後日線', bg: 'rgba(148,163,184,0.15)', border: '#94a3b8', color: '#94a3b8' },
     };
+
     const c = config[source] || { icon: 'ℹ️', label: source, bg: 'rgba(100,100,100,0.1)', border: '#666', color: '#aaa' };
 
     badge.style.background = c.bg;
     badge.style.border = `1px solid ${c.border}`;
     badge.style.color = c.color;
 
-    const countdown = (nextUpdateIn !== null && nextUpdateIn > 0)
-        ? ` · <span id="badge-countdown">${nextUpdateIn}</span>s 後更新`
-        : ` · <span id="badge-countdown">-</span>`;
-    badge.innerHTML = `${c.icon} 資料來源：${c.label}${countdown}`;
+    const countdownText = (nextUpdateIn !== null && nextUpdateIn >= 0)
+        ? ` · Next: <span id="badge-countdown">${nextUpdateIn}</span>s`
+        : '';
+    badge.innerHTML = `<span>${c.icon} ${c.label}</span>${countdownText}`;
 }
 
 function startBadgeCountdown(seconds) {
@@ -1064,28 +1059,67 @@ function updateDirection(el, dir, level, confidence) {
 
 // 處理伺服器資料
 function processData(serverData) {
-    // 只在 Crypto 模式下才處理即時信號
-    if (currentMarket !== 'crypto') return;
-
-    // data 應該是 array of {symbol: 'BTC/USDT', signals: { '1d': {...}, '4h': {...} }}
     if (!Array.isArray(serverData)) return;
     lastServerData = serverData;
 
     serverData.forEach(item => {
         const symbol = item.symbol;
         const sigs = item.signals;
+        if (!sigs || !sigs['1d']) return;
 
-        // 更新主畫面的大卡片
-        if (symbol === currentSymbol && sigs['1d']) {
-            ui.btc.price.textContent = `$${sigs['1d'].price.toLocaleString()}`;
-            ui.status.textContent = `最後更新: ${sigs['1d'].timestamp}`;
+        const d1 = sigs['1d'];
+        const price = d1.price;
+        const direction = d1.direction;
+        const confidence = d1.confidence;
+
+        // --- 更新頂部 Ticker 價格條 ---
+        let tickerId = null;
+        if (symbol === 'BTC/USDT') tickerId = 'btc';
+        else if (symbol === 'ETH/USDT') tickerId = 'eth';
+        else if (symbol === 'SOL/USDT') tickerId = 'sol';
+        else if (symbol === '2330.TW') tickerId = '2330';
+        else if (symbol === 'TX') tickerId = 'tx';
+
+        if (tickerId) {
+            const valEls = document.querySelectorAll(`[id^="ticker-${tickerId}"]`);
+            const chgEls = document.querySelectorAll(`[id^="ticker-${tickerId}-chg"]`);
+            const scoreEls = document.querySelectorAll(`[id^="ticker-${tickerId}-score"]`);
+
+            valEls.forEach(el => {
+                if (el && !el.id.includes('chg') && !el.id.includes('score')) {
+                    el.textContent = parseFloat(price).toLocaleString();
+                }
+            });
+
+            const change24h = d1.change_24h || 0;
+            chgEls.forEach(el => {
+                if (el) {
+                    const color = change24h > 0 ? '#10b981' : change24h < 0 ? '#ef4444' : '#94a3b8';
+                    const prefix = change24h > 0 ? '▲' : change24h < 0 ? '▼' : '';
+                    el.textContent = `${prefix}${Math.abs(change24h)}%`;
+                    el.style.color = color;
+                }
+            });
+
+            scoreEls.forEach(el => {
+                if (el) el.textContent = `Score: ${confidence}`;
+            });
+        }
+
+        // --- 若為目前選中的標的與市場，才更新儀表板主畫面 ---
+        if (symbol === currentSymbol) {
+            const currencyPrefix = (currentMarket === 'crypto') ? '$' : '';
+            if (ui.btc && ui.btc.price) ui.btc.price.textContent = `${currencyPrefix}${parseFloat(price).toLocaleString()}`;
+            if (ui.status) ui.status.textContent = `最後更新: ${d1.timestamp}`;
 
             // 1D Update
-            const d1 = sigs['1d'];
-            updateRing(ui.btc.d1.ring, ui.btc.d1.score, d1.confidence, d1.direction);
-            updateDirection(ui.btc.d1.dir, d1.direction, d1.level, d1.confidence);
-            ui.btc.d1.buy.textContent = d1.buy_score;
-            ui.btc.d1.sell.textContent = d1.sell_score;
+            const d1_sig = sigs['1d'];
+            if (d1_sig) {
+                updateRing(ui.btc.d1.ring, ui.btc.d1.score, d1_sig.confidence, d1_sig.direction);
+                updateDirection(ui.btc.d1.dir, d1_sig.direction, d1_sig.level, d1_sig.confidence);
+                ui.btc.d1.buy.textContent = d1_sig.buy_score || 0;
+                ui.btc.d1.sell.textContent = d1_sig.sell_score || 0;
+            }
 
             // --- 更新全屏模式 Header 精簡面板 ---
             const hPrice = document.getElementById('h-price-btc');
@@ -1225,8 +1259,45 @@ function syncFullscreenHeader(symbol, dir, confidence, adviceHtml) {
 ws.onmessage = (event) => {
     try {
         const payload = JSON.parse(event.data);
-        if (payload.type === 'init' || payload.type === 'update') {
+        if (payload.type === "init" || payload.type === "update") {
             processData(payload.data);
+
+            const isSafeMode = payload.safe_mode || false;
+            const safeEl = document.getElementById("safe-mode-alert");
+            const safeEventText = document.getElementById("safe-event-name");
+            if (safeEl) {
+                safeEl.style.display = isSafeMode ? "block" : "none";
+                if (isSafeMode && safeEventText) {
+                    safeEventText.textContent = payload.safe_mode_event || "重大事件";
+                }
+            }
+
+            const sentiment = payload.global_alert;
+            if (sentiment) {
+                if (sentiment.scheduled) {
+                    updateEventTimers(sentiment.scheduled);
+                }
+
+                const current = sentiment.current;
+                const alertEl = document.getElementById("global-alert");
+                const alertText = document.getElementById("alert-text");
+                const alertTag = document.getElementById("alert-tag");
+
+                if (current && alertEl && alertText) {
+                    const analysisLabel = current.analysis ? ` [${current.analysis}]` : "";
+                    alertText.textContent = current.text + analysisLabel;
+                    alertTag.textContent = current.tag || "BREAKING";
+                    alertEl.style.display = "flex";
+
+                    if (current.score <= -15) {
+                        alertEl.style.background = "linear-gradient(90deg, #7f1d1d, #ef4444)";
+                    } else if (current.score >= 15) {
+                        alertEl.style.background = "linear-gradient(90deg, #064e3b, #10b981)";
+                    } else {
+                        alertEl.style.background = "linear-gradient(90deg, #92400e, #f59e0b)";
+                    }
+                }
+            }
         }
     } catch (e) {
         console.error("Data parse error", e);
@@ -1234,7 +1305,7 @@ ws.onmessage = (event) => {
 };
 
 ws.onopen = () => {
-    ui.status.textContent = '連線成功，等待數據推播...';
+    if (ui.status) ui.status.textContent = '連線成功，等待數據推播...';
     if (ui.connStatus) {
         ui.connStatus.textContent = '✅ 系統正常 (Online)';
         ui.connStatus.style.color = '';
@@ -1245,7 +1316,7 @@ ws.onopen = () => {
 };
 
 ws.onclose = () => {
-    ui.status.textContent = '連線中斷，請稍後。';
+    if (ui.status) ui.status.textContent = '連線中斷，請稍後。';
     if (ui.connStatus) {
         ui.connStatus.textContent = '❌ 連線中斷 (Offline)';
         ui.connStatus.style.color = '#ef4444';
@@ -1262,89 +1333,59 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- 市場選擇 (虛擬幣 / 台股) ---
     const marketSelect = document.getElementById('market-select');
+    const cryptoInput = document.getElementById('crypto-symbol-input');
     const stockInput = document.getElementById('stock-symbol-input');
-    const stockLoadBtn = document.getElementById('stock-load-btn');
+    const futuresInput = document.getElementById('futures-symbol-input');
+    const globalLoadBtn = document.getElementById('global-load-btn');
 
-    const loadStock = () => {
-        if (!stockInput) return;
-        let raw = stockInput.value.trim();
-        if (!raw) return;
-
-        // 如果在名稱對照表有，就用對照表的代碼
-        let symbol;
-        if (stockNameSearchMapping[raw]) {
-            symbol = stockNameSearchMapping[raw];
-        } else {
-            // 否則視為純代碼，補上 .TW
-            symbol = raw.includes('.') ? raw : `${raw}.TW`;
+    const handleSearch = () => {
+        const m = marketSelect.value;
+        if (m === 'crypto') {
+            let raw = cryptoInput.value.trim().toUpperCase();
+            if (!raw) return;
+            const symbol = cryptoNames[raw] || (raw.includes('/') ? raw : `${raw}/USDT`);
+            window.changeSymbol(symbol, 'crypto');
+        } else if (m === 'stock') {
+            let raw = stockInput.value.trim();
+            if (!raw) return;
+            const symbol = stockNameSearchMapping[raw] || (raw.includes('.') ? raw : `${raw}.TW`);
+            window.changeSymbol(symbol, 'stock');
+        } else if (m === 'futures') {
+            let raw = futuresInput.value.trim().toUpperCase();
+            if (!raw) return;
+            window.changeSymbol(raw, 'futures');
         }
-        window.changeSymbol(symbol, 'stock');
     };
 
-    const futuresInput = document.getElementById('futures-symbol-input');
-    const futuresLoadBtn = document.getElementById('futures-load-btn');
+    if (globalLoadBtn) globalLoadBtn.addEventListener('click', handleSearch);
+    [cryptoInput, stockInput, futuresInput].forEach(inp => {
+        if (inp) inp.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') handleSearch();
+        });
+    });
 
     if (marketSelect) {
         marketSelect.addEventListener('change', (e) => {
             const m = e.target.value;
+            // 控制三種輸入框的可見性
+            if (cryptoInput) cryptoInput.style.display = (m === 'crypto' ? 'block' : 'none');
+            if (stockInput) stockInput.style.display = (m === 'stock' ? 'block' : 'none');
+            if (futuresInput) futuresInput.style.display = (m === 'futures' ? 'block' : 'none');
+
+            // 切換市場時預帶入常用標的
             if (m === 'crypto') {
                 window.changeSymbol('BTC/USDT', 'crypto');
-            } else if (m === 'futures') {
-                if (futuresInput) futuresInput.value = 'TX';
-                window.changeSymbol('TX', 'futures');
-            } else {
-                // default to 台股 2330
-                const defaultStock = '2330.TW';
+                if (cryptoInput) cryptoInput.value = '';
+            } else if (m === 'stock') {
+                window.changeSymbol('2330.TW', 'stock');
                 if (stockInput) stockInput.value = '2330';
-                window.changeSymbol(defaultStock, 'stock');
+            } else if (m === 'futures') {
+                window.changeSymbol('TX', 'futures');
+                if (futuresInput) futuresInput.value = 'TX';
             }
         });
     }
 
-    const loadFutures = () => {
-        if (!futuresInput) return;
-        const raw = futuresInput.value.trim().toUpperCase();
-        if (!raw) return;
-        window.changeSymbol(raw, 'futures');
-    };
-
-    if (futuresLoadBtn) futuresLoadBtn.addEventListener('click', loadFutures);
-    if (futuresInput) {
-        futuresInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') loadFutures();
-        });
-    }
-
-    if (stockLoadBtn) {
-        stockLoadBtn.addEventListener('click', loadStock);
-    }
-
-    if (stockInput) {
-        stockInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') loadStock();
-        });
-    }
-
-    // --- 虛擬幣手動載入邏輯 ---
-    const cryptoInput = document.getElementById('crypto-symbol-input');
-    const cryptoLoadBtn = document.getElementById('crypto-load-btn');
-
-    const loadCrypto = () => {
-        if (!cryptoInput) return;
-        let raw = cryptoInput.value.trim().toUpperCase();
-        if (!raw) return;
-
-        // 檢查是否有中文對照，若無則補上 /USDT
-        let symbol = cryptoNames[raw] || (raw.includes('/') ? raw : `${raw}/USDT`);
-        window.changeSymbol(symbol, 'crypto');
-    };
-
-    if (cryptoLoadBtn) cryptoLoadBtn.addEventListener('click', loadCrypto);
-    if (cryptoInput) {
-        cryptoInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') loadCrypto();
-        });
-    }
     // --- 教學 Modal 控制 ---
     const modal = document.getElementById('tutorial-modal');
     const openBtn = document.getElementById('open-tutorial');
@@ -1376,13 +1417,13 @@ document.addEventListener('DOMContentLoaded', () => {
 // 啟動連線品質監測 (Ping Heartbeat)
 async function startHeartbeat() {
     if (heartbeatTimer) clearInterval(heartbeatTimer);
-    
+
     heartbeatTimer = setInterval(async () => {
         const start = Date.now();
         try {
             const res = await fetch('/api/ping', { cache: 'no-store' });
             const rtt = Date.now() - start;
-            
+
             if (res.ok) {
                 if (ui.statusDot) {
                     ui.statusDot.classList.remove('offline');
@@ -1405,4 +1446,41 @@ async function startHeartbeat() {
             if (ui.connStatus) ui.connStatus.textContent = '❌ 連線中斷 (Offline)';
         }
     }, 30000); // 30 秒偵測一次
+}
+
+/**
+ * Phase 3: 更新重大事件倒數計時器
+ */
+function updateEventTimers(scheduledEvents) {
+    const listEl = document.getElementById('event-timer-list');
+    if (!listEl || !scheduledEvents) return;
+
+    listEl.innerHTML = ''; // 清空
+
+    scheduledEvents.forEach(event => {
+        const eventDate = new Date(event.date);
+        const now = new Date();
+        const diff = eventDate - now;
+
+        let countdownText = "已發生";
+        if (diff > 0) {
+            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+
+            if (days > 0) countdownText = `${days}天 ${hours}時`;
+            else countdownText = `${hours}時 ${mins}分`;
+        }
+
+        const item = document.createElement('div');
+        item.className = 'event-item';
+        item.innerHTML = `
+            <div class="event-info">
+                <span class="event-name">${event.name}</span>
+                <span class="event-warning">⚠️ ${event.warning}</span>
+            </div>
+            <div class="event-countdown-box">${countdownText}</div>
+        `;
+        listEl.appendChild(item);
+    });
 }

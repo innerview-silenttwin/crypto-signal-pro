@@ -21,7 +21,13 @@ from indicators.registry import IndicatorRegistry
 
 # 匯入所有指標插件以觸發註冊
 from indicators import rsi, macd, bollinger, mfi, ema, volume, adx
+from enum import Enum
 
+class MarketType(Enum):
+    CRYPTO = "crypto"
+    STOCK = "stock"
+    FUTURES = "futures"
+    US_STOCK = "us_stock"
 
 @dataclass
 class AggregatedSignal:
@@ -46,6 +52,7 @@ class AggregatedSignal:
     confidence: float = 0.0        # 信心度 (0–100)
     signal_level: str = "無信號"    # 極強/強/中等/弱/無
     price: float = 0.0
+    change_24h: float = 0.0       # 今日漲跌幅 (%)
     
     @property
     def all_signals(self) -> List[IndicatorSignal]:
@@ -70,19 +77,34 @@ class AggregatedSignal:
                 lines.append(f"      +{s.score:.1f}分 {s.indicator_name}: {s.reason}")
         return "\n".join(lines)
 
-
 class SignalAggregator:
     """信號聚合器"""
 
-    def __init__(self, weights: Optional[Dict[str, float]] = None):
+    def __init__(self, market_type: MarketType = MarketType.CRYPTO, weights: Optional[Dict[str, float]] = None):
         """
         Args:
+            market_type: 市場類型，影響權重配置
             weights: 指標權重，e.g. {'rsi': 15, 'macd': 20, ...}
         """
-        default_weights = {
-            'rsi': 15.0, 'macd': 20.0, 'bollinger': 15.0,
-            'mfi': 10.0, 'ema_cross': 15.0, 'volume': 15.0, 'adx': 10.0,
-        }
+        self.market_type = market_type
+        
+        # 不同市場的預設加權策略
+        if market_type == MarketType.STOCK:
+            default_weights = {
+                'rsi': 10.0, 'macd': 15.0, 'bollinger': 10.0,
+                'mfi': 15.0, 'ema_cross': 15.0, 'volume': 25.0, 'adx': 10.0, # 台股更重成交量
+            }
+        elif market_type == MarketType.FUTURES:
+            default_weights = {
+                'rsi': 15.0, 'macd': 15.0, 'bollinger': 15.0,
+                'mfi': 10.0, 'ema_cross': 20.0, 'volume': 15.0, 'adx': 10.0, # 期貨偏向趨勢追蹤
+            }
+        else: # Crypto (預設)
+            default_weights = {
+                'rsi': 20.0, 'macd': 20.0, 'bollinger': 10.0,
+                'mfi': 10.0, 'ema_cross': 15.0, 'volume': 15.0, 'adx': 10.0, 
+            }
+
         self.weights = weights or default_weights
         self.indicators: List[BaseIndicator] = IndicatorRegistry.create_all(self.weights)
         

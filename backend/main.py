@@ -10,7 +10,8 @@ FastAPI 主程式 - 即時信號伺服器 (Phase 2)
 import sys
 import os
 import asyncio
-from typing import Dict, Any, List
+import json
+from typing import List
 from datetime import datetime
 import time
 import pandas as pd
@@ -19,17 +20,15 @@ import ccxt.async_support as ccxt_async
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 from fastapi.responses import RedirectResponse
 import io
 import urllib.request
-from datetime import timedelta
 import pytz
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from signals.aggregator import SignalAggregator
-from backend.data.twse_fetcher import TWSEFetcher
+from signals.aggregator import SignalAggregator, MarketType
+from trading_manager import trading_manager
 
 app = FastAPI(title="CryptoSignal Pro API", version="1.0.0")
 
@@ -69,7 +68,19 @@ class ConnectionManager:
                 pass
 
 manager = ConnectionManager()
-aggregator = SignalAggregator()
+
+# 不同市場各自的聚合器（權重策略不同）
+aggregator_crypto = SignalAggregator(MarketType.CRYPTO)
+aggregator_stock = SignalAggregator(MarketType.STOCK)
+aggregator_futures = SignalAggregator(MarketType.FUTURES)
+
+def get_aggregator(market: str = "crypto") -> SignalAggregator:
+    """根據市場類型取得對應聚合器"""
+    if market == "stock":
+        return aggregator_stock
+    elif market == "futures":
+        return aggregator_futures
+    return aggregator_crypto
 
 # 全域狀態
 current_signals = {}
@@ -106,7 +117,7 @@ async def background_signal_updater():
                 for tf, df in zip(timeframes, results):
                     if df is not None and len(df) > 0:
                         # 分析信號
-                        signal = aggregator.analyze(df, symbol=symbol, timeframe=tf)
+                        signal = aggregator_crypto.analyze(df, symbol=symbol, timeframe=tf)
                         
                         signal_data = {
                             "timeframe": tf,
@@ -130,7 +141,6 @@ async def background_signal_updater():
                 updates.append(symbol_data)
             
             # 廣播給所有前端客戶端
-            import json
             await manager.broadcast(json.dumps({"type": "update", "data": updates}))
             
         except Exception as e:
@@ -367,7 +377,8 @@ async def get_tw_signals(symbol: str, market: str = "stock"):
     if df is None or len(df) < 30:
         return {"symbol": symbol, "signals": {}, "next_update_in": remaining, "data_source": "twse_daily"}
 
-    signal = aggregator.analyze(df, symbol=symbol, timeframe='1d')
+    agg = get_aggregator(market)
+    signal = agg.analyze(df, symbol=symbol, timeframe='1d')
     result_data = {
         "symbol": symbol,
         "signals": {
@@ -585,9 +596,9 @@ async def get_chart_data(symbol: str = "BTC/USDT", timeframe: str = "1d", market
         df = await fetch_ohlcv_async(exchange, symbol, timeframe, limit=200)
         await exchange.close()
         if df is not None:
-            data = []
+            candles = []
             for idx, row in df.iterrows():
-                data.append({
+                candles.append({
                     "time": int(idx.timestamp()),
                     "open": float(row['open']),
                     "high": float(row['high']),
@@ -595,12 +606,12 @@ async def get_chart_data(symbol: str = "BTC/USDT", timeframe: str = "1d", market
                     "close": float(row['close']),
                     "volume": float(row['volume'])
                 })
-            return data
-        return []
+            return {"candles": candles, "data_source": "ccxt", "next_update_in": None}
+        return {"candles": [], "data_source": None, "next_update_in": None}
     except Exception as e:
         print(f"Chart fetch error: {e}")
         await exchange.close()
-        return []
+        return {"candles": [], "data_source": None, "next_update_in": None}
 
 @app.get("/api/signals")
 async def get_signals():
@@ -613,7 +624,6 @@ async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         # 連線成功先推送一次目前狀態
-        import json
         if current_signals:
             await websocket.send_text(json.dumps({"type": "init", "data": list(current_signals.values())}))
         
@@ -623,7 +633,64 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(websocket)
 
+# ============================================================
+# 虛擬交易 API（供 trading.html 使用）
+# ============================================================
+
+@app.post("/api/trading/toggle")
+async def toggle_trading(active: bool = False):
+    """啟動/停止自動交易"""
+    is_active = trading_manager.toggle_active(active)
+    return {"is_active": is_active}
+
+@app.get("/api/trading/status")
+async def get_trading_status():
+    """取得帳戶摘要（資產淨值、持倉、損益）"""
+    # 嘗試取得最新價格用於計算未實現損益
+    current_prices = {}
+    for symbol, data in current_signals.items():
+        sigs = data.get("signals", {})
+        if "1d" in sigs:
+            current_prices[symbol] = sigs["1d"].get("price", 0)
+    return trading_manager.get_summary(current_prices)
+
+@app.get("/api/trading/history")
+async def get_trading_history(page: int = 1, pageSize: int = 15,
+                               symbol: str = "", startDate: str = "", endDate: str = ""):
+    """取得交易歷史（支援篩選與分頁）"""
+    history = trading_manager.state.get("history", [])
+
+    # 篩選
+    if symbol:
+        history = [h for h in history if symbol.upper() in h.get("symbol", "").upper()]
+    if startDate:
+        history = [h for h in history if h.get("time", "") >= startDate]
+    if endDate:
+        history = [h for h in history if h.get("time", "")[:10] <= endDate]
+
+    total = len(history)
+    start = (page - 1) * pageSize
+    end = start + pageSize
+    return {"data": history[start:end], "total": total, "page": page}
+
+@app.get("/api/trading/symbols")
+async def get_watchlist_symbols():
+    """取得監控標的清單"""
+    return trading_manager.state.get("symbols", [])
+
+@app.post("/api/trading/symbols/add")
+async def add_watchlist_symbol(symbol: str):
+    """新增監控標的"""
+    success = trading_manager.add_symbol(symbol)
+    return {"success": success, "symbols": trading_manager.state.get("symbols", [])}
+
+@app.post("/api/trading/symbols/remove")
+async def remove_watchlist_symbol(symbol: str):
+    """移除監控標的"""
+    success = trading_manager.remove_symbol(symbol)
+    return {"success": success, "symbols": trading_manager.state.get("symbols", [])}
+
+
 if __name__ == "__main__":
     import uvicorn
-    # 直接啟動 Server
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

@@ -1,7 +1,29 @@
+# Python
 __pycache__/
 *.pyc
-.DS_Store
-data/stocks/
-.env
+*.pyo
 venv/
+.venv/
+
+# Node.js
 node_modules/
+
+# Environment & secrets
+.env
+.env.*
+
+# Trading data (personal)
+trading_account.json
+
+# Historical market data (can be re-downloaded)
+backend/data/history/
+
+# Test data
+test_data.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Legacy
+data/stocks/

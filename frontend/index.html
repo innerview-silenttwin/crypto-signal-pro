@@ -23,35 +23,13 @@
             </div>
 
             <nav class="nav-menu">
-                <a href="#" class="nav-item active" onclick="return false;">🔥 實時監測</a>
+                <a href="index.html" class="nav-item active">分析儀表板</a>
+                <a href="trading.html" class="nav-item">虛擬交易中心</a>
                 <a href="#" class="nav-item" onclick="alert('📈 多圖表版將於 Phase 3 開放！'); return false;">📈 多圖表版</a>
                 <a href="#" class="nav-item" onclick="alert('🏆 會員中心將於 Phase 3 開放！'); return false;">🏆 會員中心</a>
                 <a href="#" class="nav-item" onclick="alert('⚙️ 策略參數將於 Phase 3 開放！'); return false;">⚙️ 策略參數</a>
                 <button class="btn-tutorial-open" id="open-tutorial">📖 快速上手教學</button>
             </nav>
-
-            <div class="market-panel">
-                <label for="market-select">市場</label>
-                <select id="market-select">
-                    <option value="crypto" selected>虛擬幣</option>
-                    <option value="stock">台股</option>
-                    <option value="futures">台股期貨</option>
-                </select>
-                <div id="crypto-input-row" class="stock-input-row" style="display: none;">
-                    <input id="crypto-symbol-input" type="search" placeholder="例：BTC/USDT 或 比特幣" />
-                    <button id="crypto-load-btn">載入</button>
-                </div>
-
-                <div id="stock-input-row" class="stock-input-row" style="display: none;">
-                    <input id="stock-symbol-input" type="search" placeholder="輸入股票代碼 (例：2330)" />
-                    <button id="stock-load-btn">載入</button>
-                </div>
-
-                <div id="futures-input-row" class="stock-input-row" style="display: none;">
-                    <input id="futures-symbol-input" type="search" placeholder="期貨代碼 (TX/MTX/TE/TF)" />
-                    <button id="futures-load-btn">載入</button>
-                </div>
-            </div>
 
             <!-- 最近搜尋紀錄 -->
             <div class="history-panel">
@@ -68,20 +46,86 @@
 
         <!-- 主內容區 -->
         <main class="main-content">
+            <!-- 頂部實時行情滾動條 (Market Ticker) -->
+            <div class="market-ticker-strip">
+                <div id="ticker-content" class="ticker-content">
+                    <span class="ticker-item"><span class="t-sym">BTC/USDT</span> <span id="ticker-btc" class="t-val">--</span> <span class="t-chg" id="ticker-btc-chg">--</span> <span class="t-score" id="ticker-btc-score">--</span></span>
+                    <span class="ticker-item"><span class="t-sym">ETH/USDT</span> <span id="ticker-eth" class="t-val">--</span> <span class="t-chg" id="ticker-eth-chg">--</span> <span class="t-score" id="ticker-eth-score">--</span></span>
+                    <span class="ticker-item"><span class="t-sym">SOL/USDT</span> <span id="ticker-sol" class="t-val">--</span> <span class="t-chg" id="ticker-sol-chg">--</span> <span class="t-score" id="ticker-sol-score">--</span></span>
+                    <span class="ticker-item"><span class="t-sym">2330.TW</span> <span id="ticker-2330" class="t-val">--</span> <span class="t-chg" id="ticker-2330-chg">--</span> <span class="t-score" id="ticker-2330-score">--</span></span>
+                    <span class="ticker-item"><span class="t-sym">TX (台指)</span> <span id="ticker-tx" class="t-val">--</span> <span class="t-chg" id="ticker-tx-chg">--</span> <span class="t-score" id="ticker-tx-score">--</span></span>
+                    <!-- 複製第二組以無縫銜接 -->
+                    <span class="ticker-item"><span class="t-sym">BTC/USDT</span> <span id="ticker-btc-clone" class="t-val">--</span> <span class="t-chg" id="ticker-btc-chg-clone">--</span> <span class="t-score" id="ticker-btc-score-clone">--</span></span>
+                    <span class="ticker-item"><span class="t-sym">ETH/USDT</span> <span id="ticker-eth-clone" class="t-val">--</span> <span class="t-chg" id="ticker-eth-chg-clone">--</span> <span class="t-score" id="ticker-eth-score-clone">--</span></span>
+                    <span class="ticker-item"><span class="t-sym">SOL/USDT</span> <span id="ticker-sol-clone" class="t-val">--</span> <span class="t-chg" id="ticker-sol-chg-clone">--</span> <span class="t-score" id="ticker-sol-score-clone">--</span></span>
+                    <span class="ticker-item"><span class="t-sym">2330.TW</span> <span id="ticker-2330-clone" class="t-val">--</span> <span class="t-chg" id="ticker-2330-chg-clone">--</span> <span class="t-score" id="ticker-2330-score-clone">--</span></span>
+                    <span class="ticker-item"><span class="t-sym">TX (台指)</span> <span id="ticker-tx-clone" class="t-val">--</span> <span class="t-chg" id="ticker-tx-chg-clone">--</span> <span class="t-score" id="ticker-tx-score-clone">--</span></span>
+                </div>
+            </div>
+
             <header class="top-bar">
-                <h1>實時買賣點信號 (多時間框架共振)</h1>
+                <div class="top-bar-left">
+                    <h1>實時信號儀表板</h1>
+                </div>
+
+                <div class="top-bar-center">
+                    <div class="omnibox-main">
+                        <div class="omnibox-container glass-panel">
+                            <select id="market-select">
+                                <option value="crypto" selected>幣市</option>
+                                <option value="stock">台股</option>
+                                <option value="futures">期貨</option>
+                            </select>
+                            <div class="omnibox-divider"></div>
+                            <input id="crypto-symbol-input" type="search" placeholder="代碼 (如 BTC/USDT)..." />
+                            <input id="stock-symbol-input" type="search" placeholder="代碼/名稱 (如 2330)..." style="display:none;" />
+                            <input id="futures-symbol-input" type="search" placeholder="期號 (TX/MTX)..." style="display:none;" />
+                            <button id="global-load-btn" class="btn-search-icon">🔍</button>
+                        </div>
+                        <div class="hot-tags">
+                            <span class="tag-label">熱門:</span>
+                            <span class="tag-item" onclick="changeSymbol('BTC/USDT','crypto')">BTC</span>
+                            <span class="tag-item" onclick="changeSymbol('ETH/USDT','crypto')">ETH</span>
+                            <span class="tag-item" onclick="changeSymbol('SOL/USDT','crypto')">SOL</span>
+                            <span class="tag-item" onclick="changeSymbol('2330.TW','stock')">台積電</span>
+                            <span class="tag-item" onclick="changeSymbol('TX','futures')">台指期</span>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="top-bar-right">
                     <div class="system-status-header">
                         <div class="status-indicator" id="status-dot"></div>
-                        <span id="connection-status">系統連線中...</span>
-                        <span id="last-update" class="last-update-text">等待數據</span>
+                        <span id="connection-status">正常連線中</span>
                     </div>
                     <div class="user-profile">
-                        <span class="vip-tag">💎 Elite 會員</span>
+                        <span class="vip-tag">💎 Elite</span>
                     </div>
                 </div>
             </header>
 
+            <!-- 策略狀態條：集中顯示新聞與事件 -->
+            <div class="action-strip glass-panel">
+                <div class="news-ticker-area">
+                    <span id="alert-tag" class="news-tag">LIVE</span>
+                    <div id="global-alert" class="news-content-wrapper">
+                        <span id="alert-text" class="news-text">正在偵測全球市場情緒...</span>
+                    </div>
+                </div>
+                
+                <div class="vertical-divider"></div>
+
+                <div class="event-ticker-area">
+                    <span class="event-title-h">📅 事件倒數</span>
+                    <div id="event-timer-list" class="event-horizontal-list">
+                        <!-- 由 JS 填充橫項卡片 -->
+                    </div>
+                </div>
+
+                <div id="safe-mode-alert" class="safe-mode-pill" style="display: none;">
+                    🛡️ 避險中: <span id="safe-event-name">--</span>
+                </div>
+            </div>
             <div class="dashboard-grid">
                 <!-- 主信號卡片 -->
                 <div class="signal-card glass-panel" id="card-btc">
@@ -168,6 +212,9 @@
                                     </ul>
                                 </div>
                             </div>
+                            
+                            <!-- 數據來源與倒數提示 -->
+                            <div id="data-source-badge" class="data-source-badge" style="display: none;"></div>
 
                             <!-- 全屏快速切換幣別 -->
                             <div class="h-symbol-switcher" id="h-symbol-switcher">
@@ -253,6 +300,7 @@
                         </div>
                     </div>
                 </div>
+
             </div>
 
             <!-- 其他幣種微縮卡片 -->
@@ -290,7 +338,7 @@
     </div>
 
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
-    <script src="app.js"></script>
+    <script src="app.js?v=20260321"></script>
 
     <!-- 教學 Modal -->
     <div class="modal-overlay" id="tutorial-modal">
