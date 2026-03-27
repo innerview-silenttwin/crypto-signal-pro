@@ -1002,6 +1002,35 @@ async def list_sectors():
         results.append(mgr.get_summary())
     return results
 
+# ── 自動交易守護程式控制（必須在 {sector_id} 路由之前）──
+
+@app.post("/api/sector-trading/auto-trader/start")
+async def start_auto_trader():
+    """啟動背景自動交易"""
+    ok = sector_auto_trader.start()
+    return {"started": ok, **sector_auto_trader.get_status()}
+
+@app.post("/api/sector-trading/auto-trader/stop")
+async def stop_auto_trader():
+    """停止背景自動交易"""
+    ok = sector_auto_trader.stop()
+    return {"stopped": ok, **sector_auto_trader.get_status()}
+
+@app.get("/api/sector-trading/auto-trader/status")
+async def get_auto_trader_status():
+    """取得自動交易狀態"""
+    return sector_auto_trader.get_status()
+
+@app.post("/api/sector-trading/auto-trader/run-once")
+async def run_auto_trader_once():
+    """手動觸發一次交易檢查"""
+    import threading
+    t = threading.Thread(target=sector_auto_trader.run_once_now, daemon=True)
+    t.start()
+    return {"triggered": True, "message": "已觸發一次交易檢查，請稍後查看結果"}
+
+# ── 類股個別操作 ──
+
 @app.get("/api/sector-trading/{sector_id}/status")
 async def get_sector_status(sector_id: str):
     """取得單一類股帳戶摘要"""
@@ -1053,33 +1082,6 @@ async def reset_sector_account(sector_id: str):
         return {"error": f"未知的類股 ID: {sector_id}"}
     mgr.reset_account()
     return {"success": True}
-
-# ── 自動交易守護程式控制 ──
-
-@app.post("/api/sector-trading/auto-trader/start")
-async def start_auto_trader():
-    """啟動背景自動交易"""
-    ok = sector_auto_trader.start()
-    return {"started": ok, **sector_auto_trader.get_status()}
-
-@app.post("/api/sector-trading/auto-trader/stop")
-async def stop_auto_trader():
-    """停止背景自動交易"""
-    ok = sector_auto_trader.stop()
-    return {"stopped": ok, **sector_auto_trader.get_status()}
-
-@app.get("/api/sector-trading/auto-trader/status")
-async def get_auto_trader_status():
-    """取得自動交易狀態"""
-    return sector_auto_trader.get_status()
-
-@app.post("/api/sector-trading/auto-trader/run-once")
-async def run_auto_trader_once():
-    """手動觸發一次交易檢查"""
-    import threading
-    t = threading.Thread(target=sector_auto_trader.run_once_now, daemon=True)
-    t.start()
-    return {"triggered": True, "message": "已觸發一次交易檢查，請稍後查看結果"}
 
 
 if __name__ == "__main__":
