@@ -10,3 +10,4 @@
 from .base import BaseLayer, LayerModifier, LayerRegistry
 from .regime import RegimeLayer
 from .fundamental import FundamentalLayer
+from .sentiment import SentimentLayer

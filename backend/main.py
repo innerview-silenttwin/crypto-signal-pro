@@ -1156,6 +1156,7 @@ async def get_stock_analysis(symbol: str):
     """
     from layers.fundamental import fetch_twse_pe_all, FundamentalLayer, _strip_tw
     from layers.regime import RegimeLayer
+    from layers.sentiment import get_stock_sentiment, get_market_sentiment, fetch_rss_articles
     from sector_auto_trader import fetch_signal_data
     from signals.aggregator import SignalAggregator
     import pandas as pd
@@ -1277,12 +1278,41 @@ async def get_stock_analysis(symbol: str):
             "advice": tech_advice,
         }
 
-    # ── 3. 消息面（Phase 3 預留）──
-    result["sentiment"] = {"status": "coming_soon", "buy_score": None, "message": "消息面情緒分析即將推出"}
+    # ── 3. 消息面情緒分析 ──
+    sent_buy_score = None
+    try:
+        articles = fetch_rss_articles()
+        stock_name = result.get("fundamental", {}).get("name", "") if result.get("fundamental") else ""
+        sentiment = get_stock_sentiment(symbol, stock_name, articles)
+        market_sent = get_market_sentiment(articles)
+
+        # 情緒做多分數（0~100）
+        raw_sent = sentiment["score"]  # -100 ~ +100
+        sent_buy_score = round(max(0, min(100, 50 + raw_sent * 0.5)), 1)
+
+        result["sentiment"] = {
+            "status": "active",
+            "buy_score": sent_buy_score,
+            "score": sentiment["score"],
+            "label": sentiment["sentiment_label"],
+            "advice": sentiment["advice"],
+            "positive_count": sentiment["positive_count"],
+            "negative_count": sentiment["negative_count"],
+            "total_related": sentiment["total_related"],
+            "recent_news": sentiment["recent_news"],
+            "market": {
+                "score": market_sent["score"],
+                "label": market_sent["label"],
+                "positive_pct": market_sent.get("positive_pct", 0),
+            },
+        }
+    except Exception as e:
+        print(f"⚠️ 消息面分析失敗: {e}")
+        result["sentiment"] = {"status": "error", "buy_score": None, "message": str(e)}
 
     # ── 4. 綜合做多建議 ──
     scores = []
-    score_weights = {"technical": 0.45, "fundamental": 0.35, "regime": 0.20}
+    score_weights = {"technical": 0.40, "fundamental": 0.30, "regime": 0.15, "sentiment": 0.15}
     for key, w in score_weights.items():
         layer = result.get(key)
         if layer and layer.get("buy_score") is not None:

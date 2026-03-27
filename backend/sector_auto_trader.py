@@ -28,7 +28,7 @@ from sector_trader import (
     get_all_managers, SectorTradingManager,
     SECTOR_STOCKS, SECTOR_IDS,
 )
-from layers import RegimeLayer, FundamentalLayer, LayerRegistry
+from layers import RegimeLayer, FundamentalLayer, SentimentLayer, LayerRegistry
 
 
 # ── 行情快取 ──
@@ -121,6 +121,7 @@ def build_layers(strategy: dict) -> list:
     layers_config = strategy.get("layers", {
         "regime": {"enabled": True},
         "fundamental": {"enabled": True},
+        "sentiment": {"enabled": True},
     })
     layers = []
 
@@ -133,6 +134,11 @@ def build_layers(strategy: dict) -> list:
     fund_cfg = layers_config.get("fundamental", {"enabled": True})
     if fund_cfg.get("enabled", True):
         layers.append(FundamentalLayer(enabled=True))
+
+    # Sentiment layer（預設啟用）
+    sent_cfg = layers_config.get("sentiment", {"enabled": True})
+    if sent_cfg.get("enabled", True):
+        layers.append(SentimentLayer(enabled=True))
 
     return layers
 

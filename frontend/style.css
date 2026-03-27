@@ -2204,6 +2204,41 @@ a.event-item:hover {
 .tla-badge.fair      { background: rgba(245,158,11,0.12); color: #f59e0b; }
 .tla-badge.coming    { background: rgba(148,163,184,0.1); color: #94a3b8; }
 
+/* ── 新聞列表 ── */
+.tla-news-list {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.tla-news-item {
+    padding: 4px 8px;
+    border-radius: 6px;
+    border-left: 3px solid var(--border-color);
+    background: rgba(255,255,255,0.03);
+}
+.tla-news-item.news-pos { border-left-color: #10b981; }
+.tla-news-item.news-neg { border-left-color: #ef4444; }
+.tla-news-item.news-neu { border-left-color: #94a3b8; }
+.tla-news-link {
+    display: block;
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--text-main);
+    text-decoration: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.tla-news-link:hover {
+    color: var(--accent);
+    text-decoration: underline;
+}
+.tla-news-src {
+    font-size: 9px;
+    color: var(--text-muted);
+}
+
 /* ── 分數 Badge (卡片 header 右側) ── */
 .tla-score-badge {
     margin-left: auto;

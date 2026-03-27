@@ -797,7 +797,7 @@ function renderThreeLayerAnalysis(data) {
             </div>
             <div class="rec-info">
                 <div class="rec-action ${actionCls}">${rec.action}</div>
-                <div class="rec-detail">綜合做多評分 (技術45% + 基本面35% + 盤勢20%)</div>
+                <div class="rec-detail">綜合做多評分 (技術40% + 基本面30% + 盤勢15% + 消息面15%)</div>
             </div>`;
     } else {
         recEl.style.display = 'none';
@@ -909,7 +909,55 @@ function renderThreeLayerAnalysis(data) {
     const sentEl = document.getElementById('tla-sentiment');
     const sentScoreBadge = document.getElementById('tla-sent-score');
     sentScoreBadge.textContent = '';
-    if (data.sentiment && data.sentiment.status === 'coming_soon') {
+
+    if (data.sentiment && data.sentiment.status === 'active') {
+        const s = data.sentiment;
+
+        // 分數 badge
+        if (s.buy_score != null) {
+            sentScoreBadge.textContent = s.buy_score + '分';
+            sentScoreBadge.className = 'tla-score-badge ' + _scoreBadgeCls(s.buy_score);
+        }
+
+        const labelCls = s.score >= 5 ? 'bullish' : s.score <= -5 ? 'bearish' : 'neutral';
+
+        let newsHtml = '';
+        if (s.recent_news && s.recent_news.length > 0) {
+            newsHtml = '<div class="tla-news-list">';
+            for (const n of s.recent_news.slice(0, 3)) {
+                const sCls = n.sentiment === '正面' ? 'news-pos' : n.sentiment === '負面' ? 'news-neg' : 'news-neu';
+                newsHtml += `<div class="tla-news-item ${sCls}">
+                    <a href="${n.link}" target="_blank" rel="noopener" class="tla-news-link">${n.title}</a>
+                    <span class="tla-news-src">${n.source}</span>
+                </div>`;
+            }
+            newsHtml += '</div>';
+        } else {
+            newsHtml = '<div style="font-size:11px; color:var(--text-muted); margin-top:4px;">無個股相關新聞</div>';
+        }
+
+        let marketHtml = '';
+        if (s.market) {
+            marketHtml = `
+                <div class="tla-row">
+                    <span class="tla-row-label">市場氣氛</span>
+                    <span class="tla-row-value">${s.market.label}</span>
+                </div>`;
+        }
+
+        sentEl.innerHTML = `
+            <div class="tla-row">
+                <span class="tla-row-label">情緒</span>
+                <span class="tla-badge ${labelCls}">${s.label}（${s.score > 0 ? '+' : ''}${s.score}分）</span>
+            </div>
+            <div class="tla-row">
+                <span class="tla-row-label">相關新聞</span>
+                <span class="tla-row-value">${s.total_related}則（正${s.positive_count} / 負${s.negative_count}）</span>
+            </div>
+            ${marketHtml}
+            ${newsHtml}
+            ${s.advice ? `<div class="tla-advice">${s.advice}</div>` : ''}`;
+    } else if (data.sentiment && data.sentiment.status === 'coming_soon') {
         sentEl.innerHTML = '<span class="tla-badge coming">Phase 3 即將推出</span><div style="margin-top:6px; font-size:11px; color:var(--text-muted)">RSS 監控 + 關鍵字情緒分析</div>';
     } else {
         sentEl.innerHTML = '<span style="color:var(--text-muted)">--</span>';
