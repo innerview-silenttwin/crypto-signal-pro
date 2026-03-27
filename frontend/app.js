@@ -505,6 +505,13 @@ window.changeSymbol = async function (sym, market = 'crypto') {
         fetchTwSignals(sym, market);
     }
 
+    // 台股三面分析
+    if (market === 'stock') {
+        fetchThreeLayerAnalysis(sym);
+    } else {
+        hideThreeLayerAnalysis();
+    }
+
     // 只在 Crypto 模式下顯示即時訊號卡片
     if (market === 'crypto' && lastServerData.length > 0) {
         processData(lastServerData);
@@ -720,6 +727,152 @@ async function fetchTwSignals(symbol, market) {
         console.error('TW signal fetch error:', e);
         clearSignalCard(market, false);
     }
+}
+
+// ══════════════════════════════════════════
+// 三面分析 (Three-Layer Analysis)
+// ══════════════════════════════════════════
+
+const REGIME_LABELS = {
+    '強勢多頭': { cls: 'bullish', text: '強勢多頭' },
+    '多頭':     { cls: 'bullish', text: '多頭' },
+    '盤整':     { cls: 'neutral', text: '盤整' },
+    '空頭':     { cls: 'bearish', text: '空頭' },
+    '高檔轉折': { cls: 'bearish', text: '高檔轉折' },
+    '底部轉強': { cls: 'bullish', text: '底部轉強' },
+};
+
+const VALUATION_LABELS = {
+    '明顯低估': { cls: 'underval' },
+    '偏低估':   { cls: 'underval' },
+    '合理':     { cls: 'fair' },
+    '偏高估':   { cls: 'overval' },
+    '明顯高估': { cls: 'overval' },
+};
+
+async function fetchThreeLayerAnalysis(symbol) {
+    const container = document.getElementById('three-layer-analysis');
+    if (!container) return;
+
+    // 顯示載入中
+    container.style.display = 'block';
+    document.getElementById('tla-technical').innerHTML = '<span style="color:var(--text-muted)">載入中...</span>';
+    document.getElementById('tla-fundamental').innerHTML = '<span style="color:var(--text-muted)">載入中...</span>';
+    document.getElementById('tla-sentiment').innerHTML = '<span style="color:var(--text-muted)">載入中...</span>';
+
+    try {
+        const res = await fetch(`/api/stock-analysis?symbol=${encodeURIComponent(symbol)}`);
+        if (!res.ok) throw new Error(res.statusText);
+        const data = await res.json();
+        renderThreeLayerAnalysis(data);
+    } catch (e) {
+        console.error('Three-layer analysis error:', e);
+        document.getElementById('tla-technical').innerHTML = '無法載入';
+        document.getElementById('tla-fundamental').innerHTML = '無法載入';
+        document.getElementById('tla-sentiment').innerHTML = '無法載入';
+    }
+}
+
+function renderThreeLayerAnalysis(data) {
+    // ── 技術面 ──
+    const techEl = document.getElementById('tla-technical');
+    if (data.technical) {
+        const t = data.technical;
+        const dirCls = t.direction === 'BUY' ? 'bullish' : t.direction === 'SELL' ? 'bearish' : 'neutral';
+        const dirText = t.direction === 'BUY' ? '做多' : t.direction === 'SELL' ? '做空' : '中性';
+
+        let regimeHtml = '';
+        if (data.regime) {
+            const r = data.regime;
+            const rStyle = REGIME_LABELS[r.state] || { cls: 'neutral', text: r.state };
+            regimeHtml = `
+                <div class="tla-row">
+                    <span class="tla-row-label">盤勢</span>
+                    <span class="tla-badge ${rStyle.cls}">${rStyle.text}</span>
+                </div>`;
+            if (r.position && r.position.percentile != null) {
+                regimeHtml += `
+                <div class="tla-row">
+                    <span class="tla-row-label">位階</span>
+                    <span class="tla-row-value">${r.position.percentile}%</span>
+                </div>`;
+            }
+            if (r.ma_alignment && r.ma_alignment.score != null) {
+                regimeHtml += `
+                <div class="tla-row">
+                    <span class="tla-row-label">均線排列</span>
+                    <span class="tla-row-value">${r.ma_alignment.score}/6</span>
+                </div>`;
+            }
+            if (r.volume_pattern && r.volume_pattern.reason) {
+                regimeHtml += `
+                <div class="tla-row">
+                    <span class="tla-row-label">量價</span>
+                    <span class="tla-row-value" style="font-size:10px;max-width:140px;text-align:right">${r.volume_pattern.reason}</span>
+                </div>`;
+            }
+        }
+
+        techEl.innerHTML = `
+            <div class="tla-row">
+                <span class="tla-row-label">方向</span>
+                <span class="tla-badge ${dirCls}">${dirText} ${t.confidence}分</span>
+            </div>
+            <div class="tla-row">
+                <span class="tla-row-label">買/賣分數</span>
+                <span class="tla-row-value">${t.buy_score} / ${t.sell_score}</span>
+            </div>
+            <div class="tla-row">
+                <span class="tla-row-label">信號強度</span>
+                <span class="tla-row-value">${t.signal_level}</span>
+            </div>
+            ${regimeHtml}`;
+    } else {
+        techEl.innerHTML = '<span style="color:var(--text-muted)">數據不足</span>';
+    }
+
+    // ── 基本面 ──
+    const fundEl = document.getElementById('tla-fundamental');
+    if (data.fundamental) {
+        const f = data.fundamental;
+        const vStyle = VALUATION_LABELS[f.valuation] || { cls: 'fair' };
+        const peText = f.pe != null ? f.pe.toFixed(1) : '--';
+        const dyText = f.dy != null ? f.dy.toFixed(1) + '%' : '--';
+        const pbText = f.pb != null ? f.pb.toFixed(2) : '--';
+
+        fundEl.innerHTML = `
+            <div class="tla-row">
+                <span class="tla-row-label">估值評等</span>
+                <span class="tla-badge ${vStyle.cls}">${f.valuation}</span>
+            </div>
+            <div class="tla-row">
+                <span class="tla-row-label">本益比 (P/E)</span>
+                <span class="tla-row-value">${peText}</span>
+            </div>
+            <div class="tla-row">
+                <span class="tla-row-label">殖利率</span>
+                <span class="tla-row-value">${dyText}</span>
+            </div>
+            <div class="tla-row">
+                <span class="tla-row-label">股價淨值比</span>
+                <span class="tla-row-value">${pbText}</span>
+            </div>`;
+    } else {
+        fundEl.innerHTML = '<span style="color:var(--text-muted)">無基本面資料</span>';
+    }
+
+    // ── 消息面 ──
+    const sentEl = document.getElementById('tla-sentiment');
+    if (data.sentiment && data.sentiment.status === 'coming_soon') {
+        sentEl.innerHTML = '<span class="tla-badge coming">Phase 3 即將推出</span><div style="margin-top:6px; font-size:11px; color:var(--text-muted)">RSS 監控 + 關鍵字情緒分析</div>';
+    } else {
+        sentEl.innerHTML = '<span style="color:var(--text-muted)">--</span>';
+    }
+}
+
+function hideThreeLayerAnalysis() {
+    const container = document.getElementById('three-layer-analysis');
+    if (container) container.style.display = 'none';
 }
 
 function initExpandLogic() {
@@ -1531,23 +1684,43 @@ document.addEventListener('DOMContentLoaded', () => {
     const futuresInput = document.getElementById('futures-symbol-input');
     const globalLoadBtn = document.getElementById('global-load-btn');
 
+    const switchToStock = (raw) => {
+        if (marketSelect) marketSelect.value = 'stock';
+        if (cryptoInput) cryptoInput.style.display = 'none';
+        if (stockInput) { stockInput.style.display = 'block'; stockInput.value = raw; }
+        if (futuresInput) futuresInput.style.display = 'none';
+        const symbol = raw.includes('.') ? raw : `${raw}.TW`;
+        window.changeSymbol(symbol, 'stock');
+    };
+
     const handleSearch = () => {
         const m = marketSelect.value;
         // 取得當前可見輸入框的值
         const activeInput = m === 'crypto' ? cryptoInput :
                             m === 'stock' ? stockInput : futuresInput;
         let raw = activeInput ? activeInput.value.trim() : '';
+
+        // 如果當前輸入框空的，嘗試從其他輸入框取值（用戶可能在錯的輸入框打字）
+        if (!raw) {
+            [cryptoInput, stockInput, futuresInput].forEach(inp => {
+                if (!raw && inp && inp.value.trim()) raw = inp.value.trim();
+            });
+        }
         if (!raw) return;
 
-        // 智慧偵測：純數字 4 碼 → 台股代碼，自動切換市場
-        const isTwStockCode = /^\d{4,6}$/.test(raw);
-        if (isTwStockCode && m !== 'stock') {
-            // 自動切到台股
+        // 智慧偵測：純數字 4~6 碼 → 台股代碼，自動切換市場
+        if (/^\d{4,6}$/.test(raw)) {
+            switchToStock(raw);
+            return;
+        }
+
+        // 智慧偵測：中文股名 → 台股，無論在哪個市場模式
+        if (stockNameSearchMapping[raw]) {
+            const symbol = stockNameSearchMapping[raw];
             if (marketSelect) marketSelect.value = 'stock';
             if (cryptoInput) cryptoInput.style.display = 'none';
             if (stockInput) { stockInput.style.display = 'block'; stockInput.value = raw; }
             if (futuresInput) futuresInput.style.display = 'none';
-            const symbol = raw.includes('.') ? raw : `${raw}.TW`;
             window.changeSymbol(symbol, 'stock');
             return;
         }
@@ -1557,7 +1730,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const symbol = cryptoNames[raw] || (raw.includes('/') ? raw : `${raw}/USDT`);
             window.changeSymbol(symbol, 'crypto');
         } else if (m === 'stock') {
-            const symbol = stockNameSearchMapping[raw] || (raw.includes('.') ? raw : `${raw}.TW`);
+            const symbol = raw.includes('.') ? raw : `${raw}.TW`;
             window.changeSymbol(symbol, 'stock');
         } else if (m === 'futures') {
             raw = raw.toUpperCase();
@@ -1567,9 +1740,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (globalLoadBtn) globalLoadBtn.addEventListener('click', handleSearch);
     [cryptoInput, stockInput, futuresInput].forEach(inp => {
-        if (inp) inp.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') handleSearch();
-        });
+        if (inp) {
+            inp.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') { e.preventDefault(); handleSearch(); }
+            });
+            // type="search" 在部分瀏覽器按 Enter 會觸發 search 事件
+            inp.addEventListener('search', (e) => { e.preventDefault(); handleSearch(); });
+        }
     });
 
     if (marketSelect) {

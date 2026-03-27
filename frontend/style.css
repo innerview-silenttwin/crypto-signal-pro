@@ -2107,3 +2107,105 @@ a.event-item:hover {
     box-shadow: 0 10px 25px rgba(139, 115, 85, 0.12);
     border-color: var(--border-color);
 }
+
+/* ══════════════════════════════════════
+   三面分析 (Three-Layer Analysis)
+   ══════════════════════════════════════ */
+.three-layer-analysis {
+    margin-top: 20px;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.tla-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-main);
+    margin-bottom: 12px;
+    padding-left: 2px;
+}
+
+.tla-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+}
+
+.tla-card {
+    padding: 16px;
+    border-radius: 16px;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.tla-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(167, 139, 250, 0.12);
+}
+
+.tla-card-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.tla-icon {
+    font-size: 16px;
+}
+
+.tla-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.tla-body {
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.7;
+}
+
+.tla-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 3px 0;
+}
+
+.tla-row-label {
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+.tla-row-value {
+    font-weight: 600;
+    font-size: 12px;
+}
+
+.tla-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.tla-badge.bullish   { background: rgba(16,185,129,0.12); color: #10b981; }
+.tla-badge.bearish   { background: rgba(239,68,68,0.12);  color: #ef4444; }
+.tla-badge.neutral   { background: rgba(245,158,11,0.12); color: #f59e0b; }
+.tla-badge.underval  { background: rgba(16,185,129,0.12); color: #10b981; }
+.tla-badge.overval   { background: rgba(239,68,68,0.12);  color: #ef4444; }
+.tla-badge.fair      { background: rgba(245,158,11,0.12); color: #f59e0b; }
+.tla-badge.coming    { background: rgba(148,163,184,0.1); color: #94a3b8; }
+
+@media (max-width: 768px) {
+    .tla-grid {
+        grid-template-columns: 1fr;
+    }
+}

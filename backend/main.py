@@ -1148,6 +1148,83 @@ async def get_sector_regime(sector_id: str):
     return {"sector_id": sector_id, "stocks": results}
 
 
+@app.get("/api/stock-analysis")
+async def get_stock_analysis(symbol: str):
+    """
+    單一股票三面分析：技術面摘要 + 基本面 P/E + 盤勢辨識
+    用於首頁查詢台股時一次揭露完整資訊。
+    """
+    from layers.fundamental import fetch_twse_pe_all, FundamentalLayer, _strip_tw
+    from layers.regime import RegimeLayer
+    from sector_auto_trader import fetch_signal_data
+    from signals.aggregator import SignalAggregator
+    import pandas as pd
+
+    result = {"symbol": symbol, "fundamental": None, "regime": None, "technical": None}
+
+    # ── 1. 基本面 P/E ──
+    all_pe = fetch_twse_pe_all()
+    code = _strip_tw(symbol)
+    if all_pe and code in all_pe:
+        info = all_pe[code]
+        pe = info.get("pe")
+        dy = info.get("dy")
+        pb = info.get("pb")
+
+        # 估值判斷
+        valuation = "無數據"
+        if pe is not None and pe > 0:
+            if pe < 8:
+                valuation = "明顯低估"
+            elif pe < 12:
+                valuation = "偏低估"
+            elif pe < 20:
+                valuation = "合理"
+            elif pe < 30:
+                valuation = "偏高估"
+            else:
+                valuation = "明顯高估"
+
+        result["fundamental"] = {
+            "pe": pe, "dy": dy, "pb": pb,
+            "name": info.get("name", ""),
+            "valuation": valuation,
+        }
+
+    # ── 2. 盤勢辨識 + 技術面摘要 ──
+    df = fetch_signal_data(symbol)
+    if df is not None and len(df) >= 120:
+        regime_layer = RegimeLayer(enabled=True)
+        modifier = regime_layer.compute_modifier(symbol, df)
+        details = _sanitize(modifier.details) if modifier.details else {}
+        result["regime"] = {
+            "state": modifier.regime or "未知",
+            "reason": modifier.reason,
+            "confidence": details.get("confidence", 0),
+            "trend": details.get("trend", {}),
+            "ma_alignment": details.get("ma_alignment", {}),
+            "position": details.get("position", {}),
+            "kline_pattern": details.get("kline_pattern", {}),
+            "volume_pattern": details.get("volume_pattern", {}),
+        }
+
+        # 技術面指標摘要
+        agg = SignalAggregator()
+        signal = agg.analyze(df.copy(), symbol, "1d")
+        result["technical"] = {
+            "buy_score": round(float(signal.buy_score), 1),
+            "sell_score": round(float(signal.sell_score), 1),
+            "direction": signal.direction,
+            "confidence": round(float(signal.confidence), 1),
+            "signal_level": signal.signal_level,
+        }
+
+    # ── 3. 消息面（Phase 3 預留）──
+    result["sentiment"] = {"status": "coming_soon", "message": "消息面情緒分析即將推出"}
+
+    return result
+
+
 @app.get("/api/sector-trading/{sector_id}/fundamental")
 async def get_sector_fundamental(sector_id: str):
     """取得類股各標的基本面 P/E 分析"""
