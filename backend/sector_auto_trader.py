@@ -28,7 +28,7 @@ from sector_trader import (
     get_all_managers, SectorTradingManager,
     SECTOR_STOCKS, SECTOR_IDS,
 )
-from layers import RegimeLayer, LayerRegistry
+from layers import RegimeLayer, FundamentalLayer, LayerRegistry
 
 
 # ── 行情快取 ──
@@ -118,13 +118,21 @@ def compute_signal(df: pd.DataFrame, weights: dict, symbol: str,
 
 def build_layers(strategy: dict) -> list:
     """根據策略配置建立分析層"""
-    layers_config = strategy.get("layers", {"regime": {"enabled": True}})
+    layers_config = strategy.get("layers", {
+        "regime": {"enabled": True},
+        "fundamental": {"enabled": True},
+    })
     layers = []
 
     # Regime layer（預設啟用）
     regime_cfg = layers_config.get("regime", {"enabled": True})
     if regime_cfg.get("enabled", True):
         layers.append(RegimeLayer(enabled=True))
+
+    # Fundamental layer（預設啟用）
+    fund_cfg = layers_config.get("fundamental", {"enabled": True})
+    if fund_cfg.get("enabled", True):
+        layers.append(FundamentalLayer(enabled=True))
 
     return layers
 

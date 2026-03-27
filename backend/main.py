@@ -1148,6 +1148,31 @@ async def get_sector_regime(sector_id: str):
     return {"sector_id": sector_id, "stocks": results}
 
 
+@app.get("/api/sector-trading/{sector_id}/fundamental")
+async def get_sector_fundamental(sector_id: str):
+    """取得類股各標的基本面 P/E 分析"""
+    mgr = get_manager(sector_id)
+    if not mgr:
+        return {"error": f"未知的類股 ID: {sector_id}"}
+
+    from layers.fundamental import fetch_twse_pe_all, get_sector_pe_stats
+
+    symbols = mgr.state.get("stocks", [])
+    all_pe = fetch_twse_pe_all()
+
+    if not all_pe:
+        return {"sector_id": sector_id, "stocks": {}, "error": "無法取得 TWSE P/E 資料"}
+
+    stats = get_sector_pe_stats(symbols, all_pe)
+
+    # 補上股票中文名
+    for sym in stats:
+        if not stats[sym].get("name"):
+            stats[sym]["name"] = mgr.stocks.get(sym, sym)
+
+    return {"sector_id": sector_id, "stocks": _sanitize(stats)}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

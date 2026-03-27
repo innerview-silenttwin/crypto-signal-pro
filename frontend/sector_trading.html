@@ -358,6 +358,12 @@
                             <div id="regime-list" style="font-size:12px; color:var(--text-muted)">載入中...</div>
                         </div>
 
+                        <!-- 基本面分析 -->
+                        <div class="card glass-panel" style="padding:18px; margin-bottom:16px">
+                            <h4 style="font-size:14px; margin-bottom:10px; color:var(--text-main)">基本面分析</h4>
+                            <div id="fundamental-list" style="font-size:12px; color:var(--text-muted)">載入中...</div>
+                        </div>
+
                         <!-- 持倉 -->
                         <div class="card glass-panel" style="padding:18px; margin-bottom:16px">
                             <h4 style="font-size:14px; margin-bottom:10px; color:var(--text-main)">當前持倉</h4>
@@ -453,6 +459,7 @@
                 refreshAutoStatus();
                 refreshHistory();
                 refreshRegime();
+                refreshFundamental();
                 document.getElementById('last-refresh').textContent = '最後更新: ' + new Date().toLocaleTimeString();
             } catch (e) {
                 console.error('refresh error', e);
@@ -545,6 +552,59 @@
                     <div style="display:flex; align-items:center; gap:4px">
                         <span style="font-size:10px; color:${style.color}; font-weight:700">${style.icon} ${s.regime}</span>
                         <span style="font-size:9px; color:var(--text-muted)">${s.buy_score}/${s.sell_score}</span>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        // ── Fundamental ──
+        const VALUATION_STYLES = {
+            '明顯低估': { color: '#10b981', icon: '💰', bg: 'rgba(16,185,129,0.08)' },
+            '偏低估':   { color: '#34d399', icon: '📗', bg: 'rgba(52,211,153,0.08)' },
+            '合理':     { color: '#f59e0b', icon: '📊', bg: 'rgba(245,158,11,0.08)' },
+            '偏高估':   { color: '#f87171', icon: '📕', bg: 'rgba(248,113,113,0.08)' },
+            '明顯高估': { color: '#ef4444', icon: '⚠️', bg: 'rgba(239,68,68,0.08)' },
+            '無數據':   { color: '#94a3b8', icon: '—',  bg: 'rgba(148,163,184,0.05)' },
+        };
+
+        async function refreshFundamental() {
+            try {
+                const res = await fetch(API + `/api/sector-trading/${currentSector}/fundamental`);
+                const data = await res.json();
+                renderFundamental(data);
+            } catch(e) {
+                console.error('refreshFundamental error:', e);
+            }
+        }
+
+        function renderFundamental(data) {
+            const el = document.getElementById('fundamental-list');
+            if (!data || !data.stocks) {
+                el.innerHTML = '<div style="color:var(--text-muted)">無數據</div>';
+                return;
+            }
+            const stocks = data.stocks;
+            const keys = Object.keys(stocks);
+            if (keys.length === 0) {
+                el.innerHTML = '<div style="color:var(--text-muted)">無數據</div>';
+                return;
+            }
+            el.innerHTML = keys.map(sym => {
+                const s = stocks[sym];
+                const valuation = s.valuation || '無數據';
+                const style = VALUATION_STYLES[valuation] || VALUATION_STYLES['無數據'];
+                const pe = s.pe != null ? `P/E:${s.pe.toFixed(1)}` : 'P/E:--';
+                const dy = s.dy != null ? `殖利率:${s.dy.toFixed(1)}%` : '';
+                const pb = s.pb != null ? `P/B:${s.pb.toFixed(2)}` : '';
+                const median = s.sector_median_pe != null ? `(類股中位:${s.sector_median_pe})` : '';
+                return `<div style="padding:6px 8px; margin-bottom:4px; border-radius:8px; background:${style.bg}; display:flex; justify-content:space-between; align-items:center">
+                    <div>
+                        <span style="font-weight:700; color:var(--text-main); font-size:12px">${s.name || sym}</span>
+                        <span style="font-size:10px; color:var(--text-muted); margin-left:4px">${pe} ${median}</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:4px">
+                        <span style="font-size:10px; color:${style.color}; font-weight:700">${style.icon} ${valuation}</span>
+                        <span style="font-size:9px; color:var(--text-muted)">${dy} ${pb}</span>
                     </div>
                 </div>`;
             }).join('');
