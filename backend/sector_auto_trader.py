@@ -28,6 +28,7 @@ from sector_trader import (
     get_all_managers, SectorTradingManager,
     SECTOR_STOCKS, SECTOR_IDS,
 )
+from layers import RegimeLayer, LayerRegistry
 
 
 # ── 行情快取 ──
@@ -87,18 +88,25 @@ def fetch_signal_data(symbol: str, lookback_days: int = 250) -> Optional[pd.Data
 
 # ── 信號計算 ──
 
-def compute_signal(df: pd.DataFrame, weights: dict, symbol: str) -> Optional[dict]:
-    """計算信號分數"""
+def compute_signal(df: pd.DataFrame, weights: dict, symbol: str,
+                    layers=None, sector_id: str = "") -> Optional[dict]:
+    """計算信號分數（含分析層修正）"""
     try:
         aggregator = SignalAggregator(weights=weights)
-        df_calc = aggregator.calculate_all(df.copy())
-        signal = aggregator.generate_signals(df_calc, symbol, "1d")
+        signal = aggregator.analyze(
+            df.copy(), symbol, "1d",
+            layers=layers, sector_id=sector_id,
+        )
         return {
             "direction": signal.direction,
             "confidence": signal.confidence,
             "buy_score": signal.buy_score,
             "sell_score": signal.sell_score,
+            "raw_buy_score": signal.raw_buy_score,
+            "raw_sell_score": signal.raw_sell_score,
             "signal_level": signal.signal_level,
+            "regime": signal.regime,
+            "layer_reasons": [m.reason for m in signal.layer_modifiers if m.reason],
             "summary": signal.summary(),
         }
     except Exception as e:
@@ -108,8 +116,21 @@ def compute_signal(df: pd.DataFrame, weights: dict, symbol: str) -> Optional[dic
 
 # ── 單一類股交易循環 ──
 
+def build_layers(strategy: dict) -> list:
+    """根據策略配置建立分析層"""
+    layers_config = strategy.get("layers", {"regime": {"enabled": True}})
+    layers = []
+
+    # Regime layer（預設啟用）
+    regime_cfg = layers_config.get("regime", {"enabled": True})
+    if regime_cfg.get("enabled", True):
+        layers.append(RegimeLayer(enabled=True))
+
+    return layers
+
+
 def process_sector(manager: SectorTradingManager):
-    """處理單一類股的交易邏輯"""
+    """處理單一類股的交易邏輯（含盤勢辨識層）"""
     if not manager.state["is_active"]:
         return
 
@@ -119,6 +140,9 @@ def process_sector(manager: SectorTradingManager):
     sell_th = strategy["sell_threshold"]
     stop_loss = strategy["stop_loss_pct"]
     take_profit = strategy["take_profit_pct"]
+
+    # 建立分析層
+    layers = build_layers(strategy)
 
     current_prices = {}
 
@@ -131,10 +155,20 @@ def process_sector(manager: SectorTradingManager):
         price = float(df['close'].iloc[-1])
         current_prices[symbol] = price
 
-        # 2. 計算信號
-        sig = compute_signal(df, weights, symbol)
+        # 2. 計算信號（含分析層修正）
+        sig = compute_signal(df, weights, symbol,
+                             layers=layers, sector_id=manager.sector_id)
         if sig is None:
             continue
+
+        # Log regime info
+        if sig.get("regime"):
+            regime_reasons = sig.get("layer_reasons", [])
+            reason_str = " | ".join(regime_reasons) if regime_reasons else ""
+            print(f"  [{manager.sector_name}] {symbol} 盤勢:{sig['regime']} "
+                  f"買:{sig['buy_score']:.0f}(原{sig['raw_buy_score']:.0f}) "
+                  f"賣:{sig['sell_score']:.0f}(原{sig['raw_sell_score']:.0f}) "
+                  f"{reason_str}")
 
         # 3. 檢查停損/停利（已持倉）
         hold = manager.state["holdings"].get(symbol)
@@ -154,17 +188,17 @@ def process_sector(manager: SectorTradingManager):
                 )
                 continue
 
-        # 4. 信號交易
+        # 4. 信號交易（含盤勢修正後的分數）
+        regime_tag = f" [{sig['regime']}]" if sig.get("regime") else ""
         if hold and hold["qty"] > 0:
             # 已持倉 → 只看賣出信號
             if sig["direction"] == "SELL" and sig["confidence"] >= sell_th:
-                desc = f"賣出信號 ({sig['confidence']:.0f}分, {sig['signal_level']})"
+                desc = f"賣出信號 ({sig['confidence']:.0f}分, {sig['signal_level']}){regime_tag}"
                 manager.execute_trade(symbol, "SELL", price, desc)
         else:
             # 無持倉 → 只看買入信號
             if sig["direction"] == "BUY" and sig["confidence"] >= buy_th:
-                desc = f"買入信號 ({sig['confidence']:.0f}分, {sig['signal_level']})"
-                # 5 檔標的平分資金
+                desc = f"買入信號 ({sig['confidence']:.0f}分, {sig['signal_level']}){regime_tag}"
                 ratio = 0.20
                 manager.execute_trade(symbol, "BUY", price, desc, ratio=ratio)
 

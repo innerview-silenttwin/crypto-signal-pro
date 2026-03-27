@@ -329,17 +329,29 @@ class SectorTradingManager:
         return False
 
     def record_equity(self, current_prices: dict = None):
-        """記錄當前權益到曲線"""
+        """記錄當前權益到曲線（只在有即時價格時記錄，避免假波動）"""
         current_prices = current_prices or {}
+        holdings = self.state["holdings"]
+
+        # 如果有持倉但沒有任何即時價格，跳過記錄（避免 fallback 到 avg_price 造成假波動）
+        if holdings and not any(s in current_prices for s in holdings):
+            return
+
         equity = self.state["balance"]
-        for symbol, hold in self.state["holdings"].items():
+        for symbol, hold in holdings.items():
             price = current_prices.get(symbol, hold["avg_price"])
             equity += hold["qty"] * price
 
-        self.state.setdefault("equity_curve", []).append({
-            "time": datetime.now().strftime("%Y-%m-%d %H:%M"),
-            "equity": round(equity, 2),
-        })
+        # 避免與上一筆重複（同分鐘內不重複記錄）
+        curve = self.state.setdefault("equity_curve", [])
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+        if curve and curve[-1]["time"] == now_str:
+            curve[-1]["equity"] = round(equity, 2)
+        else:
+            curve.append({
+                "time": now_str,
+                "equity": round(equity, 2),
+            })
         # 最多保留 500 筆
         if len(self.state["equity_curve"]) > 500:
             self.state["equity_curve"] = self.state["equity_curve"][-500:]

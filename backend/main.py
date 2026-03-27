@@ -1086,6 +1086,67 @@ async def reset_sector_account(sector_id: str):
     mgr.reset_account()
     return {"success": True}
 
+def _sanitize(obj):
+    """將 numpy 類型轉為 Python 原生類型，避免 JSON 序列化錯誤"""
+    import numpy as np
+    if isinstance(obj, dict):
+        return {k: _sanitize(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [_sanitize(v) for v in obj]
+    elif isinstance(obj, (np.bool_,)):
+        return bool(obj)
+    elif isinstance(obj, (np.integer,)):
+        return int(obj)
+    elif isinstance(obj, (np.floating,)):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    return obj
+
+@app.get("/api/sector-trading/{sector_id}/regime")
+async def get_sector_regime(sector_id: str):
+    """取得類股各標的即時盤勢辨識"""
+    mgr = get_manager(sector_id)
+    if not mgr:
+        return {"error": f"未知的類股 ID: {sector_id}"}
+
+    from sector_auto_trader import fetch_signal_data, build_layers
+    from signals.aggregator import SignalAggregator
+
+    strategy = mgr.get_strategy()
+    layers = build_layers(strategy)
+    results = {}
+
+    for symbol in mgr.state.get("stocks", []):
+        df = fetch_signal_data(symbol)
+        if df is None:
+            results[symbol] = {"regime": "無數據", "details": {}}
+            continue
+
+        aggregator = SignalAggregator(weights=strategy["weights"])
+        signal = aggregator.analyze(
+            df.copy(), symbol, "1d",
+            layers=layers, sector_id=sector_id,
+        )
+
+        modifier = signal.layer_modifiers[0] if signal.layer_modifiers else None
+        details = _sanitize(modifier.details) if modifier else {}
+        results[symbol] = {
+            "name": mgr.stocks.get(symbol, symbol),
+            "price": round(float(df['close'].iloc[-1]), 2),
+            "regime": signal.regime or "未知",
+            "buy_score": round(float(signal.buy_score), 1),
+            "sell_score": round(float(signal.sell_score), 1),
+            "raw_buy_score": round(float(signal.raw_buy_score), 1),
+            "raw_sell_score": round(float(signal.raw_sell_score), 1),
+            "direction": signal.direction,
+            "signal_level": signal.signal_level,
+            "details": details,
+            "reason": modifier.reason if modifier else "",
+        }
+
+    return {"sector_id": sector_id, "stocks": results}
+
 
 if __name__ == "__main__":
     import uvicorn

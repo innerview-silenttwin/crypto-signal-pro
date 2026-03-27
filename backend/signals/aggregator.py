@@ -53,6 +53,12 @@ class AggregatedSignal:
     signal_level: str = "無信號"    # 極強/強/中等/弱/無
     price: float = 0.0
     change_24h: float = 0.0       # 今日漲跌幅 (%)
+
+    # 分析層修正
+    layer_modifiers: List = field(default_factory=list)  # LayerModifier list
+    raw_buy_score: float = 0.0     # 修正前買入分
+    raw_sell_score: float = 0.0    # 修正前賣出分
+    regime: str = ""               # 當前盤勢
     
     @property
     def all_signals(self) -> List[IndicatorSignal]:
@@ -175,7 +181,73 @@ class SignalAggregator:
         return result
 
     def analyze(self, df: pd.DataFrame, symbol: str = "",
-                timeframe: str = "") -> AggregatedSignal:
-        """一站式分析：計算指標 + 產出信號"""
+                timeframe: str = "", layers=None,
+                sector_id: str = "") -> AggregatedSignal:
+        """一站式分析：計算指標 + 產出信號 + 套用分析層修正"""
         df = self.calculate_all(df)
-        return self.generate_signals(df, symbol, timeframe)
+        signal = self.generate_signals(df, symbol, timeframe)
+
+        # 套用分析層修正
+        if layers:
+            signal.raw_buy_score = signal.buy_score
+            signal.raw_sell_score = signal.sell_score
+
+            for layer in layers:
+                if not layer.enabled:
+                    continue
+                try:
+                    modifier = layer.compute_modifier(symbol, df, sector_id)
+                    if not modifier.active:
+                        continue
+
+                    signal.layer_modifiers.append(modifier)
+                    if modifier.regime:
+                        signal.regime = modifier.regime
+
+                    # 套用乘數和偏移
+                    signal.buy_score = (
+                        signal.buy_score * modifier.buy_multiplier
+                        + modifier.buy_offset
+                    )
+                    signal.sell_score = (
+                        signal.sell_score * modifier.sell_multiplier
+                        + modifier.sell_offset
+                    )
+
+                    # 否決控制
+                    if modifier.veto_buy:
+                        signal.buy_score = min(signal.buy_score, 10)
+                    if modifier.veto_sell:
+                        signal.sell_score = min(signal.sell_score, 10)
+
+                except Exception as e:
+                    print(f"  ⚠️ Layer {layer.name} 錯誤: {e}")
+
+            # 限制在 0-100 範圍
+            signal.buy_score = max(0, min(100, signal.buy_score))
+            signal.sell_score = max(0, min(100, signal.sell_score))
+
+            # 重新計算方向和信心度
+            if signal.buy_score > signal.sell_score:
+                signal.direction = "BUY"
+                signal.confidence = signal.buy_score
+            elif signal.sell_score > signal.buy_score:
+                signal.direction = "SELL"
+                signal.confidence = signal.sell_score
+            else:
+                signal.direction = "NEUTRAL"
+                signal.confidence = 0
+
+            # 重新設定信號等級
+            if signal.confidence >= self.thresholds['extreme_strong']:
+                signal.signal_level = "極強信號"
+            elif signal.confidence >= self.thresholds['strong']:
+                signal.signal_level = "強信號"
+            elif signal.confidence >= self.thresholds['moderate']:
+                signal.signal_level = "中等信號"
+            elif signal.confidence >= self.thresholds['weak']:
+                signal.signal_level = "弱信號"
+            else:
+                signal.signal_level = "無信號"
+
+        return signal
