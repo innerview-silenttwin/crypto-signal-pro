@@ -1813,6 +1813,20 @@ document.addEventListener('DOMContentLoaded', () => {
     startHeartbeat();
     initTickerData(); // 載入時一次拉取所有 ticker（含台股）
 
+    // --- 跑馬燈點擊 → 切換到該標的 ---
+    const tickerStrip = document.getElementById('ticker-content');
+    if (tickerStrip) {
+        tickerStrip.addEventListener('click', (e) => {
+            const item = e.target.closest('.ticker-item');
+            if (!item) return;
+            const sym = item.dataset.symbol;
+            const mkt = item.dataset.market;
+            if (sym && mkt) {
+                window.changeSymbol(sym, mkt);
+            }
+        });
+    }
+
     // --- 市場選擇 (虛擬幣 / 台股) ---
     const marketSelect = document.getElementById('market-select');
     const cryptoInput = document.getElementById('crypto-symbol-input');
