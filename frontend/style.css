@@ -239,7 +239,7 @@ h1, h2, h3, .glow-text {
     display: flex;
     align-items: center;
     overflow: hidden;
-    margin: -32px -32px 24px -32px;
+    margin: -20px -32px 8px -32px;
     padding: 0 16px;
     z-index: 10;
     min-height: 36px;
