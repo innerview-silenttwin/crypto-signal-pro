@@ -2204,8 +2204,96 @@ a.event-item:hover {
 .tla-badge.fair      { background: rgba(245,158,11,0.12); color: #f59e0b; }
 .tla-badge.coming    { background: rgba(148,163,184,0.1); color: #94a3b8; }
 
+/* ── 分數 Badge (卡片 header 右側) ── */
+.tla-score-badge {
+    margin-left: auto;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.4;
+}
+.tla-score-badge.score-high { background: rgba(16,185,129,0.15); color: #10b981; }
+.tla-score-badge.score-mid  { background: rgba(245,158,11,0.15); color: #f59e0b; }
+.tla-score-badge.score-low  { background: rgba(239,68,68,0.15);  color: #ef4444; }
+
+/* ── 建議文字 ── */
+.tla-advice {
+    margin-top: 8px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: rgba(var(--accent-rgb, 139,92,246), 0.06);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-main);
+    line-height: 1.5;
+}
+
+/* ── 綜合推薦列 ── */
+.tla-recommendation {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 20px;
+    border-radius: 16px;
+    margin-bottom: 14px;
+}
+
+.rec-score-ring {
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    border: 3px solid currentColor;
+}
+.rec-score-ring.rec-strong-buy { color: #10b981; background: rgba(16,185,129,0.08); }
+.rec-score-ring.rec-buy        { color: #34d399; background: rgba(52,211,153,0.08); }
+.rec-score-ring.rec-neutral    { color: #f59e0b; background: rgba(245,158,11,0.08); }
+.rec-score-ring.rec-weak       { color: #f97316; background: rgba(249,115,22,0.08); }
+.rec-score-ring.rec-avoid      { color: #ef4444; background: rgba(239,68,68,0.08); }
+
+.rec-score-num {
+    font-size: 20px;
+    font-weight: 800;
+}
+
+.rec-info {
+    flex: 1;
+}
+
+.rec-action {
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1.3;
+}
+.rec-action.rec-strong-buy { color: #10b981; }
+.rec-action.rec-buy        { color: #34d399; }
+.rec-action.rec-neutral    { color: #f59e0b; }
+.rec-action.rec-weak       { color: #f97316; }
+.rec-action.rec-avoid      { color: #ef4444; }
+
+.rec-detail {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+}
+
 @media (max-width: 768px) {
     .tla-grid {
         grid-template-columns: 1fr;
+    }
+    .tla-recommendation {
+        padding: 12px 14px;
+    }
+    .rec-score-ring {
+        width: 48px; height: 48px;
+    }
+    .rec-score-num {
+        font-size: 17px;
+    }
+    .rec-action {
+        font-size: 15px;
     }
 }

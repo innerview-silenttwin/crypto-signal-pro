@@ -773,13 +773,47 @@ async function fetchThreeLayerAnalysis(symbol) {
     }
 }
 
+function _scoreBadgeCls(score) {
+    if (score >= 70) return 'score-high';
+    if (score >= 45) return 'score-mid';
+    return 'score-low';
+}
+
 function renderThreeLayerAnalysis(data) {
+    // ── 綜合推薦 ──
+    const recEl = document.getElementById('tla-recommendation');
+    if (data.recommendation && data.recommendation.composite_score != null) {
+        const rec = data.recommendation;
+        const score = rec.composite_score;
+        const actionCls = {
+            strong_buy: 'rec-strong-buy', buy: 'rec-buy',
+            neutral: 'rec-neutral', weak: 'rec-weak', avoid: 'rec-avoid',
+        }[rec.action_class] || 'rec-neutral';
+
+        recEl.style.display = 'flex';
+        recEl.innerHTML = `
+            <div class="rec-score-ring ${actionCls}">
+                <span class="rec-score-num">${Math.round(score)}</span>
+            </div>
+            <div class="rec-info">
+                <div class="rec-action ${actionCls}">${rec.action}</div>
+                <div class="rec-detail">綜合做多評分 (技術45% + 基本面35% + 盤勢20%)</div>
+            </div>`;
+    } else {
+        recEl.style.display = 'none';
+    }
+
     // ── 技術面 ──
     const techEl = document.getElementById('tla-technical');
+    const techScoreBadge = document.getElementById('tla-tech-score');
     if (data.technical) {
         const t = data.technical;
         const dirCls = t.direction === 'BUY' ? 'bullish' : t.direction === 'SELL' ? 'bearish' : 'neutral';
-        const dirText = t.direction === 'BUY' ? '做多' : t.direction === 'SELL' ? '做空' : '中性';
+        const dirText = t.direction === 'BUY' ? '偏多' : t.direction === 'SELL' ? '偏空' : '中性';
+
+        // 分數 badge
+        techScoreBadge.textContent = t.buy_score + '分';
+        techScoreBadge.className = 'tla-score-badge ' + _scoreBadgeCls(t.buy_score);
 
         let regimeHtml = '';
         if (data.regime) {
@@ -804,12 +838,9 @@ function renderThreeLayerAnalysis(data) {
                     <span class="tla-row-value">${r.ma_alignment.score}/6</span>
                 </div>`;
             }
-            if (r.volume_pattern && r.volume_pattern.reason) {
+            if (r.advice) {
                 regimeHtml += `
-                <div class="tla-row">
-                    <span class="tla-row-label">量價</span>
-                    <span class="tla-row-value" style="font-size:10px;max-width:140px;text-align:right">${r.volume_pattern.reason}</span>
-                </div>`;
+                <div class="tla-advice">${r.advice}</div>`;
             }
         }
 
@@ -819,26 +850,37 @@ function renderThreeLayerAnalysis(data) {
                 <span class="tla-badge ${dirCls}">${dirText} ${t.confidence}分</span>
             </div>
             <div class="tla-row">
-                <span class="tla-row-label">買/賣分數</span>
-                <span class="tla-row-value">${t.buy_score} / ${t.sell_score}</span>
+                <span class="tla-row-label">做多分數</span>
+                <span class="tla-row-value">${t.buy_score}</span>
             </div>
             <div class="tla-row">
                 <span class="tla-row-label">信號強度</span>
                 <span class="tla-row-value">${t.signal_level}</span>
             </div>
-            ${regimeHtml}`;
+            ${regimeHtml}
+            ${t.advice ? `<div class="tla-advice">${t.advice}</div>` : ''}`;
     } else {
         techEl.innerHTML = '<span style="color:var(--text-muted)">數據不足</span>';
+        techScoreBadge.textContent = '';
     }
 
     // ── 基本面 ──
     const fundEl = document.getElementById('tla-fundamental');
+    const fundScoreBadge = document.getElementById('tla-fund-score');
     if (data.fundamental) {
         const f = data.fundamental;
         const vStyle = VALUATION_LABELS[f.valuation] || { cls: 'fair' };
         const peText = f.pe != null ? f.pe.toFixed(1) : '--';
         const dyText = f.dy != null ? f.dy.toFixed(1) + '%' : '--';
         const pbText = f.pb != null ? f.pb.toFixed(2) : '--';
+
+        // 分數 badge
+        if (f.buy_score != null) {
+            fundScoreBadge.textContent = f.buy_score + '分';
+            fundScoreBadge.className = 'tla-score-badge ' + _scoreBadgeCls(f.buy_score);
+        } else {
+            fundScoreBadge.textContent = '';
+        }
 
         fundEl.innerHTML = `
             <div class="tla-row">
@@ -856,13 +898,17 @@ function renderThreeLayerAnalysis(data) {
             <div class="tla-row">
                 <span class="tla-row-label">股價淨值比</span>
                 <span class="tla-row-value">${pbText}</span>
-            </div>`;
+            </div>
+            ${f.advice ? `<div class="tla-advice">${f.advice}</div>` : ''}`;
     } else {
         fundEl.innerHTML = '<span style="color:var(--text-muted)">無基本面資料</span>';
+        fundScoreBadge.textContent = '';
     }
 
     // ── 消息面 ──
     const sentEl = document.getElementById('tla-sentiment');
+    const sentScoreBadge = document.getElementById('tla-sent-score');
+    sentScoreBadge.textContent = '';
     if (data.sentiment && data.sentiment.status === 'coming_soon') {
         sentEl.innerHTML = '<span class="tla-badge coming">Phase 3 即將推出</span><div style="margin-top:6px; font-size:11px; color:var(--text-muted)">RSS 監控 + 關鍵字情緒分析</div>';
     } else {

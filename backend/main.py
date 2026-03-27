@@ -1163,6 +1163,7 @@ async def get_stock_analysis(symbol: str):
     result = {"symbol": symbol, "fundamental": None, "regime": None, "technical": None}
 
     # ── 1. 基本面 P/E ──
+    fund_buy_score = 50  # 預設中性
     all_pe = fetch_twse_pe_all()
     code = _strip_tw(symbol)
     if all_pe and code in all_pe:
@@ -1171,34 +1172,74 @@ async def get_stock_analysis(symbol: str):
         dy = info.get("dy")
         pb = info.get("pb")
 
-        # 估值判斷
+        # 估值判斷 + 做多建議分數（0~100, 越高越適合買進）
         valuation = "無數據"
+        fund_advice = "資料不足"
         if pe is not None and pe > 0:
             if pe < 8:
                 valuation = "明顯低估"
+                fund_buy_score = 90
+                fund_advice = "估值極具吸引力，適合積極布局"
             elif pe < 12:
                 valuation = "偏低估"
+                fund_buy_score = 75
+                fund_advice = "估值偏低，適合逢低承接"
             elif pe < 20:
                 valuation = "合理"
+                fund_buy_score = 55
+                fund_advice = "估值合理，可正常操作"
             elif pe < 30:
                 valuation = "偏高估"
+                fund_buy_score = 30
+                fund_advice = "估值偏高，追高須謹慎"
             else:
                 valuation = "明顯高估"
+                fund_buy_score = 15
+                fund_advice = "估值過高，不建議進場"
+
+        # 殖利率加分
+        if dy is not None and dy > 0:
+            if dy >= 5.0:
+                fund_buy_score = min(100, fund_buy_score + 10)
+                fund_advice += f"（高殖利率 {dy:.1f}% 具防禦力）"
+            elif dy >= 3.0:
+                fund_buy_score = min(100, fund_buy_score + 5)
 
         result["fundamental"] = {
             "pe": pe, "dy": dy, "pb": pb,
             "name": info.get("name", ""),
             "valuation": valuation,
+            "buy_score": fund_buy_score,
+            "advice": fund_advice,
         }
 
     # ── 2. 盤勢辨識 + 技術面摘要 ──
+    tech_buy_score = 50
+    regime_buy_score = 50
     df = fetch_signal_data(symbol)
     if df is not None and len(df) >= 120:
         regime_layer = RegimeLayer(enabled=True)
         modifier = regime_layer.compute_modifier(symbol, df)
         details = _sanitize(modifier.details) if modifier.details else {}
+
+        # 盤勢做多分數
+        regime_state = modifier.regime or "未知"
+        regime_scores = {
+            "強勢多頭": 90, "多頭": 75, "底部轉強": 70,
+            "盤整": 50, "高檔轉折": 25, "空頭": 15,
+        }
+        regime_buy_score = regime_scores.get(regime_state, 50)
+        regime_advices = {
+            "強勢多頭": "趨勢強勁，順勢做多",
+            "多頭": "多頭格局，適合持有或加碼",
+            "底部轉強": "底部轉強訊號，可分批布局",
+            "盤整": "方向不明，建議觀望或輕倉",
+            "高檔轉折": "高檔出現轉弱訊號，不宜追高",
+            "空頭": "空頭趨勢，建議觀望不進場",
+        }
+
         result["regime"] = {
-            "state": modifier.regime or "未知",
+            "state": regime_state,
             "reason": modifier.reason,
             "confidence": details.get("confidence", 0),
             "trend": details.get("trend", {}),
@@ -1206,21 +1247,79 @@ async def get_stock_analysis(symbol: str):
             "position": details.get("position", {}),
             "kline_pattern": details.get("kline_pattern", {}),
             "volume_pattern": details.get("volume_pattern", {}),
+            "buy_score": regime_buy_score,
+            "advice": regime_advices.get(regime_state, ""),
         }
 
         # 技術面指標摘要
         agg = SignalAggregator()
         signal = agg.analyze(df.copy(), symbol, "1d")
+        tech_buy_score = round(float(signal.buy_score), 1)
+
+        # 做多建議文字
+        if signal.direction == "BUY" and signal.confidence >= 70:
+            tech_advice = "技術指標強勢看多，適合進場"
+        elif signal.direction == "BUY":
+            tech_advice = "技術面偏多，可留意買點"
+        elif signal.direction == "SELL" and signal.confidence >= 70:
+            tech_advice = "技術面轉弱，建議觀望或減碼"
+        elif signal.direction == "SELL":
+            tech_advice = "技術面偏弱，暫不建議進場"
+        else:
+            tech_advice = "技術面中性，靜待方向明朗"
+
         result["technical"] = {
-            "buy_score": round(float(signal.buy_score), 1),
+            "buy_score": tech_buy_score,
             "sell_score": round(float(signal.sell_score), 1),
             "direction": signal.direction,
             "confidence": round(float(signal.confidence), 1),
             "signal_level": signal.signal_level,
+            "advice": tech_advice,
         }
 
     # ── 3. 消息面（Phase 3 預留）──
-    result["sentiment"] = {"status": "coming_soon", "message": "消息面情緒分析即將推出"}
+    result["sentiment"] = {"status": "coming_soon", "buy_score": None, "message": "消息面情緒分析即將推出"}
+
+    # ── 4. 綜合做多建議 ──
+    scores = []
+    score_weights = {"technical": 0.45, "fundamental": 0.35, "regime": 0.20}
+    for key, w in score_weights.items():
+        layer = result.get(key)
+        if layer and layer.get("buy_score") is not None:
+            scores.append((float(layer["buy_score"]), w))
+
+    if scores:
+        total_w = sum(w for _, w in scores)
+        composite = sum(s * w for s, w in scores) / total_w
+        composite = round(composite, 1)
+
+        if composite >= 75:
+            action = "積極買進"
+            action_cls = "strong_buy"
+        elif composite >= 60:
+            action = "建議買進"
+            action_cls = "buy"
+        elif composite >= 45:
+            action = "中性觀望"
+            action_cls = "neutral"
+        elif composite >= 30:
+            action = "偏空觀望"
+            action_cls = "weak"
+        else:
+            action = "不建議進場"
+            action_cls = "avoid"
+
+        result["recommendation"] = {
+            "composite_score": composite,
+            "action": action,
+            "action_class": action_cls,
+        }
+    else:
+        result["recommendation"] = {
+            "composite_score": None,
+            "action": "資料不足",
+            "action_class": "neutral",
+        }
 
     return result
 

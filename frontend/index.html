@@ -331,12 +331,15 @@
             <!-- 三面分析（台股查詢時顯示） -->
             <div id="three-layer-analysis" class="three-layer-analysis" style="display:none;">
                 <h3 class="tla-title">三面分析</h3>
+                <!-- 綜合推薦 -->
+                <div id="tla-recommendation" class="tla-recommendation glass-panel" style="display:none;"></div>
                 <div class="tla-grid">
                     <!-- 技術面 -->
                     <div class="tla-card glass-panel">
                         <div class="tla-card-header">
                             <span class="tla-icon">📊</span>
                             <span class="tla-label">技術面</span>
+                            <span id="tla-tech-score" class="tla-score-badge"></span>
                         </div>
                         <div id="tla-technical" class="tla-body">--</div>
                     </div>
@@ -345,6 +348,7 @@
                         <div class="tla-card-header">
                             <span class="tla-icon">📋</span>
                             <span class="tla-label">基本面</span>
+                            <span id="tla-fund-score" class="tla-score-badge"></span>
                         </div>
                         <div id="tla-fundamental" class="tla-body">--</div>
                     </div>
@@ -353,6 +357,7 @@
                         <div class="tla-card-header">
                             <span class="tla-icon">📰</span>
                             <span class="tla-label">消息面</span>
+                            <span id="tla-sent-score" class="tla-score-badge"></span>
                         </div>
                         <div id="tla-sentiment" class="tla-body">--</div>
                     </div>
