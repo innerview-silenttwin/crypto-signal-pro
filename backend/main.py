@@ -997,9 +997,14 @@ from sector_auto_trader import auto_trader as sector_auto_trader
 @app.get("/api/sector-trading/sectors")
 async def list_sectors():
     """列出所有類股及其摘要"""
+    from sector_auto_trader import _price_cache
     results = []
     for sector_id, mgr in get_all_sector_managers().items():
-        results.append(mgr.get_summary())
+        current_prices = {}
+        for symbol in mgr.state.get("stocks", []):
+            if symbol in _price_cache and "price" in _price_cache[symbol]:
+                current_prices[symbol] = _price_cache[symbol]["price"]
+        results.append(mgr.get_summary(current_prices))
     return results
 
 # ── 自動交易守護程式控制（必須在 {sector_id} 路由之前）──
@@ -1037,14 +1042,12 @@ async def get_sector_status(sector_id: str):
     mgr = get_manager(sector_id)
     if not mgr:
         return {"error": f"未知的類股 ID: {sector_id}"}
-    # 嘗試取得最新價格
+    # 從 auto_trader 的價格快取取得即時價格
+    from sector_auto_trader import _price_cache
     current_prices = {}
     for symbol in mgr.state.get("stocks", []):
-        for sym, data in current_signals.items():
-            if sym == symbol:
-                sigs = data.get("signals", {})
-                if "1d" in sigs:
-                    current_prices[symbol] = sigs["1d"].get("price", 0)
+        if symbol in _price_cache and "price" in _price_cache[symbol]:
+            current_prices[symbol] = _price_cache[symbol]["price"]
     return mgr.get_summary(current_prices)
 
 @app.post("/api/sector-trading/{sector_id}/toggle")

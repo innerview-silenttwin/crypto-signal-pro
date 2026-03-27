@@ -623,15 +623,20 @@
             } else {
                 hl.innerHTML = hKeys.map(sym => {
                     const h = holdings[sym];
-                    const plClass = h.unrealized_pl >= 0 ? 'positive' : 'negative';
+                    const pl = h.unrealized_pl;
+                    const plClass = pl > 0 ? 'positive' : pl < 0 ? 'negative' : '';
+                    const plText = pl === 0 ? '<span style="color:var(--text-muted);font-size:11px">待更新</span>'
+                        : `<span class="${plClass}">${pl >= 0 ? '+' : ''}${pl.toLocaleString()}</span>`;
+                    const plPct = h.avg_price > 0 ? ((h.current_price - h.avg_price) / h.avg_price * 100).toFixed(2) : 0;
+                    const pctText = pl === 0 ? '' : ` <span style="font-size:10px">(${plPct >= 0 ? '+' : ''}${plPct}%)</span>`;
                     return `<div class="holding-item">
                         <div>
                             <div class="holding-name">${h.name || sym}</div>
                             <div class="holding-detail">${h.qty} 股 @ ${h.avg_price}</div>
                         </div>
                         <div style="text-align:right">
-                            <div style="font-weight:700; font-size:13px" class="${plClass}">
-                                ${h.unrealized_pl >= 0 ? '+' : ''}${h.unrealized_pl.toLocaleString()}
+                            <div style="font-weight:700; font-size:13px">
+                                ${plText}${pctText}
                             </div>
                             <div class="holding-detail">市值 ${h.market_value.toLocaleString()}</div>
                         </div>
@@ -695,12 +700,31 @@
                 return;
             }
 
+            // 智慧 Y 軸格式化：根據數值範圍選擇精度
+            const equities = curve.map(c => c.equity);
+            const yMin = Math.min(...equities);
+            const yMax = Math.max(...equities);
+            const yRange = yMax - yMin;
+            const yPadding = Math.max(yRange * 0.1, 100); // 至少留 100 元 padding
+
+            function formatY(v) {
+                if (Math.abs(v) >= 1_000_000) return (v / 1_000_000).toFixed(2) + 'M';
+                if (Math.abs(v) >= 10_000) return (v / 1000).toFixed(1) + 'K';
+                return v.toLocaleString();
+            }
+
+            // X 軸標籤：只顯示日期部分，間隔顯示避免擁擠
+            const labels = curve.map(c => {
+                const parts = c.time.split(' ');
+                return parts[0]; // 只取日期 yyyy-mm-dd
+            });
+
             equityChart = new Chart(ctx, {
                 type: 'line',
                 data: {
-                    labels: curve.map(c => c.time),
+                    labels: labels,
                     datasets: [{
-                        data: curve.map(c => c.equity),
+                        data: equities,
                         borderColor: '#a78bfa',
                         borderWidth: 2,
                         fill: true,
@@ -714,10 +738,22 @@
                     maintainAspectRatio: false,
                     plugins: { legend: { display: false } },
                     scales: {
-                        x: { display: false },
-                        y: {
+                        x: {
+                            display: true,
                             ticks: {
-                                callback: v => (v / 1000).toFixed(0) + 'K',
+                                maxTicksLimit: 6,
+                                maxRotation: 0,
+                                font: { size: 9 },
+                                color: '#94a3b8',
+                            },
+                            grid: { display: false },
+                        },
+                        y: {
+                            min: Math.floor((yMin - yPadding) / 100) * 100,
+                            max: Math.ceil((yMax + yPadding) / 100) * 100,
+                            ticks: {
+                                callback: formatY,
+                                maxTicksLimit: 6,
                                 font: { size: 10 },
                                 color: '#94a3b8',
                             },
