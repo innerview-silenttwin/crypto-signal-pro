@@ -181,6 +181,13 @@ async def startup_event():
     asyncio.create_task(background_signal_updater())
     # 預載台股 ticker 資料（L2 本地 CSV → L3 TWSE，尊重 rate limit）
     asyncio.create_task(preload_tw_ticker_data())
+    # 自動啟動類股交易引擎
+    try:
+        from sector_auto_trader import auto_trader as _sat
+        _sat.start()
+        print("[Startup] 類股自動交易引擎已啟動")
+    except Exception as e:
+        print(f"[Startup] 類股交易引擎啟動失敗: {e}")
 
 
 async def preload_tw_ticker_data():
