@@ -350,10 +350,44 @@ const twWatchlist = {
 function renderSymbolSwitcher(market) {
     const container = document.getElementById('h-symbol-switcher');
     if (!container) return;
-    const list = quickSymbolButtons[market] || [];
-    container.innerHTML = list.map(item =>
-        `<button onclick="window.changeSymbol('${item.symbol}','${market}')">${item.label}</button>`
-    ).join('');
+
+    // 從搜尋紀錄中篩選當前市場的歷史
+    const historyItems = searchHistory
+        .filter(h => h.market === market)
+        .slice(0, 5);  // 最多 5 個
+
+    // 若歷史不足，補上預設
+    const defaults = quickSymbolButtons[market] || [];
+    const seen = new Set(historyItems.map(h => h.sym));
+    const fallbacks = defaults.filter(d => !seen.has(d.symbol));
+
+    // 組合：歷史優先 + 預設補齊，最多 5 個
+    const items = [];
+    for (const h of historyItems) {
+        items.push({ symbol: h.sym, label: _getDisplayName(h.sym, h.market, h.name) });
+    }
+    for (const f of fallbacks) {
+        if (items.length >= 5) break;
+        items.push({ symbol: f.symbol, label: _getDisplayName(f.symbol, market, f.label) });
+    }
+
+    container.innerHTML = items.map(item => {
+        const isActive = currentSymbol === item.symbol;
+        return `<button class="${isActive ? 'active' : ''}" onclick="window.changeSymbol('${item.symbol}','${market}')">${item.label}</button>`;
+    }).join('');
+}
+
+function _getDisplayName(symbol, market, fallback) {
+    if (market === 'stock') {
+        return stockNames[symbol] || fallback || symbol.replace('.TW', '').replace('.TWO', '');
+    }
+    if (market === 'futures') {
+        const code = symbol.split('.')[0];
+        return futuresNames[code] || fallback || code;
+    }
+    // crypto: 顯示幣種簡稱
+    const cryptoDisplayNames = { 'BTC/USDT': 'BTC', 'ETH/USDT': 'ETH', 'SOL/USDT': 'SOL' };
+    return cryptoDisplayNames[symbol] || fallback || symbol.split('/')[0];
 }
 
 async function fetchStockInfo(symbol) {
