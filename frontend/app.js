@@ -496,6 +496,15 @@ window.changeSymbol = async function (sym, market = 'crypto') {
         renderTwMiniCards(market);
     }
 
+    // 台股/期貨：隱藏 4H/1H 圖表切換按鈕，只保留 1D
+    const chartToggles = document.querySelectorAll('.chart-toggles button');
+    chartToggles.forEach(btn => {
+        const tf = btn.textContent.trim();
+        if (tf === '4H' || tf === '1H') {
+            btn.style.display = (market === 'stock' || market === 'futures') ? 'none' : '';
+        }
+    });
+
     // 重新載入圖表資料，且如果是切換幣種，就強制縮放
     renderSymbolSwitcher(market);
     await loadChartData(currentTimeframe, isSymbolChanged);
@@ -534,6 +543,17 @@ function clearSignalCard(market = 'stock', loading = false) {
 
     clearRing(ui.btc.d1.ring, ui.btc.d1.score, ui.btc.d1.dir, ui.btc.d1.lvl);
     clearRing(ui.btc.h4.ring, ui.btc.h4.score, ui.btc.h4.dir, null);
+
+    // 台股/期貨：隱藏 4H 區塊，放大 1D
+    const isTW = (market === 'stock' || market === 'futures');
+    const tfSlots = document.querySelectorAll('.tf-slot');
+    if (tfSlots.length >= 2) {
+        tfSlots[1].style.display = isTW ? 'none' : '';   // 隱藏 4H
+        tfSlots[0].style.flex = isTW ? '1' : '';          // 1D 佔滿
+    }
+    // 全屏 header 4H badge
+    const h4Badge = document.getElementById('h-score-4h');
+    if (h4Badge) h4Badge.closest('.h-badge').style.display = isTW ? 'none' : '';
 
     if (ui.btc.res_alert) {
         ui.btc.res_alert.className = 'resonance-alert';
@@ -780,8 +800,11 @@ function _scoreBadgeCls(score) {
 }
 
 function renderThreeLayerAnalysis(data) {
-    // ── 綜合推薦 ──
+    // ── 綜合推薦（下方三面區域內） ──
     const recEl = document.getElementById('tla-recommendation');
+    // ── 綜合推薦（左欄 inline） ──
+    const recInline = document.getElementById('tla-recommendation-inline');
+
     if (data.recommendation && data.recommendation.composite_score != null) {
         const rec = data.recommendation;
         const score = rec.composite_score;
@@ -790,17 +813,25 @@ function renderThreeLayerAnalysis(data) {
             neutral: 'rec-neutral', weak: 'rec-weak', avoid: 'rec-avoid',
         }[rec.action_class] || 'rec-neutral';
 
-        recEl.style.display = 'flex';
-        recEl.innerHTML = `
+        const recHtml = `
             <div class="rec-score-ring ${actionCls}">
                 <span class="rec-score-num">${Math.round(score)}</span>
             </div>
             <div class="rec-info">
                 <div class="rec-action ${actionCls}">${rec.action}</div>
-                <div class="rec-detail">綜合做多評分 (技術40% + 基本面30% + 盤勢15% + 消息面15%)</div>
+                <div class="rec-detail">技術40% + 基本面30% + 盤勢15% + 消息面15%</div>
             </div>`;
+
+        // 渲染到左欄 inline 區塊
+        if (recInline) {
+            recInline.style.display = 'flex';
+            recInline.innerHTML = recHtml;
+        }
+        // 隱藏下方的重複區塊
+        if (recEl) recEl.style.display = 'none';
     } else {
-        recEl.style.display = 'none';
+        if (recEl) recEl.style.display = 'none';
+        if (recInline) recInline.style.display = 'none';
     }
 
     // ── 技術面 ──
@@ -967,6 +998,8 @@ function renderThreeLayerAnalysis(data) {
 function hideThreeLayerAnalysis() {
     const container = document.getElementById('three-layer-analysis');
     if (container) container.style.display = 'none';
+    const recInline = document.getElementById('tla-recommendation-inline');
+    if (recInline) recInline.style.display = 'none';
 }
 
 function initExpandLogic() {
@@ -1506,6 +1539,15 @@ function processData(serverData) {
             const currencyPrefix = (currentMarket === 'crypto') ? '$' : '';
             if (ui.btc && ui.btc.price) ui.btc.price.textContent = `${currencyPrefix}${formatPrice(price)}`;
             if (ui.status) ui.status.textContent = `最後更新: ${d1.timestamp}`;
+
+            // Crypto 模式：恢復 4H 區塊顯示
+            const tfSlots = document.querySelectorAll('.tf-slot');
+            if (tfSlots.length >= 2) {
+                tfSlots[1].style.display = '';
+                tfSlots[0].style.flex = '';
+            }
+            const h4Badge = document.getElementById('h-score-4h');
+            if (h4Badge) h4Badge.closest('.h-badge').style.display = '';
 
             // 1D Update
             const d1_sig = sigs['1d'];

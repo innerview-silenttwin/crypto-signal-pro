@@ -218,6 +218,9 @@
                     </div>
                 </div>
 
+                <!-- 綜合推薦分數（台股時顯示在左欄 signal-card 下方） -->
+                <div id="tla-recommendation-inline" class="tla-recommendation-inline glass-panel" style="display:none;"></div>
+
                 <!-- 交易圖表區塊 -->
                 <div class="chart-container glass-panel">
                     <div class="card-header">
@@ -331,10 +334,8 @@
             <!-- 三面分析（台股查詢時顯示） -->
             <div id="three-layer-analysis" class="three-layer-analysis" style="display:none;">
                 <h3 class="tla-title">三面分析</h3>
-                <!-- 綜合推薦 -->
                 <div id="tla-recommendation" class="tla-recommendation glass-panel" style="display:none;"></div>
                 <div class="tla-grid">
-                    <!-- 技術面 -->
                     <div class="tla-card glass-panel">
                         <div class="tla-card-header">
                             <span class="tla-icon">📊</span>
@@ -343,7 +344,6 @@
                         </div>
                         <div id="tla-technical" class="tla-body">--</div>
                     </div>
-                    <!-- 基本面 -->
                     <div class="tla-card glass-panel">
                         <div class="tla-card-header">
                             <span class="tla-icon">📋</span>
@@ -352,7 +352,6 @@
                         </div>
                         <div id="tla-fundamental" class="tla-body">--</div>
                     </div>
-                    <!-- 消息面 -->
                     <div class="tla-card glass-panel">
                         <div class="tla-card-header">
                             <span class="tla-icon">📰</span>

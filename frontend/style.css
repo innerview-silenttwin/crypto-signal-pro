@@ -628,7 +628,7 @@ h1, h2, h3, .glow-text {
 /* Main Content */
 .main-content {
     flex: 1;
-    padding: 32px;
+    padding: 20px 32px;
     overflow-y: auto;
     position: relative;
 }
@@ -638,8 +638,8 @@ h1, h2, h3, .glow-text {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 24px 30px;
-    margin-bottom: 20px;
+    padding: 12px 30px;
+    margin-bottom: 12px;
 }
 
 .vip-tag {
@@ -655,8 +655,25 @@ h1, h2, h3, .glow-text {
 .dashboard-grid {
     display: grid;
     grid-template-columns: 1fr 2fr;
-    gap: 24px;
-    margin-bottom: 24px;
+    grid-template-rows: auto auto;
+    gap: 16px;
+    margin-bottom: 16px;
+    align-items: start;
+}
+
+/* 圖表區橫跨右欄全部列 */
+.dashboard-grid .chart-container {
+    grid-column: 2;
+    grid-row: 1 / -1;
+}
+
+/* 綜合推薦分數（嵌在左欄 signal-card 下方） */
+.tla-recommendation-inline {
+    padding: 14px 18px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
 }
 
 .card-header {
@@ -1614,8 +1631,8 @@ body:has(.fullscreen-mode) .main-content {
 .action-strip {
     display: flex;
     align-items: center;
-    margin: 0 30px 24px 30px;
-    padding: 14px 24px;
+    margin: 0 30px 12px 30px;
+    padding: 10px 24px;
     gap: 25px;
     background: rgba(255, 255, 255, 0.5);
     border: 1.5px solid var(--border-color);
@@ -2112,7 +2129,7 @@ a.event-item:hover {
    三面分析 (Three-Layer Analysis)
    ══════════════════════════════════════ */
 .three-layer-analysis {
-    margin-top: 20px;
+    margin-bottom: 16px;
     animation: fadeIn 0.3s ease;
 }
 
@@ -2122,22 +2139,22 @@ a.event-item:hover {
 }
 
 .tla-title {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 700;
     color: var(--text-main);
-    margin-bottom: 12px;
+    margin-bottom: 8px;
     padding-left: 2px;
 }
 
 .tla-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 16px;
+    gap: 14px;
 }
 
 .tla-card {
-    padding: 16px;
-    border-radius: 16px;
+    padding: 14px 16px;
+    border-radius: 14px;
     transition: transform 0.2s, box-shadow 0.2s;
 }
 
