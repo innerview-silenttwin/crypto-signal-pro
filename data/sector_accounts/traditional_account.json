@@ -1,0 +1,44 @@
+{
+  "sector_name": "傳產/航運",
+  "sector_id": "traditional",
+  "is_active": true,
+  "balance": 1000000.0,
+  "initial_balance": 1000000.0,
+  "holdings": {},
+  "history": [],
+  "equity_curve": [
+    {
+      "time": "2026-03-26 21:47",
+      "equity": 1000000.0
+    },
+    {
+      "time": "2026-03-26 21:48",
+      "equity": 1000000.0
+    }
+  ],
+  "strategy": {
+    "name": "趨勢追蹤 (EMA+ADX)",
+    "param_preset": "寬鬆",
+    "weights": {
+      "rsi": 10.0,
+      "macd": 15.0,
+      "bollinger": 5.0,
+      "mfi": 5.0,
+      "ema_cross": 30.0,
+      "volume": 10.0,
+      "adx": 25.0
+    },
+    "buy_threshold": 30,
+    "sell_threshold": 30,
+    "stop_loss_pct": 10.0,
+    "take_profit_pct": 25.0,
+    "description": "寬鬆趨勢追蹤，抓住航運等週期股的大波段行情"
+  },
+  "stocks": [
+    "1301.TW",
+    "2002.TW",
+    "1216.TW",
+    "2603.TW",
+    "2412.TW"
+  ]
+}

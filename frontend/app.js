@@ -67,6 +67,61 @@ const ui = {
     statusDot: document.getElementById('status-dot')
 };
 
+// 價格格式化：至少顯示小數點後兩位
+function formatPrice(val) {
+    const num = parseFloat(val);
+    if (isNaN(num)) return '--';
+    // 小數位數：若原始值有更多小數位就保留，否則至少 2 位
+    const str = num.toString();
+    const decimalPart = str.includes('.') ? str.split('.')[1] : '';
+    const minDecimals = 2;
+    const decimals = Math.max(minDecimals, decimalPart.length > 8 ? 2 : decimalPart.length);
+    return num.toLocaleString(undefined, { minimumFractionDigits: minDecimals, maximumFractionDigits: Math.min(decimals, 8) });
+}
+
+// 根據當前主題取得圖表配色
+function getChartThemeColors() {
+    var style = getComputedStyle(document.documentElement);
+    return {
+        background: style.getPropertyValue('--chart-bg').trim() || '#131722',
+        textColor: style.getPropertyValue('--chart-text').trim() || '#d1d4dc',
+        gridColor: style.getPropertyValue('--chart-grid').trim() || 'rgba(42, 46, 57, 0.5)',
+        upColor: style.getPropertyValue('--chart-up').trim() || '#26a69a',
+        downColor: style.getPropertyValue('--chart-down').trim() || '#ef5350',
+        borderColor: style.getPropertyValue('--chart-border').trim() || 'rgba(197, 203, 206, 0.8)',
+    };
+}
+
+// 主題切換時更新圖表配色
+window.onThemeChange = function(theme) {
+    if (!chart) return;
+    // Give a tiny delay so CSS variables update first
+    setTimeout(function() {
+        var c = getChartThemeColors();
+        chart.applyOptions({
+            layout: {
+                background: { type: 'solid', color: c.background },
+                textColor: c.textColor,
+            },
+            grid: {
+                vertLines: { color: c.gridColor },
+                horzLines: { color: c.gridColor },
+            },
+            rightPriceScale: { borderColor: c.borderColor },
+            timeScale: { borderColor: c.borderColor },
+        });
+        if (candleSeries) {
+            candleSeries.applyOptions({
+                upColor: c.upColor,
+                downColor: c.downColor,
+            });
+        }
+        if (volumeSeries) {
+            volumeSeries.applyOptions({ color: c.upColor });
+        }
+    }, 20);
+};
+
 // 初始化 TradingView 圖表
 function initChart() {
     logDebug("Starting initChart...");
@@ -82,12 +137,13 @@ function initChart() {
             return;
         }
 
+        var themeColors = getChartThemeColors();
         chart = LightweightCharts.createChart(container, {
             width: container.clientWidth || 600,
             height: 300,
             layout: {
-                background: { type: 'solid', color: '#131722' },
-                textColor: '#d1d4dc',
+                background: { type: 'solid', color: themeColors.background },
+                textColor: themeColors.textColor,
             },
             localization: {
                 locale: 'zh-TW',
@@ -104,14 +160,14 @@ function initChart() {
                 },
             },
             grid: {
-                vertLines: { color: 'rgba(42, 46, 57, 0.5)' },
-                horzLines: { color: 'rgba(42, 46, 57, 0.5)' },
+                vertLines: { color: themeColors.gridColor },
+                horzLines: { color: themeColors.gridColor },
             },
             rightPriceScale: {
-                borderColor: 'rgba(197, 203, 206, 0.8)',
+                borderColor: themeColors.borderColor,
             },
             timeScale: {
-                borderColor: 'rgba(197, 203, 206, 0.8)',
+                borderColor: themeColors.borderColor,
                 timeVisible: true,
                 secondsVisible: false,
             },
@@ -122,7 +178,7 @@ function initChart() {
         // 終極備援方案：偵測並嘗試所有可能的方法
         if (typeof chart.addCandlestickSeries === 'function') {
             candleSeries = chart.addCandlestickSeries({
-                upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
+                upColor: themeColors.upColor, downColor: themeColors.downColor, borderVisible: false,
             });
             logDebug("Series: Used addCandlestickSeries");
         } else if (typeof chart.addSeries === 'function') {
@@ -132,7 +188,7 @@ function initChart() {
                 const type = (LightweightCharts.SeriesType && LightweightCharts.SeriesType.Candlestick) ?
                     LightweightCharts.SeriesType.Candlestick : 'Candlestick';
                 candleSeries = chart.addSeries(type, {
-                    upColor: '#26a69a', downColor: '#ef5350',
+                    upColor: themeColors.upColor, downColor: themeColors.downColor,
                 });
                 logDebug("Series: Used addSeries(" + type + ")");
             } catch (err) {
@@ -142,7 +198,7 @@ function initChart() {
 
         // --- 加入成交量序列 ---
         volumeSeries = chart.addHistogramSeries({
-            color: '#26a69a',
+            color: themeColors.upColor,
             priceFormat: { type: 'volume' },
             priceScaleId: '',
         });
@@ -509,7 +565,7 @@ function renderTwMiniCards(market) {
             const dirEl = container.querySelector(`.tw-mc-dir[data-sym="${item.symbol}"]`);
             const scoreEl = container.querySelector(`.tw-mc-score[data-sym="${item.symbol}"]`);
 
-            if (priceEl) priceEl.textContent = s.price.toLocaleString();
+            if (priceEl) priceEl.textContent = formatPrice(s.price);
             if (scoreEl) scoreEl.textContent = s.confidence;
             if (dirEl) {
                 const lbl = getSignalLabel(s.direction, s.confidence);
@@ -517,6 +573,72 @@ function renderTwMiniCards(market) {
             }
         } catch (e) { /* 靜默 */ }
     });
+}
+
+// 更新頂部 ticker 的指定標的（通用，支援台股/期貨/crypto）
+function updateTickerForSymbol(symbol, price, confidence, change) {
+    const tickerMap = {
+        'BTC/USDT': 'btc', 'ETH/USDT': 'eth', 'SOL/USDT': 'sol',
+        '2330.TW': '2330', '0050.TW': '0050', '2317.TW': '2317',
+        '2881.TW': '2881', '2603.TW': '2603'
+    };
+    const tickerId = tickerMap[symbol];
+    if (!tickerId) return;
+
+    const valEls = document.querySelectorAll(`[id^="ticker-${tickerId}"]`);
+    const chgEls = document.querySelectorAll(`[id^="ticker-${tickerId}-chg"]`);
+    const scoreEls = document.querySelectorAll(`[id^="ticker-${tickerId}-score"]`);
+
+    valEls.forEach(el => {
+        if (el && !el.id.includes('chg') && !el.id.includes('score')) {
+            el.textContent = formatPrice(price);
+        }
+    });
+    const chg = parseFloat(change) || 0;
+    chgEls.forEach(el => {
+        if (el) {
+            const prefix = chg > 0 ? '▲' : chg < 0 ? '▼' : '';
+            el.textContent = `${prefix}${Math.abs(chg).toFixed(2)}%`;
+            el.className = 't-chg ' + (chg > 0 ? 'up' : chg < 0 ? 'down' : '');
+        }
+    });
+    scoreEls.forEach(el => {
+        if (el) el.textContent = `Score: ${confidence}`;
+    });
+}
+
+// 頁面載入時一次拉取所有 ticker 資料（含台股），不依賴手動切換
+async function initTickerData() {
+    try {
+        const res = await fetch('/api/ticker-summary');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // Crypto ticker（WebSocket 可能還沒送達，先填）
+        if (data.crypto) {
+            for (const [sym, info] of Object.entries(data.crypto)) {
+                updateTickerForSymbol(sym, info.price, info.confidence, info.change_24h || 0);
+            }
+        }
+        // TW ticker
+        if (data.tw) {
+            for (const [sym, info] of Object.entries(data.tw)) {
+                updateTickerForSymbol(sym, info.price, info.confidence, info.change_24h || 0);
+            }
+        }
+        // 更新時間戳
+        updateTimestamps(data.crypto_updated_at, data.tw_updated_at);
+    } catch (e) {
+        console.warn('[initTickerData] Failed:', e);
+    }
+}
+
+// 更新右上角的分開時間戳
+function updateTimestamps(cryptoTime, twTime) {
+    const elCrypto = document.getElementById('ts-crypto');
+    const elTw = document.getElementById('ts-tw');
+    if (elCrypto && cryptoTime) elCrypto.textContent = `Crypto: ${cryptoTime}`;
+    if (elTw && twTime) elTw.textContent = `TW: ${twTime}`;
 }
 
 async function fetchTwSignals(symbol, market) {
@@ -530,10 +652,22 @@ async function fetchTwSignals(symbol, market) {
             return;
         }
 
+        // 更新頂部 ticker（台股/期貨）
+        updateTickerForSymbol(symbol, s.price, s.confidence, s.change_24h || 0);
+
+        // 更新 TW 時間戳
+        const twNow = new Date().toTimeString().slice(0, 8);
+        updateTimestamps(null, twNow);
+
+        // 盤後不需自動更新
+        if (data.market_open === false) {
+            clearAutoRefresh();
+        }
+
         const modeLabel = market === 'futures' ? '台股期貨' : '台股';
 
         // 價格
-        if (ui.btc && ui.btc.price) ui.btc.price.textContent = `${s.price.toLocaleString()}`;
+        if (ui.btc && ui.btc.price) ui.btc.price.textContent = formatPrice(s.price);
         if (ui.status) ui.status.textContent = `${modeLabel}盤後信號（日線）`;
 
         // 1D 環形圖
@@ -578,7 +712,7 @@ async function fetchTwSignals(symbol, market) {
         const hPrice = document.getElementById('h-price-btc');
         const hS1d = document.getElementById('h-score-1d');
         const hS4h = document.getElementById('h-score-4h');
-        if (hPrice) hPrice.textContent = `${s.price.toLocaleString()}`;
+        if (hPrice) hPrice.textContent = formatPrice(s.price);
         if (hS1d) { hS1d.textContent = s.confidence; hS1d.style.color = s.direction === 'BUY' ? '#10b981' : s.direction === 'SELL' ? '#ef4444' : '#94a3b8'; }
         if (hS4h) { hS4h.textContent = '--'; hS4h.style.color = '#94a3b8'; }
         syncFullscreenHeader(symbol, s.direction, s.confidence, ui.btc.res_alert ? ui.btc.res_alert.innerHTML : '');
@@ -694,6 +828,17 @@ async function loadChartData(tf, forceFit = false) {
 
             candleSeries.setData(cleanData);
             cachedCandles = cleanData;
+
+            // 同步左側儀表板價格（以圖表最新收盤價為準，避免 signal 和 chart 資料源不同步）
+            if (cleanData.length > 0) {
+                const lastCandle = cleanData[cleanData.length - 1];
+                const chartPrice = lastCandle.close;
+                if (ui.btc && ui.btc.price) {
+                    const prefix = (currentMarket === 'crypto') ? '$' : '';
+                    ui.btc.price.textContent = `${prefix}${formatPrice(chartPrice)}`;
+                }
+            }
+
             refreshIndicators();
 
             if (candleSeries) {
@@ -1078,7 +1223,10 @@ function processData(serverData) {
         else if (symbol === 'ETH/USDT') tickerId = 'eth';
         else if (symbol === 'SOL/USDT') tickerId = 'sol';
         else if (symbol === '2330.TW') tickerId = '2330';
-        else if (symbol === 'TX') tickerId = 'tx';
+        else if (symbol === '0050.TW') tickerId = '0050';
+        else if (symbol === '2317.TW') tickerId = '2317';
+        else if (symbol === '2881.TW') tickerId = '2881';
+        else if (symbol === '2603.TW') tickerId = '2603';
 
         if (tickerId) {
             const valEls = document.querySelectorAll(`[id^="ticker-${tickerId}"]`);
@@ -1087,7 +1235,7 @@ function processData(serverData) {
 
             valEls.forEach(el => {
                 if (el && !el.id.includes('chg') && !el.id.includes('score')) {
-                    el.textContent = parseFloat(price).toLocaleString();
+                    el.textContent = formatPrice(price);
                 }
             });
 
@@ -1109,7 +1257,7 @@ function processData(serverData) {
         // --- 若為目前選中的標的與市場，才更新儀表板主畫面 ---
         if (symbol === currentSymbol) {
             const currencyPrefix = (currentMarket === 'crypto') ? '$' : '';
-            if (ui.btc && ui.btc.price) ui.btc.price.textContent = `${currencyPrefix}${parseFloat(price).toLocaleString()}`;
+            if (ui.btc && ui.btc.price) ui.btc.price.textContent = `${currencyPrefix}${formatPrice(price)}`;
             if (ui.status) ui.status.textContent = `最後更新: ${d1.timestamp}`;
 
             // 1D Update
@@ -1124,7 +1272,7 @@ function processData(serverData) {
             // --- 更新全屏模式 Header 精簡面板 ---
             const hPrice = document.getElementById('h-price-btc');
             const hS1d = document.getElementById('h-score-1d');
-            if (hPrice) hPrice.textContent = `$${parseFloat(d1.price).toLocaleString()}`;
+            if (hPrice) hPrice.textContent = `$${formatPrice(d1.price)}`;
             if (hS1d) {
                 hS1d.textContent = d1.confidence;
                 const color = d1.direction === 'BUY' ? '#10b981' : d1.direction === 'SELL' ? '#ef4444' : '#94a3b8';
@@ -1219,19 +1367,19 @@ function processData(serverData) {
         // 小卡片使用語意標籤，讓使用者一眼判讀
         if (symbol === 'BTC/USDT' && sigs['1d']) {
             const lbl = getSignalLabel(sigs['1d'].direction, sigs['1d'].confidence);
-            ui.btcm.price.textContent = `$${sigs['1d'].price.toLocaleString()}`;
+            ui.btcm.price.textContent = `$${formatPrice(sigs['1d'].price)}`;
             ui.btcm.dir1d.textContent = lbl.brief;
             ui.btcm.score1d.textContent = sigs['1d'].confidence;
         }
         if (symbol === 'ETH/USDT' && sigs['1d']) {
             const lbl = getSignalLabel(sigs['1d'].direction, sigs['1d'].confidence);
-            ui.eth.price.textContent = `$${sigs['1d'].price.toLocaleString()}`;
+            ui.eth.price.textContent = `$${formatPrice(sigs['1d'].price)}`;
             ui.eth.dir1d.textContent = lbl.brief;
             ui.eth.score1d.textContent = sigs['1d'].confidence;
         }
         if (symbol === 'SOL/USDT' && sigs['1d']) {
             const lbl = getSignalLabel(sigs['1d'].direction, sigs['1d'].confidence);
-            ui.sol.price.textContent = `$${sigs['1d'].price.toLocaleString()}`;
+            ui.sol.price.textContent = `$${formatPrice(sigs['1d'].price)}`;
             ui.sol.dir1d.textContent = lbl.brief;
             ui.sol.score1d.textContent = sigs['1d'].confidence;
         }
@@ -1262,6 +1410,11 @@ ws.onmessage = (event) => {
         if (payload.type === "init" || payload.type === "update") {
             processData(payload.data);
 
+            // 更新 crypto 時間戳
+            const now = new Date();
+            const tStr = now.toTimeString().slice(0, 8);
+            updateTimestamps(tStr, null);
+
             const isSafeMode = payload.safe_mode || false;
             const safeEl = document.getElementById("safe-mode-alert");
             const safeEventText = document.getElementById("safe-event-name");
@@ -1273,11 +1426,21 @@ ws.onmessage = (event) => {
             }
 
             const sentiment = payload.global_alert;
-            if (sentiment) {
-                if (sentiment.scheduled) {
-                    updateEventTimers(sentiment.scheduled);
-                }
+            const actionStrip = document.getElementById("action-strip");
+            const newsArea = document.getElementById("news-ticker-area");
+            const eventArea = document.getElementById("event-ticker-area");
+            const divider = document.querySelector("#action-strip .vertical-divider");
+            let hasNews = false, hasEvents = false;
 
+            if (sentiment) {
+                // 事件倒數
+                if (sentiment.scheduled && sentiment.scheduled.length > 0) {
+                    updateEventTimers(sentiment.scheduled);
+                    hasEvents = true;
+                }
+                if (eventArea) eventArea.style.display = hasEvents ? "flex" : "none";
+
+                // 即時情緒事件
                 const current = sentiment.current;
                 const alertEl = document.getElementById("global-alert");
                 const alertText = document.getElementById("alert-text");
@@ -1285,19 +1448,48 @@ ws.onmessage = (event) => {
 
                 if (current && alertEl && alertText) {
                     const analysisLabel = current.analysis ? ` [${current.analysis}]` : "";
-                    alertText.textContent = current.text + analysisLabel;
-                    alertTag.textContent = current.tag || "BREAKING";
-                    alertEl.style.display = "flex";
+                    const fullText = current.text + analysisLabel;
 
-                    if (current.score <= -15) {
-                        alertEl.style.background = "linear-gradient(90deg, #7f1d1d, #ef4444)";
-                    } else if (current.score >= 15) {
-                        alertEl.style.background = "linear-gradient(90deg, #064e3b, #10b981)";
+                    // 建立可點擊的連結 + 跑馬燈容器
+                    if (current.link) {
+                        alertText.innerHTML = `<a href="${current.link}" target="_blank" rel="noopener" class="news-link"><span class="news-marquee-inner">${fullText}</span></a>`;
                     } else {
-                        alertEl.style.background = "linear-gradient(90deg, #92400e, #f59e0b)";
+                        alertText.innerHTML = `<span class="news-marquee-inner">${fullText}</span>`;
+                    }
+                    // 文字夠長才啟動跑馬燈動畫
+                    const inner = alertText.querySelector('.news-marquee-inner');
+                    if (inner && inner.scrollWidth > alertText.clientWidth) {
+                        alertText.classList.add('news-marquee');
+                    } else {
+                        alertText.classList.remove('news-marquee');
+                    }
+
+                    alertTag.textContent = current.tag || "BREAKING";
+                    hasNews = true;
+
+                    // 用 CSS class 搭配主題色
+                    alertEl.style.background = "";
+                    alertEl.classList.remove("sentiment-bearish", "sentiment-bullish", "sentiment-neutral");
+                    if (alertTag) alertTag.classList.remove("tag-bearish", "tag-bullish", "tag-neutral");
+
+                    if (current.score <= -10) {
+                        alertEl.classList.add("sentiment-bearish");
+                        if (alertTag) alertTag.classList.add("tag-bearish");
+                    } else if (current.score >= 10) {
+                        alertEl.classList.add("sentiment-bullish");
+                        if (alertTag) alertTag.classList.add("tag-bullish");
+                    } else {
+                        alertEl.classList.add("sentiment-neutral");
+                        if (alertTag) alertTag.classList.add("tag-neutral");
                     }
                 }
+                if (newsArea) newsArea.style.display = hasNews ? "flex" : "none";
             }
+
+            // 整條 action-strip：有任何內容才顯示
+            if (actionStrip) actionStrip.style.display = (hasNews || hasEvents) ? "flex" : "none";
+            // 分隔線：兩區都有內容才顯示
+            if (divider) divider.style.display = (hasNews && hasEvents) ? "block" : "none";
         }
     } catch (e) {
         console.error("Data parse error", e);
@@ -1329,7 +1521,8 @@ ws.onclose = () => {
 // 頁面載入完成
 document.addEventListener('DOMContentLoaded', () => {
     initChart();
-    startHeartbeat(); // 啟動心跳探測
+    startHeartbeat();
+    initTickerData(); // 載入時一次拉取所有 ticker（含台股）
 
     // --- 市場選擇 (虛擬幣 / 台股) ---
     const marketSelect = document.getElementById('market-select');
@@ -1340,19 +1533,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const handleSearch = () => {
         const m = marketSelect.value;
+        // 取得當前可見輸入框的值
+        const activeInput = m === 'crypto' ? cryptoInput :
+                            m === 'stock' ? stockInput : futuresInput;
+        let raw = activeInput ? activeInput.value.trim() : '';
+        if (!raw) return;
+
+        // 智慧偵測：純數字 4 碼 → 台股代碼，自動切換市場
+        const isTwStockCode = /^\d{4,6}$/.test(raw);
+        if (isTwStockCode && m !== 'stock') {
+            // 自動切到台股
+            if (marketSelect) marketSelect.value = 'stock';
+            if (cryptoInput) cryptoInput.style.display = 'none';
+            if (stockInput) { stockInput.style.display = 'block'; stockInput.value = raw; }
+            if (futuresInput) futuresInput.style.display = 'none';
+            const symbol = raw.includes('.') ? raw : `${raw}.TW`;
+            window.changeSymbol(symbol, 'stock');
+            return;
+        }
+
         if (m === 'crypto') {
-            let raw = cryptoInput.value.trim().toUpperCase();
-            if (!raw) return;
+            raw = raw.toUpperCase();
             const symbol = cryptoNames[raw] || (raw.includes('/') ? raw : `${raw}/USDT`);
             window.changeSymbol(symbol, 'crypto');
         } else if (m === 'stock') {
-            let raw = stockInput.value.trim();
-            if (!raw) return;
             const symbol = stockNameSearchMapping[raw] || (raw.includes('.') ? raw : `${raw}.TW`);
             window.changeSymbol(symbol, 'stock');
         } else if (m === 'futures') {
-            let raw = futuresInput.value.trim().toUpperCase();
-            if (!raw) return;
+            raw = raw.toUpperCase();
             window.changeSymbol(raw, 'futures');
         }
     };
@@ -1430,10 +1638,16 @@ async function startHeartbeat() {
                     // RTT > 800ms 顯示黃燈，否則正常綠燈
                     if (rtt > 800) {
                         ui.statusDot.classList.add('slow');
-                        if (ui.connStatus) ui.connStatus.textContent = `⚠️ 連線遲緩 (${rtt}ms)`;
+                        if (ui.connStatus) {
+                            ui.connStatus.textContent = `⚠️ 連線遲緩 (${rtt}ms)`;
+                            ui.connStatus.style.color = '#f59e0b';
+                        }
                     } else {
                         ui.statusDot.classList.remove('slow');
-                        if (ui.connStatus) ui.connStatus.textContent = '✅ 系統正常 (Online)';
+                        if (ui.connStatus) {
+                            ui.connStatus.textContent = '✅ 系統正常 (Online)';
+                            ui.connStatus.style.color = '';
+                        }
                     }
                 }
             }
@@ -1443,7 +1657,10 @@ async function startHeartbeat() {
                 ui.statusDot.classList.add('offline');
                 ui.statusDot.classList.remove('slow');
             }
-            if (ui.connStatus) ui.connStatus.textContent = '❌ 連線中斷 (Offline)';
+            if (ui.connStatus) {
+                ui.connStatus.textContent = '❌ 連線中斷 (Offline)';
+                ui.connStatus.style.color = '#ef4444';
+            }
         }
     }, 30000); // 30 秒偵測一次
 }
@@ -1472,8 +1689,13 @@ function updateEventTimers(scheduledEvents) {
             else countdownText = `${hours}時 ${mins}分`;
         }
 
-        const item = document.createElement('div');
+        const item = document.createElement(event.link ? 'a' : 'div');
         item.className = 'event-item';
+        if (event.link) {
+            item.href = event.link;
+            item.target = '_blank';
+            item.rel = 'noopener';
+        }
         item.innerHTML = `
             <div class="event-info">
                 <span class="event-name">${event.name}</span>

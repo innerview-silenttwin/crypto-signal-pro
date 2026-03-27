@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="zh-TW" data-theme="kawaii">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sector Trading | 類股交易中心</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script>
+        (function() {
+            var t = localStorage.getItem('csp-theme') || 'kawaii';
+            document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
+    <style>
+        /* ── 類股 Tab 切換 ── */
+        .sector-tabs {
+            display: flex;
+            gap: 0;
+            margin-bottom: 24px;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1.5px solid var(--border-color);
+        }
+        .sector-tab {
+            flex: 1;
+            padding: 14px 8px;
+            text-align: center;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 700;
+            background: rgba(167,139,250,0.04);
+            color: var(--text-muted);
+            border: none;
+            transition: all 0.2s;
+            font-family: 'Nunito', 'Outfit', sans-serif;
+        }
+        .sector-tab:not(:last-child) {
+            border-right: 1.5px solid var(--border-color);
+        }
+        .sector-tab:hover {
+            background: rgba(167,139,250,0.1);
+        }
+        .sector-tab.active {
+            background: var(--primary);
+            color: #fff;
+        }
+        .sector-tab .tab-indicator {
+            display: inline-block;
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+        .sector-tab .tab-indicator.on { background: #34d399; }
+        .sector-tab .tab-indicator.off { background: #94a3b8; }
+
+        /* ── 佈局 ── */
+        .sector-layout {
+            display: grid;
+            grid-template-columns: 1fr 340px;
+            gap: 24px;
+            padding: 0 24px 24px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            padding: 18px;
+            text-align: center;
+        }
+        .stat-label {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            margin-bottom: 6px;
+            font-weight: 700;
+        }
+        .stat-value {
+            font-size: 22px;
+            font-weight: 800;
+            font-family: 'Nunito', 'Outfit';
+            color: var(--text-main);
+        }
+        .stat-value.positive { color: var(--buy-color, #10b981); }
+        .stat-value.negative { color: var(--sell-color, #ef4444); }
+
+        /* ── 策略卡片 ── */
+        .strategy-card {
+            padding: 18px;
+            margin-bottom: 16px;
+        }
+        .strategy-card h4 {
+            font-size: 14px;
+            margin-bottom: 10px;
+            color: var(--text-main);
+        }
+        .strategy-detail {
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.8;
+        }
+        .strategy-detail strong { color: var(--text-main); }
+        .weight-bar {
+            display: flex;
+            gap: 4px;
+            margin-top: 8px;
+        }
+        .weight-segment {
+            height: 6px;
+            border-radius: 3px;
+            background: var(--primary);
+            opacity: 0.7;
+        }
+
+        /* ── 持倉 ── */
+        .holding-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(167,139,250,0.06);
+            font-size: 13px;
+        }
+        .holding-item:last-child { border-bottom: none; }
+        .holding-name { font-weight: 700; color: var(--text-main); }
+        .holding-detail { color: var(--text-muted); font-size: 11px; }
+
+        /* ── 權益圖表 ── */
+        .chart-container {
+            position: relative;
+            height: 200px;
+            margin-bottom: 16px;
+        }
+
+        /* ── 控制列 ── */
+        .control-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            margin-bottom: 16px;
+        }
+        .control-bar .status-text {
+            font-size: 13px;
+            font-weight: 700;
+        }
+        .btn-toggle {
+            padding: 8px 24px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 700;
+            border: none;
+            cursor: pointer;
+            font-family: 'Nunito', sans-serif;
+            transition: all 0.2s;
+        }
+        .btn-toggle.start {
+            background: linear-gradient(135deg, #34d399, #10b981);
+            color: #fff;
+        }
+        .btn-toggle.stop {
+            background: linear-gradient(135deg, #f87171, #ef4444);
+            color: #fff;
+        }
+
+        /* ── 全域控制 ── */
+        .global-control-bar {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            padding: 16px 24px;
+            background: rgba(167,139,250,0.04);
+            border-radius: 16px;
+            margin: 0 24px 20px;
+            border: 1.5px solid var(--border-color);
+        }
+        .global-control-bar .btn-global {
+            padding: 10px 20px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 700;
+            border: 1.5px solid var(--border-color);
+            cursor: pointer;
+            font-family: 'Nunito', sans-serif;
+            background: rgba(255,255,255,0.6);
+            color: var(--text-main);
+            transition: all 0.2s;
+        }
+        .global-control-bar .btn-global:hover {
+            background: var(--primary);
+            color: #fff;
+        }
+        .global-control-bar .btn-global.active-bg {
+            background: linear-gradient(135deg, #34d399, #10b981);
+            color: #fff;
+            border-color: transparent;
+        }
+        .auto-status {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-left: auto;
+        }
+
+        /* 歷史表格 */
+        .history-table { width: 100%; border-collapse: collapse; }
+        .history-table th {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-weight: 700;
+            text-align: left;
+            padding: 8px 12px;
+            border-bottom: 1.5px solid var(--border-color);
+        }
+        .history-table td {
+            font-size: 12px;
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(167,139,250,0.05);
+            color: var(--text-main);
+        }
+        .history-table .buy-row td:nth-child(3) { color: var(--buy-color, #10b981); font-weight: 700; }
+        .history-table .sell-row td:nth-child(3) { color: var(--sell-color, #ef4444); font-weight: 700; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar glass-panel">
+            <div class="logo">
+                <span class="glow-text">CryptoSignal</span>
+                <span class="pro-badge">PRO</span>
+            </div>
+            <div class="theme-switcher">
+                <button class="theme-btn active" data-theme-value="kawaii">Kawaii</button>
+                <button class="theme-btn" data-theme-value="pro-dark">Pro Dark</button>
+                <button class="theme-btn" data-theme-value="ocean">Ocean</button>
+                <button class="theme-btn" data-theme-value="warm">Warm</button>
+            </div>
+            <nav class="nav-menu">
+                <a href="index.html" class="nav-item">分析儀表板</a>
+                <a href="trading.html" class="nav-item">虛擬交易中心</a>
+                <a href="sector_trading.html" class="nav-item active">類股交易中心</a>
+            </nav>
+            <div class="market-panel" style="margin-top:auto; background:rgba(167,139,250,0.05); padding:16px; border-radius:14px; border:1.5px solid rgba(167,139,250,0.1)">
+                <div style="font-size:11px; color:var(--text-muted); margin-bottom:8px; font-weight:700">類股自動交易</div>
+                <div style="font-size:13px; font-weight:600">背景引擎: <span id="sidebar-auto-status" class="status-badge inactive">未啟動</span></div>
+            </div>
+        </aside>
+
+        <main class="main-content">
+            <header class="top-bar">
+                <h1>類股虛擬交易中心 (Sector Trading Center)</h1>
+                <div class="top-bar-right">
+                    <span id="last-refresh" style="font-size:12px; color:var(--text-muted)">最後更新: --</span>
+                </div>
+            </header>
+
+            <!-- 全域控制列 -->
+            <div class="global-control-bar glass-panel">
+                <button id="btn-start-auto" class="btn-global">啟動背景交易引擎</button>
+                <button id="btn-stop-auto" class="btn-global">停止</button>
+                <button id="btn-run-once" class="btn-global">手動執行一次</button>
+                <div class="auto-status">
+                    <span id="auto-status-text">引擎狀態: 未啟動</span>
+                    <br><span id="auto-last-run">上次執行: --</span>
+                </div>
+            </div>
+
+            <!-- 類股 Tab -->
+            <div class="sector-tabs" style="margin: 0 24px 20px" id="sector-tabs">
+                <!-- 動態生成 -->
+            </div>
+
+            <!-- 類股內容 -->
+            <div id="sector-content">
+                <!-- 控制列 -->
+                <div class="control-bar glass-panel" style="margin: 0 24px 16px; border-radius:16px">
+                    <div>
+                        <span class="status-text" id="sector-title">--</span>
+                        <span style="font-size:12px; color:var(--text-muted); margin-left:12px" id="sector-desc"></span>
+                    </div>
+                    <button id="btn-toggle-sector" class="btn-toggle start">開啟交易</button>
+                </div>
+
+                <div class="sector-layout">
+                    <div class="sector-main">
+                        <!-- 數據卡片 -->
+                        <div class="stats-grid">
+                            <div class="stat-card glass-panel">
+                                <div class="stat-label">初始本金</div>
+                                <div class="stat-value">1,000,000</div>
+                            </div>
+                            <div class="stat-card glass-panel">
+                                <div class="stat-label">當前淨值</div>
+                                <div class="stat-value" id="s-equity">--</div>
+                            </div>
+                            <div class="stat-card glass-panel" id="s-pl-card">
+                                <div class="stat-label">累積損益</div>
+                                <div class="stat-value" id="s-pl">--</div>
+                            </div>
+                            <div class="stat-card glass-panel">
+                                <div class="stat-label">勝率</div>
+                                <div class="stat-value" id="s-winrate">--</div>
+                            </div>
+                        </div>
+
+                        <!-- 權益曲線圖 -->
+                        <div class="card glass-panel" style="padding:20px; margin-bottom:20px">
+                            <h3 style="font-size:14px; margin-bottom:12px; color:var(--text-main)">權益曲線</h3>
+                            <div class="chart-container">
+                                <canvas id="equity-chart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- 交易歷史 -->
+                        <div class="card glass-panel" style="padding:20px">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px">
+                                <h3 style="font-size:14px; color:var(--text-main)">交易歷史</h3>
+                                <div style="display:flex; gap:8px">
+                                    <button id="btn-prev" class="btn-global" style="padding:4px 12px; font-size:11px">上一頁</button>
+                                    <span id="page-info" style="font-size:11px; align-self:center; color:var(--text-muted)">1</span>
+                                    <button id="btn-next" class="btn-global" style="padding:4px 12px; font-size:11px">下一頁</button>
+                                </div>
+                            </div>
+                            <div style="max-height:400px; overflow-y:auto">
+                                <table class="history-table">
+                                    <thead>
+                                        <tr>
+                                            <th>時間</th>
+                                            <th>標的</th>
+                                            <th>操作</th>
+                                            <th>成交價</th>
+                                            <th>數量</th>
+                                            <th>損益</th>
+                                            <th>信號</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="history-body"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 右側欄 -->
+                    <div class="sector-side">
+                        <!-- 策略設定 -->
+                        <div class="strategy-card card glass-panel">
+                            <h4>交易策略</h4>
+                            <div class="strategy-detail" id="strategy-info">--</div>
+                            <div class="weight-bar" id="weight-bar"></div>
+                        </div>
+
+                        <!-- 持倉 -->
+                        <div class="card glass-panel" style="padding:18px; margin-bottom:16px">
+                            <h4 style="font-size:14px; margin-bottom:10px; color:var(--text-main)">當前持倉</h4>
+                            <div id="holdings-list">
+                                <div style="font-size:12px; color:var(--text-muted)">目前無持倉</div>
+                            </div>
+                        </div>
+
+                        <!-- 績效統計 -->
+                        <div class="card glass-panel" style="padding:18px">
+                            <h4 style="font-size:14px; margin-bottom:10px; color:var(--text-main)">績效統計</h4>
+                            <div class="strategy-detail" id="perf-stats">--</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+    (function() {
+        const API = '';
+        const SECTORS = ['semiconductor', 'electronics', 'finance', 'traditional'];
+        const SECTOR_LABELS = {
+            semiconductor: '半導體', electronics: '電子代工/零組件',
+            finance: '金融', traditional: '傳產/航運'
+        };
+        const WEIGHT_NAMES = {
+            rsi: 'RSI', macd: 'MACD', bollinger: 'BB',
+            mfi: 'MFI', ema_cross: 'EMA', volume: 'Vol', adx: 'ADX'
+        };
+        const WEIGHT_COLORS = [
+            '#a78bfa','#34d399','#f59e0b','#60a5fa','#f472b6','#fb923c','#38bdf8'
+        ];
+
+        let currentSector = SECTORS[0];
+        let sectorsData = {};
+        let historyPage = 1;
+        let equityChart = null;
+
+        // ── Init ──
+        async function init() {
+            // 先綁定按鈕事件（確保即使 API 失敗按鈕仍可用）
+            document.getElementById('btn-start-auto').onclick = startAutoTrader;
+            document.getElementById('btn-stop-auto').onclick = stopAutoTrader;
+            document.getElementById('btn-run-once').onclick = runOnce;
+            document.getElementById('btn-toggle-sector').onclick = toggleSector;
+            document.getElementById('btn-prev').onclick = () => { historyPage = Math.max(1, historyPage - 1); refreshHistory(); };
+            document.getElementById('btn-next').onclick = () => { historyPage++; refreshHistory(); };
+
+            buildTabs();
+            await refreshAll();
+            setInterval(refreshAll, 15000);
+        }
+
+        function buildTabs() {
+            const container = document.getElementById('sector-tabs');
+            container.innerHTML = SECTORS.map(id =>
+                `<button class="sector-tab ${id === currentSector ? 'active' : ''}" data-sector="${id}">
+                    <span class="tab-indicator off" id="tab-ind-${id}"></span>
+                    ${SECTOR_LABELS[id]}
+                </button>`
+            ).join('');
+            container.querySelectorAll('.sector-tab').forEach(btn => {
+                btn.onclick = () => {
+                    currentSector = btn.dataset.sector;
+                    historyPage = 1;
+                    document.querySelectorAll('.sector-tab').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    renderSector();
+                    refreshHistory();
+                };
+            });
+        }
+
+        // ── Data ──
+        async function refreshAll() {
+            try {
+                const res = await fetch(API + '/api/sector-trading/sectors');
+                const data = await res.json();
+                data.forEach(s => { sectorsData[s.sector_id] = s; });
+
+                // Update tab indicators
+                SECTORS.forEach(id => {
+                    const ind = document.getElementById('tab-ind-' + id);
+                    if (ind) {
+                        const d = sectorsData[id];
+                        ind.className = 'tab-indicator ' + (d && d.is_active ? 'on' : 'off');
+                    }
+                });
+
+                renderSector();
+                refreshAutoStatus();
+                refreshHistory();
+                document.getElementById('last-refresh').textContent = '最後更新: ' + new Date().toLocaleTimeString();
+            } catch (e) {
+                console.error('refresh error', e);
+            }
+        }
+
+        async function refreshHistory() {
+            try {
+                const res = await fetch(API + `/api/sector-trading/${currentSector}/history?page=${historyPage}&pageSize=15`);
+                const data = await res.json();
+                renderHistory(data);
+            } catch(e) {}
+        }
+
+        async function refreshAutoStatus() {
+            try {
+                const res = await fetch(API + '/api/sector-trading/auto-trader/status');
+                const data = await res.json();
+                const statusEl = document.getElementById('auto-status-text');
+                const lastRunEl = document.getElementById('auto-last-run');
+                const sidebarEl = document.getElementById('sidebar-auto-status');
+                const startBtn = document.getElementById('btn-start-auto');
+                const stopBtn = document.getElementById('btn-stop-auto');
+
+                if (data.is_running) {
+                    statusEl.textContent = '引擎狀態: ✅ 運行中';
+                    statusEl.style.color = 'var(--buy-color, #10b981)';
+                    sidebarEl.textContent = '運行中';
+                    sidebarEl.className = 'status-badge active';
+                    startBtn.classList.add('active-bg');
+                    startBtn.textContent = '✅ 引擎運行中';
+                    stopBtn.style.display = '';
+                } else {
+                    statusEl.textContent = '引擎狀態: 未啟動';
+                    statusEl.style.color = '';
+                    sidebarEl.textContent = '未啟動';
+                    sidebarEl.className = 'status-badge inactive';
+                    startBtn.classList.remove('active-bg');
+                    startBtn.textContent = '啟動背景交易引擎';
+                    stopBtn.style.display = '';
+                }
+                lastRunEl.textContent = '上次執行: ' + (data.last_run_time || '--');
+            } catch(e) {
+                console.error('refreshAutoStatus error:', e);
+            }
+        }
+
+        // ── Actions ──
+        async function startAutoTrader() {
+            const btn = document.getElementById('btn-start-auto');
+            btn.textContent = '啟動中...';
+            btn.disabled = true;
+            try {
+                const res = await fetch(API + '/api/sector-trading/auto-trader/start', { method: 'POST' });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const data = await res.json();
+                console.log('Auto trader start response:', data);
+                await refreshAutoStatus();
+            } catch (e) {
+                console.error('啟動背景交易引擎失敗:', e);
+                alert('啟動失敗: ' + e.message + '\n請確認後端伺服器正在運行');
+            } finally {
+                btn.textContent = '啟動背景交易引擎';
+                btn.disabled = false;
+            }
+        }
+        async function stopAutoTrader() {
+            const btn = document.getElementById('btn-stop-auto');
+            btn.textContent = '停止中...';
+            btn.disabled = true;
+            try {
+                const res = await fetch(API + '/api/sector-trading/auto-trader/stop', { method: 'POST' });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                await refreshAutoStatus();
+            } catch (e) {
+                console.error('停止背景交易引擎失敗:', e);
+                alert('停止失敗: ' + e.message);
+            } finally {
+                btn.textContent = '停止';
+                btn.disabled = false;
+            }
+        }
+        async function runOnce() {
+            const btn = document.getElementById('btn-run-once');
+            btn.textContent = '執行中...';
+            btn.disabled = true;
+            try {
+                const res = await fetch(API + '/api/sector-trading/auto-trader/run-once', { method: 'POST' });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                setTimeout(() => {
+                    btn.textContent = '手動執行一次';
+                    btn.disabled = false;
+                    refreshAll();
+                }, 5000);
+            } catch (e) {
+                console.error('手動執行失敗:', e);
+                alert('手動執行失敗: ' + e.message);
+                btn.textContent = '手動執行一次';
+                btn.disabled = false;
+            }
+        }
+        async function toggleSector() {
+            const btn = document.getElementById('btn-toggle-sector');
+            btn.disabled = true;
+            try {
+                const d = sectorsData[currentSector];
+                const next = !(d && d.is_active);
+                const res = await fetch(API + `/api/sector-trading/${currentSector}/toggle?active=${next}`, { method: 'POST' });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                await refreshAll();
+            } catch (e) {
+                console.error('切換類股交易失敗:', e);
+                alert('操作失敗: ' + e.message);
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // ── Render ──
+        function renderSector() {
+            const d = sectorsData[currentSector];
+            if (!d) return;
+
+            // Title
+            document.getElementById('sector-title').textContent = d.sector_name;
+            document.getElementById('sector-desc').textContent = '';
+
+            // Toggle button
+            const toggleBtn = document.getElementById('btn-toggle-sector');
+            if (d.is_active) {
+                toggleBtn.textContent = '停止交易';
+                toggleBtn.className = 'btn-toggle stop';
+            } else {
+                toggleBtn.textContent = '開啟交易';
+                toggleBtn.className = 'btn-toggle start';
+            }
+
+            // Stats
+            document.getElementById('s-equity').textContent = d.equity.toLocaleString();
+            const plEl = document.getElementById('s-pl');
+            const plPct = d.total_pl_pct;
+            plEl.textContent = (d.total_pl >= 0 ? '+' : '') + d.total_pl.toLocaleString() + ` (${plPct >= 0 ? '+' : ''}${plPct}%)`;
+            plEl.className = 'stat-value ' + (d.total_pl >= 0 ? 'positive' : 'negative');
+
+            const wrEl = document.getElementById('s-winrate');
+            wrEl.textContent = d.stats.total_trades > 0 ? d.stats.win_rate + '%' : '--';
+
+            // Strategy
+            const st = d.strategy;
+            const stEl = document.getElementById('strategy-info');
+            stEl.innerHTML = `
+                <strong>${st.name}</strong> (${st.param_preset})<br>
+                買入門檻: <strong>${st.buy_threshold}分</strong> | 賣出門檻: <strong>${st.sell_threshold}分</strong><br>
+                停損: <strong>${st.stop_loss_pct}%</strong> | 停利: <strong>${st.take_profit_pct}%</strong><br>
+                <span style="font-size:11px; color:var(--text-muted); margin-top:6px; display:block">${st.description || ''}</span>
+            `;
+
+            // Weight bar
+            const wb = document.getElementById('weight-bar');
+            const keys = Object.keys(st.weights).sort((a,b) => st.weights[b] - st.weights[a]);
+            wb.innerHTML = keys.map((k, i) =>
+                `<div class="weight-segment" style="flex:${st.weights[k]}; background:${WEIGHT_COLORS[i % WEIGHT_COLORS.length]}" title="${WEIGHT_NAMES[k] || k}: ${st.weights[k]}"></div>`
+            ).join('');
+            wb.innerHTML += '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; width:100%">' +
+                keys.map((k, i) =>
+                    `<span style="font-size:10px; color:${WEIGHT_COLORS[i % WEIGHT_COLORS.length]}; font-weight:700">${WEIGHT_NAMES[k] || k}:${st.weights[k]}</span>`
+                ).join('') + '</div>';
+
+            // Holdings
+            const hl = document.getElementById('holdings-list');
+            const holdings = d.holdings;
+            const hKeys = Object.keys(holdings);
+            if (hKeys.length === 0) {
+                hl.innerHTML = '<div style="font-size:12px; color:var(--text-muted)">目前無持倉</div>';
+            } else {
+                hl.innerHTML = hKeys.map(sym => {
+                    const h = holdings[sym];
+                    const plClass = h.unrealized_pl >= 0 ? 'positive' : 'negative';
+                    return `<div class="holding-item">
+                        <div>
+                            <div class="holding-name">${h.name || sym}</div>
+                            <div class="holding-detail">${h.qty} 股 @ ${h.avg_price}</div>
+                        </div>
+                        <div style="text-align:right">
+                            <div style="font-weight:700; font-size:13px" class="${plClass}">
+                                ${h.unrealized_pl >= 0 ? '+' : ''}${h.unrealized_pl.toLocaleString()}
+                            </div>
+                            <div class="holding-detail">市值 ${h.market_value.toLocaleString()}</div>
+                        </div>
+                    </div>`;
+                }).join('');
+            }
+
+            // Performance stats
+            const ps = document.getElementById('perf-stats');
+            ps.innerHTML = `
+                已完成交易: <strong>${d.stats.total_trades}</strong><br>
+                勝: <strong style="color:var(--buy-color)">${d.stats.wins}</strong> /
+                敗: <strong style="color:var(--sell-color)">${d.stats.losses}</strong><br>
+                勝率: <strong>${d.stats.win_rate}%</strong><br>
+                已實現損益: <strong style="color:${d.stats.realized_profit >= 0 ? 'var(--buy-color)' : 'var(--sell-color)'}">
+                    ${d.stats.realized_profit >= 0 ? '+' : ''}${d.stats.realized_profit.toLocaleString()}</strong>
+            `;
+
+            // Equity chart
+            renderEquityChart(d.equity_curve);
+        }
+
+        function renderHistory(data) {
+            const body = document.getElementById('history-body');
+            if (!data.data || data.data.length === 0) {
+                body.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:30px">暫無交易紀錄</td></tr>';
+            } else {
+                body.innerHTML = data.data.map(h => {
+                    const isBuy = h.type === 'BUY';
+                    const plText = isBuy ? `成本 ${(h.cost||0).toLocaleString()}` :
+                        `<span style="color:${h.profit >= 0 ? 'var(--buy-color)' : 'var(--sell-color)'}; font-weight:700">${h.profit >= 0 ? '+' : ''}${(h.profit||0).toLocaleString()}</span>`;
+                    return `<tr class="${isBuy ? 'buy-row' : 'sell-row'}">
+                        <td>${h.time}</td>
+                        <td>${h.name || h.symbol}</td>
+                        <td>${isBuy ? '買進' : '賣出'}</td>
+                        <td>${h.price.toLocaleString()}</td>
+                        <td>${h.qty}</td>
+                        <td>${plText}</td>
+                        <td style="font-size:11px; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="${h.signal || ''}">${h.signal || ''}</td>
+                    </tr>`;
+                }).join('');
+            }
+            document.getElementById('page-info').textContent = `${historyPage} / ${Math.max(1, Math.ceil(data.total / 15))}`;
+        }
+
+        function renderEquityChart(curve) {
+            const ctx = document.getElementById('equity-chart');
+            if (!ctx) return;
+
+            if (equityChart) equityChart.destroy();
+
+            if (!curve || curve.length === 0) {
+                equityChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: ['Start'],
+                        datasets: [{ data: [1000000], borderColor: '#a78bfa', fill: true, backgroundColor: 'rgba(167,139,250,0.08)', tension: 0.3 }]
+                    },
+                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+                });
+                return;
+            }
+
+            equityChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: curve.map(c => c.time),
+                    datasets: [{
+                        data: curve.map(c => c.equity),
+                        borderColor: '#a78bfa',
+                        borderWidth: 2,
+                        fill: true,
+                        backgroundColor: 'rgba(167,139,250,0.08)',
+                        tension: 0.3,
+                        pointRadius: 0,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { display: false },
+                        y: {
+                            ticks: {
+                                callback: v => (v / 1000).toFixed(0) + 'K',
+                                font: { size: 10 },
+                                color: '#94a3b8',
+                            },
+                            grid: { color: 'rgba(167,139,250,0.06)' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ── Theme ──
+        (function() {
+            var currentTheme = localStorage.getItem('csp-theme') || 'kawaii';
+            var btns = document.querySelectorAll('.theme-btn');
+            function setActiveBtn(theme) {
+                btns.forEach(b => b.classList.toggle('active', b.getAttribute('data-theme-value') === theme));
+            }
+            function applyTheme(theme) {
+                document.documentElement.setAttribute('data-theme', theme);
+                localStorage.setItem('csp-theme', theme);
+                setActiveBtn(theme);
+            }
+            setActiveBtn(currentTheme);
+            btns.forEach(btn => btn.addEventListener('click', function() { applyTheme(this.getAttribute('data-theme-value')); }));
+        })();
+
+        init();
+    })();
+    </script>
+</body>
+</html>

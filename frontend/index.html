@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-TW" data-theme="kawaii">
 
 <head>
     <meta charset="UTF-8">
@@ -11,6 +11,13 @@
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@500;700&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <script>
+        // Apply saved theme immediately to prevent flash
+        (function() {
+            var t = localStorage.getItem('csp-theme') || 'kawaii';
+            document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
 </head>
 
 <body>
@@ -22,9 +29,17 @@
                 <span class="pro-badge">PRO</span>
             </div>
 
+            <div class="theme-switcher">
+                <button class="theme-btn active" data-theme-value="kawaii">Kawaii</button>
+                <button class="theme-btn" data-theme-value="pro-dark">Pro Dark</button>
+                <button class="theme-btn" data-theme-value="ocean">Ocean</button>
+                <button class="theme-btn" data-theme-value="warm">Warm</button>
+            </div>
+
             <nav class="nav-menu">
                 <a href="index.html" class="nav-item active">分析儀表板</a>
                 <a href="trading.html" class="nav-item">虛擬交易中心</a>
+                <a href="sector_trading.html" class="nav-item">類股交易中心</a>
                 <a href="#" class="nav-item" onclick="alert('📈 多圖表版將於 Phase 3 開放！'); return false;">📈 多圖表版</a>
                 <a href="#" class="nav-item" onclick="alert('🏆 會員中心將於 Phase 3 開放！'); return false;">🏆 會員中心</a>
                 <a href="#" class="nav-item" onclick="alert('⚙️ 策略參數將於 Phase 3 開放！'); return false;">⚙️ 策略參數</a>
@@ -49,17 +64,23 @@
             <!-- 頂部實時行情滾動條 (Market Ticker) -->
             <div class="market-ticker-strip">
                 <div id="ticker-content" class="ticker-content">
-                    <span class="ticker-item"><span class="t-sym">BTC/USDT</span> <span id="ticker-btc" class="t-val">--</span> <span class="t-chg" id="ticker-btc-chg">--</span> <span class="t-score" id="ticker-btc-score">--</span></span>
-                    <span class="ticker-item"><span class="t-sym">ETH/USDT</span> <span id="ticker-eth" class="t-val">--</span> <span class="t-chg" id="ticker-eth-chg">--</span> <span class="t-score" id="ticker-eth-score">--</span></span>
-                    <span class="ticker-item"><span class="t-sym">SOL/USDT</span> <span id="ticker-sol" class="t-val">--</span> <span class="t-chg" id="ticker-sol-chg">--</span> <span class="t-score" id="ticker-sol-score">--</span></span>
-                    <span class="ticker-item"><span class="t-sym">2330.TW</span> <span id="ticker-2330" class="t-val">--</span> <span class="t-chg" id="ticker-2330-chg">--</span> <span class="t-score" id="ticker-2330-score">--</span></span>
-                    <span class="ticker-item"><span class="t-sym">TX (台指)</span> <span id="ticker-tx" class="t-val">--</span> <span class="t-chg" id="ticker-tx-chg">--</span> <span class="t-score" id="ticker-tx-score">--</span></span>
+                    <span class="ticker-item"><span class="t-sym">BTC</span> <span id="ticker-btc" class="t-val">--</span> <span class="t-chg" id="ticker-btc-chg">--</span> <span class="t-score" id="ticker-btc-score">--</span></span>
+                    <span class="ticker-item"><span class="t-sym">ETH</span> <span id="ticker-eth" class="t-val">--</span> <span class="t-chg" id="ticker-eth-chg">--</span> <span class="t-score" id="ticker-eth-score">--</span></span>
+                    <span class="ticker-item"><span class="t-sym">SOL</span> <span id="ticker-sol" class="t-val">--</span> <span class="t-chg" id="ticker-sol-chg">--</span> <span class="t-score" id="ticker-sol-score">--</span></span>
+                    <span class="ticker-item"><span class="t-sym">2330 台積電</span> <span id="ticker-2330" class="t-val">--</span> <span class="t-chg" id="ticker-2330-chg">--</span> <span class="t-score" id="ticker-2330-score">--</span></span>
+                    <span class="ticker-item"><span class="t-sym">0050 台灣50</span> <span id="ticker-0050" class="t-val">--</span> <span class="t-chg" id="ticker-0050-chg">--</span> <span class="t-score" id="ticker-0050-score">--</span></span>
+                    <span class="ticker-item"><span class="t-sym">2317 鴻海</span> <span id="ticker-2317" class="t-val">--</span> <span class="t-chg" id="ticker-2317-chg">--</span> <span class="t-score" id="ticker-2317-score">--</span></span>
+                    <span class="ticker-item"><span class="t-sym">2881 富邦金</span> <span id="ticker-2881" class="t-val">--</span> <span class="t-chg" id="ticker-2881-chg">--</span> <span class="t-score" id="ticker-2881-score">--</span></span>
+                    <span class="ticker-item"><span class="t-sym">2603 長榮</span> <span id="ticker-2603" class="t-val">--</span> <span class="t-chg" id="ticker-2603-chg">--</span> <span class="t-score" id="ticker-2603-score">--</span></span>
                     <!-- 複製第二組以無縫銜接 -->
-                    <span class="ticker-item"><span class="t-sym">BTC/USDT</span> <span id="ticker-btc-clone" class="t-val">--</span> <span class="t-chg" id="ticker-btc-chg-clone">--</span> <span class="t-score" id="ticker-btc-score-clone">--</span></span>
-                    <span class="ticker-item"><span class="t-sym">ETH/USDT</span> <span id="ticker-eth-clone" class="t-val">--</span> <span class="t-chg" id="ticker-eth-chg-clone">--</span> <span class="t-score" id="ticker-eth-score-clone">--</span></span>
-                    <span class="ticker-item"><span class="t-sym">SOL/USDT</span> <span id="ticker-sol-clone" class="t-val">--</span> <span class="t-chg" id="ticker-sol-chg-clone">--</span> <span class="t-score" id="ticker-sol-score-clone">--</span></span>
-                    <span class="ticker-item"><span class="t-sym">2330.TW</span> <span id="ticker-2330-clone" class="t-val">--</span> <span class="t-chg" id="ticker-2330-chg-clone">--</span> <span class="t-score" id="ticker-2330-score-clone">--</span></span>
-                    <span class="ticker-item"><span class="t-sym">TX (台指)</span> <span id="ticker-tx-clone" class="t-val">--</span> <span class="t-chg" id="ticker-tx-chg-clone">--</span> <span class="t-score" id="ticker-tx-score-clone">--</span></span>
+                    <span class="ticker-item"><span class="t-sym">BTC</span> <span id="ticker-btc-clone" class="t-val">--</span> <span class="t-chg" id="ticker-btc-chg-clone">--</span> <span class="t-score" id="ticker-btc-score-clone">--</span></span>
+                    <span class="ticker-item"><span class="t-sym">ETH</span> <span id="ticker-eth-clone" class="t-val">--</span> <span class="t-chg" id="ticker-eth-chg-clone">--</span> <span class="t-score" id="ticker-eth-score-clone">--</span></span>
+                    <span class="ticker-item"><span class="t-sym">SOL</span> <span id="ticker-sol-clone" class="t-val">--</span> <span class="t-chg" id="ticker-sol-chg-clone">--</span> <span class="t-score" id="ticker-sol-score-clone">--</span></span>
+                    <span class="ticker-item"><span class="t-sym">2330 台積電</span> <span id="ticker-2330-clone" class="t-val">--</span> <span class="t-chg" id="ticker-2330-chg-clone">--</span> <span class="t-score" id="ticker-2330-score-clone">--</span></span>
+                    <span class="ticker-item"><span class="t-sym">0050 台灣50</span> <span id="ticker-0050-clone" class="t-val">--</span> <span class="t-chg" id="ticker-0050-chg-clone">--</span> <span class="t-score" id="ticker-0050-score-clone">--</span></span>
+                    <span class="ticker-item"><span class="t-sym">2317 鴻海</span> <span id="ticker-2317-clone" class="t-val">--</span> <span class="t-chg" id="ticker-2317-chg-clone">--</span> <span class="t-score" id="ticker-2317-score-clone">--</span></span>
+                    <span class="ticker-item"><span class="t-sym">2881 富邦金</span> <span id="ticker-2881-clone" class="t-val">--</span> <span class="t-chg" id="ticker-2881-chg-clone">--</span> <span class="t-score" id="ticker-2881-score-clone">--</span></span>
+                    <span class="ticker-item"><span class="t-sym">2603 長榮</span> <span id="ticker-2603-clone" class="t-val">--</span> <span class="t-chg" id="ticker-2603-chg-clone">--</span> <span class="t-score" id="ticker-2603-score-clone">--</span></span>
                 </div>
             </div>
 
@@ -98,6 +119,10 @@
                         <div class="status-indicator" id="status-dot"></div>
                         <span id="connection-status">正常連線中</span>
                     </div>
+                    <div class="update-timestamps">
+                        <span class="ts-item" id="ts-crypto" title="虛擬幣最新更新時間">Crypto: --</span>
+                        <span class="ts-item" id="ts-tw" title="台股最新更新時間">TW: --</span>
+                    </div>
                     <div class="user-profile">
                         <span class="vip-tag">💎 Elite</span>
                     </div>
@@ -105,17 +130,17 @@
             </header>
 
             <!-- 策略狀態條：集中顯示新聞與事件 -->
-            <div class="action-strip glass-panel">
-                <div class="news-ticker-area">
+            <div id="action-strip" class="action-strip glass-panel" style="display: none;">
+                <div id="news-ticker-area" class="news-ticker-area" style="display: none;">
                     <span id="alert-tag" class="news-tag">LIVE</span>
                     <div id="global-alert" class="news-content-wrapper">
-                        <span id="alert-text" class="news-text">正在偵測全球市場情緒...</span>
+                        <span id="alert-text" class="news-text"></span>
                     </div>
                 </div>
                 
                 <div class="vertical-divider"></div>
 
-                <div class="event-ticker-area">
+                <div id="event-ticker-area" class="event-ticker-area" style="display: none;">
                     <span class="event-title-h">📅 事件倒數</span>
                     <div id="event-timer-list" class="event-horizontal-list">
                         <!-- 由 JS 填充橫項卡片 -->
@@ -339,6 +364,38 @@
 
     <script src="https://unpkg.com/lightweight-charts@4.1.1/dist/lightweight-charts.standalone.production.js"></script>
     <script src="app.js?v=20260321"></script>
+    <script>
+        // Theme Switcher Logic
+        (function() {
+            var currentTheme = localStorage.getItem('csp-theme') || 'kawaii';
+            var btns = document.querySelectorAll('.theme-btn');
+
+            function setActiveBtn(theme) {
+                btns.forEach(function(b) {
+                    b.classList.toggle('active', b.getAttribute('data-theme-value') === theme);
+                });
+            }
+
+            function applyTheme(theme) {
+                document.documentElement.setAttribute('data-theme', theme);
+                localStorage.setItem('csp-theme', theme);
+                currentTheme = theme;
+                setActiveBtn(theme);
+                // Notify chart to update colors
+                if (typeof window.onThemeChange === 'function') {
+                    window.onThemeChange(theme);
+                }
+            }
+
+            setActiveBtn(currentTheme);
+
+            btns.forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    applyTheme(this.getAttribute('data-theme-value'));
+                });
+            });
+        })();
+    </script>
 
     <!-- 教學 Modal -->
     <div class="modal-overlay" id="tutorial-modal">

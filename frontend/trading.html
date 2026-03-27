@@ -1,11 +1,17 @@
 <!DOCTYPE html>
-<html lang="zh-TW">
+<html lang="zh-TW" data-theme="kawaii">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trading Station | 虛擬交易中心</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <script>
+        (function() {
+            var t = localStorage.getItem('csp-theme') || 'kawaii';
+            document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
     <style>
         .trading-layout {
             display: grid;
@@ -67,9 +73,18 @@
                 <span class="glow-text">CryptoSignal</span>
                 <span class="pro-badge">PRO</span>
             </div>
+
+            <div class="theme-switcher">
+                <button class="theme-btn active" data-theme-value="kawaii">Kawaii</button>
+                <button class="theme-btn" data-theme-value="pro-dark">Pro Dark</button>
+                <button class="theme-btn" data-theme-value="ocean">Ocean</button>
+                <button class="theme-btn" data-theme-value="warm">Warm</button>
+            </div>
+
             <nav class="nav-menu">
                 <a href="index.html" class="nav-item">分析儀表板</a>
                 <a href="trading.html" class="nav-item active">虛擬交易中心</a>
+                <a href="sector_trading.html" class="nav-item">類股交易中心</a>
             </nav>
             
             <div class="market-panel" style="margin-top:auto; background:rgba(167,139,250,0.05); padding:16px; border-radius:14px; border:1.5px solid rgba(167,139,250,0.1)">
@@ -205,5 +220,33 @@
     </div>
 
     <script src="trading_app.js"></script>
+    <script>
+        // Theme Switcher Logic
+        (function() {
+            var currentTheme = localStorage.getItem('csp-theme') || 'kawaii';
+            var btns = document.querySelectorAll('.theme-btn');
+
+            function setActiveBtn(theme) {
+                btns.forEach(function(b) {
+                    b.classList.toggle('active', b.getAttribute('data-theme-value') === theme);
+                });
+            }
+
+            function applyTheme(theme) {
+                document.documentElement.setAttribute('data-theme', theme);
+                localStorage.setItem('csp-theme', theme);
+                currentTheme = theme;
+                setActiveBtn(theme);
+            }
+
+            setActiveBtn(currentTheme);
+
+            btns.forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    applyTheme(this.getAttribute('data-theme-value'));
+                });
+            });
+        })();
+    </script>
 </body>
 </html>

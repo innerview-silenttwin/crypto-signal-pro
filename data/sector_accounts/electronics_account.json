@@ -1,0 +1,63 @@
+{
+  "sector_name": "電子代工/零組件",
+  "sector_id": "electronics",
+  "is_active": true,
+  "balance": 800537.0,
+  "initial_balance": 1000000.0,
+  "holdings": {
+    "2357.TW": {
+      "qty": 347,
+      "avg_price": 574.0,
+      "time": "2026-03-26 21:47:56"
+    }
+  },
+  "history": [
+    {
+      "id": 1774532876466,
+      "time": "2026-03-26 21:47:56",
+      "symbol": "2357.TW",
+      "name": "華碩",
+      "type": "BUY",
+      "price": 574.0,
+      "qty": 347,
+      "cost": 199463.0,
+      "signal": "買入信號 (32分, 弱信號)",
+      "balance_after": 800537.0
+    }
+  ],
+  "equity_curve": [
+    {
+      "time": "2026-03-26 21:47",
+      "equity": 999715.0
+    },
+    {
+      "time": "2026-03-26 21:48",
+      "equity": 999715.0
+    }
+  ],
+  "strategy": {
+    "name": "趨勢追蹤 (EMA+ADX)",
+    "param_preset": "寬鬆",
+    "weights": {
+      "rsi": 10.0,
+      "macd": 15.0,
+      "bollinger": 5.0,
+      "mfi": 5.0,
+      "ema_cross": 30.0,
+      "volume": 10.0,
+      "adx": 25.0
+    },
+    "buy_threshold": 30,
+    "sell_threshold": 30,
+    "stop_loss_pct": 10.0,
+    "take_profit_pct": 25.0,
+    "description": "寬鬆門檻捕捉更多交易機會，適合電子股波動較大的特性"
+  },
+  "stocks": [
+    "2317.TW",
+    "2382.TW",
+    "2308.TW",
+    "2357.TW",
+    "3008.TW"
+  ]
+}

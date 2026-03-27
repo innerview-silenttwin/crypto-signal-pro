@@ -28,7 +28,15 @@ import pytz
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from signals.aggregator import SignalAggregator, MarketType
+from business.sentiment import sentiment_engine
 from trading_manager import trading_manager
+
+# ============================================================
+# 路徑常量
+# ============================================================
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+HISTORY_DIR = os.path.join(BACKEND_DIR, "data", "history", "stock")
+TW_RATE_STATE_PATH = os.path.join(BACKEND_DIR, "data", "tw_rate_state.json")
 
 app = FastAPI(title="CryptoSignal Pro API", version="1.0.0")
 
@@ -118,7 +126,15 @@ async def background_signal_updater():
                     if df is not None and len(df) > 0:
                         # 分析信號
                         signal = aggregator_crypto.analyze(df, symbol=symbol, timeframe=tf)
-                        
+
+                        # 計算 24h 漲跌幅
+                        change_24h = 0.0
+                        if len(df) >= 2:
+                            prev_close = float(df['close'].iloc[-2])
+                            curr_close = float(df['close'].iloc[-1])
+                            if prev_close > 0:
+                                change_24h = round((curr_close - prev_close) / prev_close * 100, 2)
+
                         signal_data = {
                             "timeframe": tf,
                             "price": round(signal.price, 2),
@@ -127,6 +143,7 @@ async def background_signal_updater():
                             "level": signal.signal_level,
                             "buy_score": round(signal.buy_score, 1),
                             "sell_score": round(signal.sell_score, 1),
+                            "change_24h": change_24h,
                             "timestamp": timestamp_now,
                             "last_candle": {
                                 "open": float(df['open'].iloc[-1]),
@@ -140,8 +157,15 @@ async def background_signal_updater():
                 current_signals[symbol] = symbol_data
                 updates.append(symbol_data)
             
+            # 記錄 crypto 更新時間
+            last_update_timestamps["crypto"] = datetime.now().strftime("%H:%M:%S")
+            # 情緒引擎：取得最新事件與倒數
+            sentiment_data = sentiment_engine.get_latest_sentiment()
             # 廣播給所有前端客戶端
-            await manager.broadcast(json.dumps({"type": "update", "data": updates}))
+            broadcast_payload = {"type": "update", "data": updates}
+            if sentiment_data:
+                broadcast_payload["global_alert"] = sentiment_data
+            await manager.broadcast(json.dumps(broadcast_payload))
             
         except Exception as e:
             print(f"背景任務錯誤: {e}")
@@ -155,6 +179,49 @@ async def background_signal_updater():
 async def startup_event():
     # 啟動背景更新任務
     asyncio.create_task(background_signal_updater())
+    # 預載台股 ticker 資料（L2 本地 CSV → L3 TWSE，尊重 rate limit）
+    asyncio.create_task(preload_tw_ticker_data())
+
+
+async def preload_tw_ticker_data():
+    """Server 啟動時自動預載所有台股 ticker 標的的資料。
+    優先讀本地 CSV，若無本地資料且 rate limit 允許，才抓 TWSE。
+    """
+    await asyncio.sleep(2)  # 等 server 完全啟動
+    for tw_sym, tw_market in TW_TICKER_SYMBOLS:
+        cache_key = f"signals_{tw_sym}"
+        # 已有 L1 快取就跳過
+        if cache_key in signals_cache:
+            continue
+
+        # 嘗試 L2: 本地 CSV
+        local_df = load_local_history(tw_sym)
+        if local_df is not None and len(local_df) >= 30:
+            print(f"[preload] {tw_sym} from local CSV ({len(local_df)} rows)")
+            _analyze_tw_df(tw_sym, tw_market, local_df, "local_csv_preload")
+            continue
+
+        # 嘗試 L3: TWSE API（尊重 rate limit）
+        if tw_market != 'futures':
+            df = _fetch_tw_df(tw_sym, tw_market)
+            if df is not None:
+                print(f"[preload] {tw_sym} from TWSE API")
+                _analyze_tw_df(tw_sym, tw_market, df, "twse_preload")
+                continue
+
+            # 最後手段：如果完全沒資料，強制抓一次（忽略 rate limit，僅啟動時）
+            if cache_key not in signals_cache:
+                print(f"[preload] {tw_sym} no data anywhere, one-time TWSE fetch...")
+                df = fetch_twse_daily(tw_sym, limit=200, months=12)
+                if df is not None and len(df) >= 30:
+                    save_local_history(tw_sym, df)
+                    _analyze_tw_df(tw_sym, tw_market, df, "twse_preload_forced")
+                    # 更新 rate limit 時間戳，避免後續重複抓
+                    global tw_last_real_fetch
+                    tw_last_real_fetch = time.time()
+                    _save_tw_rate_state()
+
+    print(f"[preload] TW ticker preload complete. Cache keys: {list(signals_cache.keys())}")
 
 def fetch_stooq_ohlcv(symbol: str, start_date: datetime, end_date: datetime, limit: int = 200):
     """使用 Stooq 下載台股日線歷史資料（較少被封鎖）。"""
@@ -350,35 +417,21 @@ def fetch_twse_daily(symbol: str, limit: int = 200, months: int = 12):
     return df_all
 
 
-@app.get("/api/tw-signals")
-async def get_tw_signals(symbol: str, market: str = "stock"):
-    """盤後計算台股 / 期貨技術信號（使用日線 8 指標引擎），帶 60 秒快取。"""
-    import math
-    cache_key = f"signals_{symbol}"
-    now = time.time()
-    remaining = tw_seconds_until_next()
-
-    # 若快取存在且仍在 rate limit 視窗內，直接回傳快取
-    if cache_key in signals_cache:
-        cached = signals_cache[cache_key]
-        age = now - cached["fetched_at"]
-        if age < TW_RATE_LIMIT_SEC:
-            print(f"[signals cache] {symbol} (age={int(age)}s)")
-            result = dict(cached["data"])
-            result["next_update_in"] = remaining
-            result["data_source"] = "signals_cache"
-            return result
-
-    if market == 'futures':
-        df = None  # 暫無可用的期貨資料源
-    else:
-        df = fetch_twse_daily(symbol, limit=200, months=12)
-
-    if df is None or len(df) < 30:
-        return {"symbol": symbol, "signals": {}, "next_update_in": remaining, "data_source": "twse_daily"}
-
+def _analyze_tw_df(symbol: str, market: str, df, data_source: str):
+    """從 DataFrame 計算信號並回傳標準結構（共用邏輯）。"""
     agg = get_aggregator(market)
     signal = agg.analyze(df, symbol=symbol, timeframe='1d')
+
+    tw_change = 0.0
+    if len(df) >= 2:
+        prev_c = float(df['close'].iloc[-2])
+        curr_c = float(df['close'].iloc[-1])
+        if prev_c > 0:
+            tw_change = round((curr_c - prev_c) / prev_c * 100, 2)
+
+    market_open = is_tw_market_open()
+    remaining = tw_seconds_until_next() if market_open else None
+
     result_data = {
         "symbol": symbol,
         "signals": {
@@ -390,17 +443,170 @@ async def get_tw_signals(symbol: str, market: str = "stock"):
                 "level":      signal.signal_level,
                 "buy_score":  round(signal.buy_score, 1),
                 "sell_score": round(signal.sell_score, 1),
+                "change_24h": tw_change,
             }
         },
-        "data_source": "twse_daily",
-        "next_update_in": TW_RATE_LIMIT_SEC
+        "data_source": data_source,
+        "next_update_in": remaining,
+        "market_open": market_open,
     }
-    # 寫入 signals cache
-    signals_cache[cache_key] = {
+
+    # 寫入 L1 cache
+    signals_cache[f"signals_{symbol}"] = {
         "data": result_data,
-        "fetched_at": now
+        "fetched_at": time.time()
     }
+    # 記錄台股更新時間
+    last_update_timestamps["tw_stock"] = datetime.now().strftime("%H:%M:%S")
     return result_data
+
+
+def _fetch_tw_df(symbol: str, market: str):
+    """嘗試從 TWSE 抓取台股資料，成功後存入本地 CSV（L2）。尊重 rate limit。"""
+    global tw_last_real_fetch
+    if market == 'futures':
+        return None
+    if not tw_can_fetch_now():
+        return None
+    df = fetch_twse_daily(symbol, limit=200, months=12)
+    if df is not None and len(df) >= 30:
+        # 記錄 rate limit 時間戳
+        tw_last_real_fetch = time.time()
+        _save_tw_rate_state()
+        # 存入本地 CSV (L2 cache)
+        save_local_history(symbol, df)
+        return df
+    return None
+
+
+@app.get("/api/tw-signals")
+async def get_tw_signals(symbol: str, market: str = "stock"):
+    """台股/期貨技術信號，三層快取：L1 記憶體 → L2 本地 CSV → L3 TWSE API。"""
+    cache_key = f"signals_{symbol}"
+    now = time.time()
+    market_open = is_tw_market_open()
+    remaining = tw_seconds_until_next() if market_open else None
+
+    # --- L1: 記憶體快取 ---
+    if cache_key in signals_cache:
+        cached = signals_cache[cache_key]
+        age = now - cached["fetched_at"]
+        # 盤中：60 秒內回傳快取；盤後：永遠回傳快取（不重抓）
+        if age < TW_RATE_LIMIT_SEC or not market_open:
+            print(f"[signals L1] {symbol} (age={int(age)}s, open={market_open})")
+            result = dict(cached["data"])
+            result["next_update_in"] = remaining
+            result["data_source"] = cached["data"]["data_source"] + ("" if market_open else "_closed")
+            return result
+
+    # --- L3: TWSE API (盤中可抓，盤後只在無任何快取時抓一次) ---
+    df = _fetch_tw_df(symbol, market)
+    if df is not None:
+        return _analyze_tw_df(symbol, market, df, "twse_daily")
+
+    # --- L2: 本地 CSV ---
+    local_df = load_local_history(symbol)
+    if local_df is not None and len(local_df) >= 30:
+        print(f"[signals L2] {symbol} from local CSV ({len(local_df)} rows)")
+        src = "local_csv" + ("" if market_open else "_closed")
+        return _analyze_tw_df(symbol, market, local_df, src)
+
+    # --- 盤後無任何資料，嘗試強制抓一次 TWSE（忽略 rate limit，僅此一次） ---
+    if not market_open and market != 'futures':
+        print(f"[signals] No cache for {symbol}, one-time TWSE fetch for after-hours...")
+        df = fetch_twse_daily(symbol, limit=200, months=12)
+        if df is not None and len(df) >= 30:
+            save_local_history(symbol, df)
+            return _analyze_tw_df(symbol, market, df, "twse_daily_closed")
+
+    return {"symbol": symbol, "signals": {}, "next_update_in": remaining, "data_source": "no_data", "market_open": market_open}
+
+
+@app.get("/api/ticker-summary")
+async def get_ticker_summary():
+    """頁面載入時一次取得所有 ticker 資料（crypto 從記憶體，台股從快取/本地/API）。"""
+    result = {"crypto": {}, "tw": {}, "crypto_updated_at": last_update_timestamps["crypto"], "tw_updated_at": last_update_timestamps["tw_stock"]}
+
+    # Crypto: 直接從 current_signals 取
+    for sym, data in current_signals.items():
+        sigs = data.get("signals", {})
+        d1 = sigs.get("1d")
+        if d1:
+            result["crypto"][sym] = {
+                "price": d1.get("price"),
+                "confidence": d1.get("confidence"),
+                "change_24h": d1.get("change_24h", 0),
+            }
+
+    # TW: 嘗試從 L1 cache → L2 local CSV → L3 TWSE API
+    for tw_sym, tw_market in TW_TICKER_SYMBOLS:
+        cache_key = f"signals_{tw_sym}"
+        if cache_key in signals_cache:
+            cached_data = signals_cache[cache_key]["data"]
+            d1 = cached_data.get("signals", {}).get("1d")
+            if d1:
+                result["tw"][tw_sym] = {
+                    "price": d1.get("price"),
+                    "confidence": d1.get("confidence"),
+                    "change_24h": d1.get("change_24h", 0),
+                }
+                continue
+
+        # L2: 本地 CSV
+        local_df = load_local_history(tw_sym)
+        if local_df is not None and len(local_df) >= 30:
+            sig_result = _analyze_tw_df(tw_sym, tw_market, local_df, "local_csv")
+            d1 = sig_result.get("signals", {}).get("1d")
+            if d1:
+                result["tw"][tw_sym] = {
+                    "price": d1.get("price"),
+                    "confidence": d1.get("confidence"),
+                    "change_24h": d1.get("change_24h", 0),
+                }
+                continue
+
+        # L3: TWSE API（尊重 rate limit）
+        if tw_market != 'futures':
+            df = _fetch_tw_df(tw_sym, tw_market)
+            if df is not None:
+                sig_result = _analyze_tw_df(tw_sym, tw_market, df, "twse_daily")
+                d1 = sig_result.get("signals", {}).get("1d")
+                if d1:
+                    result["tw"][tw_sym] = {
+                        "price": d1.get("price"),
+                        "confidence": d1.get("confidence"),
+                        "change_24h": d1.get("change_24h", 0),
+                    }
+                    continue
+
+            # 最後手段：完全無資料，強制抓一次 TWSE（僅此一次）
+            if tw_sym not in result["tw"]:
+                print(f"[ticker-summary] {tw_sym} no data, one-time forced fetch...")
+                forced_df = fetch_twse_daily(tw_sym, limit=200, months=12)
+                if forced_df is not None and len(forced_df) >= 30:
+                    save_local_history(tw_sym, forced_df)
+                    sig_result = _analyze_tw_df(tw_sym, tw_market, forced_df, "twse_forced")
+                    d1 = sig_result.get("signals", {}).get("1d")
+                    if d1:
+                        result["tw"][tw_sym] = {
+                            "price": d1.get("price"),
+                            "confidence": d1.get("confidence"),
+                            "change_24h": d1.get("change_24h", 0),
+                        }
+
+    result["tw_updated_at"] = last_update_timestamps["tw_stock"]
+    return result
+
+
+@app.get("/api/update-status")
+async def get_update_status():
+    """回傳 crypto / tw 各自的最新更新時間。"""
+    return {
+        "crypto_updated_at": last_update_timestamps["crypto"],
+        "tw_updated_at": last_update_timestamps["tw_stock"],
+        "tw_market_open": is_tw_market_open(),
+        "tw_next_fetch_in": tw_seconds_until_next() if is_tw_market_open() else None,
+    }
 
 
 @app.get("/api/stock-info")
@@ -419,23 +625,91 @@ async def get_stock_info(symbol: str):
 TW_RATE_LIMIT_SEC = 60
 
 # 全域快取字典
-# chart_cache: {"symbol_timeframe": {"candles": [...], "fetched_at": float, "source": str}}
 chart_cache: dict = {}
-# signals_cache: {"symbol": {"data": {...}, "fetched_at": float}}
 signals_cache: dict = {}
-# rate_limiter: 記錄「最後一次真實向 yfinance 發出請求」的時間戳
-# 這是整個台灣市場共用的，不區分個股
-tw_last_real_fetch: float = 0.0
+
+# --- 持久化 Rate Limiter ---
+def _load_tw_rate_state() -> float:
+    """從磁碟讀取上一次真實請求的時間戳（重啟也不歸零）。"""
+    try:
+        with open(TW_RATE_STATE_PATH, 'r') as f:
+            state = json.load(f)
+            return float(state.get("tw_last_real_fetch", 0.0))
+    except (FileNotFoundError, json.JSONDecodeError, ValueError):
+        return 0.0
+
+def _save_tw_rate_state():
+    """將最後請求時間戳寫入磁碟。"""
+    os.makedirs(os.path.dirname(TW_RATE_STATE_PATH), exist_ok=True)
+    try:
+        with open(TW_RATE_STATE_PATH, 'w') as f:
+            json.dump({"tw_last_real_fetch": tw_last_real_fetch}, f)
+    except Exception as e:
+        print(f"[rate-state] Save error: {e}")
+
+tw_last_real_fetch: float = _load_tw_rate_state()
 
 def tw_can_fetch_now() -> bool:
-    """判斷距上一次真實請求是否已超過 60 秒。"""
     return (time.time() - tw_last_real_fetch) >= TW_RATE_LIMIT_SEC
 
 def tw_seconds_until_next() -> int:
-    """距下一次可請求還有幾秒。"""
     elapsed = time.time() - tw_last_real_fetch
     remaining = max(0, TW_RATE_LIMIT_SEC - elapsed)
     return int(remaining)
+
+# --- 本地 CSV 歷史快取（L2 cache） ---
+def _safe_filename(symbol: str) -> str:
+    return symbol.replace("/", "_").replace(".", "_")
+
+def load_local_history(symbol: str):
+    """從本地 CSV 讀取歷史資料，回傳 DataFrame 或 None。"""
+    path = os.path.join(HISTORY_DIR, f"{_safe_filename(symbol)}.csv")
+    if not os.path.exists(path):
+        return None
+    try:
+        df = pd.read_csv(path)
+        # 支援 time (unix) 或 date 欄位
+        if 'time' in df.columns:
+            df['date'] = pd.to_datetime(df['time'], unit='s')
+        elif 'date' in df.columns:
+            df['date'] = pd.to_datetime(df['date'])
+        else:
+            return None
+        df.set_index('date', inplace=True)
+        # 確保有必要的欄位
+        for col in ['open', 'high', 'low', 'close']:
+            if col not in df.columns:
+                return None
+        return df
+    except Exception as e:
+        print(f"[local-history] Read error ({symbol}): {e}")
+        return None
+
+def save_local_history(symbol: str, df):
+    """將 DataFrame 寫入本地 CSV。"""
+    os.makedirs(HISTORY_DIR, exist_ok=True)
+    path = os.path.join(HISTORY_DIR, f"{_safe_filename(symbol)}.csv")
+    try:
+        out = df.copy()
+        out.to_csv(path)
+        print(f"[local-history] Saved {len(out)} rows -> {path}")
+    except Exception as e:
+        print(f"[local-history] Save error ({symbol}): {e}")
+
+# --- 更新時間戳追蹤 ---
+last_update_timestamps = {
+    "crypto": None,    # ISO string
+    "tw_stock": None,  # ISO string
+}
+
+# 預設的台股 ticker 標的（各類股代表）
+TW_TICKER_SYMBOLS = [
+    ("2330.TW", "stock"),   # 半導體 - 台積電
+    ("0050.TW", "stock"),   # 大盤 ETF - 元大台灣50
+    ("2317.TW", "stock"),   # 電子代工 - 鴻海
+    ("2881.TW", "stock"),   # 金融 - 富邦金
+    ("2603.TW", "stock"),   # 航運 - 長榮
+]
 
 
 def is_tw_market_open() -> bool:
@@ -492,8 +766,9 @@ def fetch_yfinance_candles(symbol: str, timeframe: str, limit: int = 200):
         if len(candles) > limit:
             candles = candles[-limit:]
 
-        # 記錄本次真實請求時間
+        # 記錄本次真實請求時間（並持久化到磁碟）
         tw_last_real_fetch = time.time()
+        _save_tw_rate_state()
         return candles, "yfinance"
     except Exception as e:
         print(f"[yfinance] Error for {symbol}: {e}")
@@ -504,6 +779,7 @@ def get_tw_chart_data(symbol: str, timeframe: str, limit: int = 200):
     """
     台股走勢圖資料取得（帶嚴格全域 Rate Limit + Cache）。
     """
+    global tw_last_real_fetch
     cache_key = f"{symbol}_{timeframe}"
     now = time.time()
     cached = chart_cache.get(cache_key)
@@ -548,14 +824,27 @@ def get_tw_chart_data(symbol: str, timeframe: str, limit: int = 200):
         return {"candles": cached["candles"], "data_source": cached["source"] + "_cache" + src_suffix,
                 "fetched_at": cached["fetched_at"], "next_update_in": remaining}
 
-    # B2: 沒有快取 + 日線 → TWSE 備案
+    # B2: 沒有快取 + 日線 → 先找本地 CSV，無資料才抓 TWSE
     if timeframe == "1d":
+        local_df = load_local_history(symbol)
+        if local_df is not None and len(local_df) >= 30:
+            candles = [{"time": int(idx.timestamp()), "open": float(row['open']), "high": float(row['high']),
+                         "low": float(row['low']), "close": float(row['close']), "volume": float(row.get('volume', 0) or 0)}
+                        for idx, row in local_df.iterrows()]
+            chart_cache[cache_key] = {"candles": candles, "fetched_at": now, "source": "local_csv"}
+            return {"candles": candles, "data_source": "local_csv" + src_suffix, "fetched_at": now, "next_update_in": remaining}
+
+        # 本地也沒有，才抓 TWSE（並更新 rate limit）
         df = fetch_twse_daily(symbol, limit=limit, months=24)
         if df is not None:
+            tw_last_real_fetch = time.time()
+            _save_tw_rate_state()
+            save_local_history(symbol, df)
             candles = [{"time": int(idx.timestamp()), "open": float(row['open']), "high": float(row['high']),
                          "low": float(row['low']), "close": float(row['close']), "volume": float(row.get('volume', 0) or 0)}
                         for idx, row in df.iterrows()]
-            return {"candles": candles, "data_source": "twse_daily" + src_suffix, "fetched_at": now, "next_update_in": remaining}
+            chart_cache[cache_key] = {"candles": candles, "fetched_at": now, "source": "twse_daily"}
+            return {"candles": candles, "data_source": "twse_daily" + src_suffix, "fetched_at": now, "next_update_in": TW_RATE_LIMIT_SEC}
 
     # B3: 盤後時段且非日線且無快取，最後嘗試一次 yfinance (僅此一次載入)
     if not market_open and not cached:
@@ -689,6 +978,101 @@ async def remove_watchlist_symbol(symbol: str):
     """移除監控標的"""
     success = trading_manager.remove_symbol(symbol)
     return {"success": success, "symbols": trading_manager.state.get("symbols", [])}
+
+
+# ============================================================
+# 類股虛擬交易 API（4 個獨立交易中心）
+# ============================================================
+
+from sector_trader import get_manager, get_all_managers as get_all_sector_managers, SECTOR_IDS, SECTOR_ID_TO_NAME
+from sector_auto_trader import auto_trader as sector_auto_trader
+
+@app.get("/api/sector-trading/sectors")
+async def list_sectors():
+    """列出所有類股及其摘要"""
+    results = []
+    for sector_id, mgr in get_all_sector_managers().items():
+        results.append(mgr.get_summary())
+    return results
+
+@app.get("/api/sector-trading/{sector_id}/status")
+async def get_sector_status(sector_id: str):
+    """取得單一類股帳戶摘要"""
+    mgr = get_manager(sector_id)
+    if not mgr:
+        return {"error": f"未知的類股 ID: {sector_id}"}
+    # 嘗試取得最新價格
+    current_prices = {}
+    for symbol in mgr.state.get("stocks", []):
+        for sym, data in current_signals.items():
+            if sym == symbol:
+                sigs = data.get("signals", {})
+                if "1d" in sigs:
+                    current_prices[symbol] = sigs["1d"].get("price", 0)
+    return mgr.get_summary(current_prices)
+
+@app.post("/api/sector-trading/{sector_id}/toggle")
+async def toggle_sector_trading(sector_id: str, active: bool = False):
+    """啟動/停止單一類股自動交易"""
+    mgr = get_manager(sector_id)
+    if not mgr:
+        return {"error": f"未知的類股 ID: {sector_id}"}
+    is_active = mgr.toggle_active(active)
+    return {"sector_id": sector_id, "is_active": is_active}
+
+@app.get("/api/sector-trading/{sector_id}/history")
+async def get_sector_history(sector_id: str, page: int = 1, pageSize: int = 15,
+                              symbol: str = "", startDate: str = "", endDate: str = ""):
+    """取得單一類股交易歷史"""
+    mgr = get_manager(sector_id)
+    if not mgr:
+        return {"error": f"未知的類股 ID: {sector_id}"}
+    return mgr.get_history(page, pageSize, symbol, startDate, endDate)
+
+@app.post("/api/sector-trading/{sector_id}/strategy")
+async def update_sector_strategy(sector_id: str, strategy: dict):
+    """更新類股策略設定"""
+    mgr = get_manager(sector_id)
+    if not mgr:
+        return {"error": f"未知的類股 ID: {sector_id}"}
+    mgr.update_strategy(strategy)
+    return {"success": True, "strategy": mgr.get_strategy()}
+
+@app.post("/api/sector-trading/{sector_id}/reset")
+async def reset_sector_account(sector_id: str):
+    """重置類股帳戶（保留策略）"""
+    mgr = get_manager(sector_id)
+    if not mgr:
+        return {"error": f"未知的類股 ID: {sector_id}"}
+    mgr.reset_account()
+    return {"success": True}
+
+# ── 自動交易守護程式控制 ──
+
+@app.post("/api/sector-trading/auto-trader/start")
+async def start_auto_trader():
+    """啟動背景自動交易"""
+    ok = sector_auto_trader.start()
+    return {"started": ok, **sector_auto_trader.get_status()}
+
+@app.post("/api/sector-trading/auto-trader/stop")
+async def stop_auto_trader():
+    """停止背景自動交易"""
+    ok = sector_auto_trader.stop()
+    return {"stopped": ok, **sector_auto_trader.get_status()}
+
+@app.get("/api/sector-trading/auto-trader/status")
+async def get_auto_trader_status():
+    """取得自動交易狀態"""
+    return sector_auto_trader.get_status()
+
+@app.post("/api/sector-trading/auto-trader/run-once")
+async def run_auto_trader_once():
+    """手動觸發一次交易檢查"""
+    import threading
+    t = threading.Thread(target=sector_auto_trader.run_once_now, daemon=True)
+    t.start()
+    return {"triggered": True, "message": "已觸發一次交易檢查，請稍後查看結果"}
 
 
 if __name__ == "__main__":
