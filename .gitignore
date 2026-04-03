@@ -14,9 +14,11 @@ node_modules/
 
 # Trading data (personal)
 trading_account.json
+data/sector_accounts/
 
 # Historical market data (can be re-downloaded)
 backend/data/history/
+backend/data/last_prices.json
 
 # Test data
 test_data.json
@@ -24,6 +26,10 @@ test_data.json
 # OS files
 .DS_Store
 Thumbs.db
+
+# IDE & editor
+.vscode/
+.claude/settings.local.json
 
 # Legacy
 data/stocks/
