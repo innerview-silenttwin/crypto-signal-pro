@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(/Users/ken_tsai/.pyenv/versions/kentsai-crypto/bin/python3 -c \":*)"
-    ]
-  }
-}
