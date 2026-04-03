@@ -71,7 +71,13 @@ DEFAULT_STRATEGIES = {
         "sell_threshold": 30,
         "stop_loss_pct": 10.0,
         "take_profit_pct": 25.0,
-        "description": "寬鬆趨勢追蹤，抓住航運等週期股的大波段行情",
+        "description": "寬鬆趨勢追蹤，抓住航運等週期股的大波段行情。Regime Layer 停用（回測顯示景氣循環股加盤勢層反而有害）",
+        "layers": {
+            "regime": {"enabled": False},
+            "fundamental": {"enabled": True},
+            "sentiment": {"enabled": True},
+            "chipflow": {"enabled": True},
+        },
     },
 }
 
@@ -177,20 +183,29 @@ class SectorTradingManager:
     def get_summary(self, current_prices: dict = None) -> dict:
         current_prices = current_prices or {}
         equity = self.state["balance"]
+        total_unrealized_pl = 0.0
         holdings_detail = {}
 
         for symbol, hold in self.state["holdings"].items():
             if hold["qty"] > 0:
                 cur_price = current_prices.get(symbol, hold["avg_price"])
                 market_value = hold["qty"] * cur_price
-                cost_value = hold["qty"] * hold["avg_price"]
+                # 買進總成本（含手續費）：優先用 total_cost，舊資料則估算
+                total_cost = hold.get("total_cost", hold["qty"] * hold["avg_price"] + round(hold["qty"] * hold["avg_price"] * 0.001425))
+                # 預估賣出淨收入（手續費、證交稅各自四捨五入取整）
+                sell_fee = round(market_value * 0.001425)
+                sell_tax = round(market_value * 0.003)
+                net_sell = market_value - sell_fee - sell_tax
+                unrealized_pl = net_sell - total_cost
                 equity += market_value
+                total_unrealized_pl += unrealized_pl
                 holdings_detail[symbol] = {
                     **hold,
                     "name": self.stocks.get(symbol, symbol),
                     "current_price": cur_price,
                     "market_value": round(market_value, 2),
-                    "unrealized_pl": round(market_value - cost_value, 2),
+                    "total_cost": round(total_cost, 2),
+                    "unrealized_pl": round(unrealized_pl, 2),
                 }
 
         initial = self.state.get("initial_balance", 1_000_000.0)
@@ -202,6 +217,10 @@ class SectorTradingManager:
         losses = [t for t in closed_trades if t.get("profit", 0) <= 0]
         total_profit = sum(t.get("profit", 0) for t in closed_trades)
 
+        # 累積損益 = 已實現損益 + 未實現損益（含手續費和稅）
+        # 這樣才能和交易紀錄加總一致
+        total_pl = total_profit + total_unrealized_pl
+
         return {
             "sector_name": self.sector_name,
             "sector_id": self.sector_id,
@@ -209,8 +228,8 @@ class SectorTradingManager:
             "balance": round(self.state["balance"], 2),
             "equity": round(equity, 2),
             "initial_balance": initial,
-            "total_pl": round(equity - initial, 2),
-            "total_pl_pct": round((equity - initial) / initial * 100, 2),
+            "total_pl": round(total_pl, 2),
+            "total_pl_pct": round(total_pl / initial * 100, 2),
             "holdings": holdings_detail,
             "strategy": self.get_strategy(),
             "stocks": {s: self.stocks.get(s, s) for s in self.state.get("stocks", [])},
@@ -257,25 +276,30 @@ class SectorTradingManager:
                 total_equity += h["qty"] * h["avg_price"]
 
             spend_cash = min(total_equity * ratio, self.state["balance"] * 0.95)
-            fee = spend_cash * 0.001425
-            qty = int((spend_cash - fee) / price)
+            # 先估算可買股數（預留手續費空間）
+            qty = int(spend_cash / (price * 1.001425))
             if qty <= 0:
                 return False
 
-            actual_cost = qty * price + fee
+            # 手續費四捨五入取整（台灣實務）
+            buy_fee = round(qty * price * 0.001425)
+            actual_cost = qty * price + buy_fee
             self.state["balance"] -= actual_cost
 
             if symbol in self.state["holdings"]:
                 old = self.state["holdings"][symbol]
                 new_qty = old["qty"] + qty
                 new_avg = ((old["qty"] * old["avg_price"]) + (qty * price)) / new_qty
+                new_total_cost = old.get("total_cost", old["qty"] * old["avg_price"] * 1.001425) + actual_cost
                 self.state["holdings"][symbol] = {
                     "qty": new_qty, "avg_price": round(new_avg, 2),
+                    "total_cost": round(new_total_cost, 2),
                     "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 }
             else:
                 self.state["holdings"][symbol] = {
                     "qty": qty, "avg_price": price,
+                    "total_cost": round(actual_cost, 2),
                     "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 }
 
@@ -302,9 +326,13 @@ class SectorTradingManager:
 
             qty = hold["qty"]
             gross = qty * price
-            fee_tax = gross * (0.001425 + 0.003)
-            net = gross - fee_tax
-            profit = net - (qty * hold["avg_price"])
+            # 手續費、證交稅各自四捨五入取整（台灣實務）
+            sell_fee = round(gross * 0.001425)
+            sell_tax = round(gross * 0.003)
+            net = gross - sell_fee - sell_tax
+            # 已實現損益 = 賣出淨收入 - 買進總成本（含買進手續費）
+            total_cost = hold.get("total_cost", round(qty * hold["avg_price"] * 1.001425))
+            profit = net - total_cost
 
             self.state["balance"] += net
             del self.state["holdings"][symbol]

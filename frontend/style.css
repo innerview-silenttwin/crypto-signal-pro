@@ -882,6 +882,25 @@ h1, h2, h3, .glow-text {
     justify-content: center;
     cursor: help;
 }
+.info-tooltip > i {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    font-size: 10px;
+    font-style: normal;
+    font-weight: 700;
+    background: rgba(167, 139, 250, 0.12);
+    color: var(--text-muted);
+    transition: all 0.2s;
+    flex-shrink: 0;
+}
+.info-tooltip:hover > i {
+    background: var(--accent, #8b5cf6);
+    color: #fff;
+}
 
 .info-icon {
     background: rgba(167, 139, 250, 0.15);
@@ -915,23 +934,25 @@ h1, h2, h3, .glow-text {
     display: block;
 }
 
-.info-tooltip:hover::after {
-    content: attr(data-tip);
-    position: absolute;
-    bottom: 125%;
-    left: 50%;
-    transform: translateX(-50%);
+/* JS-based tooltip (.tip-box) — position:fixed on <body>, escapes overflow */
+.tip-box {
+    position: fixed;
     background: white;
     color: var(--text-main);
     padding: 10px 14px;
     border-radius: 12px;
-    font-size: 12px;
+    font-size: 11px;
+    line-height: 1.6;
     white-space: pre-wrap;
-    width: 220px;
+    width: 240px;
     box-shadow: 0 10px 25px rgba(167, 139, 250, 0.15);
     border: 1.5px solid var(--border-color);
-    z-index: 1000;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
 }
+.tip-box.visible { opacity: 1; }
 
 /* Modal */
 .modal-overlay {
@@ -2143,6 +2164,233 @@ a.event-item:hover {
     to   { opacity: 1; transform: translateY(0); }
 }
 
+/* ── 超級選股系統 ── */
+.screener-section {
+    margin-bottom: 16px;
+    animation: fadeIn 0.4s ease;
+}
+.screener-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+.screener-title {
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--text-main);
+    margin: 0;
+}
+.screener-updated {
+    font-size: 10px;
+    color: var(--text-muted);
+}
+.screener-refresh-btn {
+    margin-left: auto;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    font-size: 16px;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.screener-refresh-btn:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+.screener-refresh-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.screener-categories {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 12px;
+}
+.screener-cat-card {
+    padding: 12px 14px;
+    border-radius: 14px;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.screener-cat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(167, 139, 250, 0.1);
+}
+.screener-cat-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+.screener-cat-icon { font-size: 16px; }
+.screener-cat-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-main);
+}
+.screener-cat-count {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--text-muted);
+    background: rgba(255,255,255,0.05);
+    padding: 1px 6px;
+    border-radius: 6px;
+}
+.screener-cat-desc {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--border-color);
+}
+.screener-cat-stocks {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.screener-stock-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.screener-stock-row:hover {
+    background: rgba(139, 92, 246, 0.08);
+}
+.screener-stock-sym {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--accent);
+    min-width: 40px;
+}
+.screener-stock-name {
+    font-size: 11px;
+    color: var(--text-main);
+    min-width: 48px;
+}
+.screener-stock-score {
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 8px;
+    min-width: 24px;
+    text-align: center;
+}
+.screener-stock-score.score-high { background: rgba(16,185,129,0.15); color: #10b981; }
+.screener-stock-score.score-mid  { background: rgba(245,158,11,0.15); color: #f59e0b; }
+.screener-stock-score.score-low  { background: rgba(239,68,68,0.15);  color: #ef4444; }
+.screener-stock-hl {
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-left: auto;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 140px;
+}
+.screener-empty {
+    font-size: 11px;
+    color: var(--text-muted);
+    padding: 8px 0;
+    text-align: center;
+}
+.screener-loading {
+    font-size: 12px;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 20px 0;
+}
+/* 綜合排行榜卡片 — 橫跨整列 */
+.screener-ranking-card {
+    grid-column: 1 / -1;
+    border: 1px solid var(--accent);
+    background: linear-gradient(135deg, rgba(100,108,255,0.06), rgba(100,108,255,0.02));
+}
+.screener-ranking-card .screener-cat-header {
+    border-bottom: 1px solid rgba(100,108,255,0.15);
+}
+.screener-ranking-card .screener-cat-stocks {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 2px;
+}
+.screener-rank {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    font-size: 11px;
+    font-weight: 700;
+    flex-shrink: 0;
+    background: var(--text-muted);
+    color: var(--bg-primary);
+}
+.screener-stock-row .screener-rank:nth-child(1) { background: #f5a623; }
+.screener-ranking-card .screener-stock-row:nth-child(1) .screener-rank { background: #f5a623; }
+.screener-ranking-card .screener-stock-row:nth-child(2) .screener-rank { background: #aab2bd; }
+.screener-ranking-card .screener-stock-row:nth-child(3) .screener-rank { background: #cd7f32; }
+.screener-hidden {
+    display: none !important;
+}
+.screener-expand-btn {
+    display: block;
+    width: 100%;
+    padding: 8px;
+    margin-top: 4px;
+    background: transparent;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    color: var(--accent);
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.screener-expand-btn:hover {
+    background: rgba(100,108,255,0.08);
+}
+
+@media (max-width: 768px) {
+    .screener-categories {
+        grid-template-columns: 1fr;
+    }
+    .screener-ranking-card .screener-cat-stocks {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* 清除快取按鈕 */
+.cache-clear-bar {
+    text-align: center;
+    padding: 16px 0 24px;
+}
+.btn-clear-cache {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 8px 20px;
+    border-radius: 8px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.btn-clear-cache:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(100,108,255,0.06);
+}
+.btn-clear-cache:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .tla-title {
     font-size: 14px;
     font-weight: 700;
@@ -2155,6 +2403,9 @@ a.event-item:hover {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 14px;
+}
+.tla-grid.tla-grid-4 {
+    grid-template-columns: repeat(2, 1fr);
 }
 
 .tla-card {
@@ -2260,6 +2511,29 @@ a.event-item:hover {
     font-size: 9px;
     color: var(--text-muted);
 }
+
+/* ── 籌碼面每日明細 ── */
+.tla-chip-daily {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.tla-chip-day {
+    display: flex;
+    gap: 8px;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.03);
+}
+.tla-chip-date {
+    color: var(--text-muted);
+    min-width: 36px;
+}
+.tla-chip-day .news-pos { color: #10b981; }
+.tla-chip-day .news-neg { color: #ef4444; }
+.tla-chip-day .news-neu { color: #94a3b8; }
 
 /* ── 分數 Badge (卡片 header 右側) ── */
 .tla-score-badge {

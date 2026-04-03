@@ -1,8 +1,8 @@
 // WebSocket 連線與狀態管理
 const ws = new WebSocket(`ws://${window.location.host}/ws/signals`);
-let currentSymbol = 'BTC/USDT';
+let currentSymbol = '2330.TW';
 let currentTimeframe = '1d';
-let currentMarket = 'crypto';
+let currentMarket = 'stock';
 let lastServerData = [];
 
 // 台股 / 期貨自動更新的 timer
@@ -847,13 +847,19 @@ function renderThreeLayerAnalysis(data) {
             neutral: 'rec-neutral', weak: 'rec-weak', avoid: 'rec-avoid',
         }[rec.action_class] || 'rec-neutral';
 
+        const w = rec.weights || {};
+        const LABEL = {chipflow:'籌碼',technical:'技術',fundamental:'基本面',regime:'盤勢',sentiment:'消息'};
+        const weightStr = Object.entries(LABEL)
+            .filter(([k]) => w[k])
+            .map(([k, label]) => `${label}${w[k]}%`)
+            .join('＋');
         const recHtml = `
             <div class="rec-score-ring ${actionCls}">
                 <span class="rec-score-num">${Math.round(score)}</span>
             </div>
             <div class="rec-info">
                 <div class="rec-action ${actionCls}">${rec.action}</div>
-                <div class="rec-detail">技術40% + 基本面30% + 盤勢15% + 消息面15%</div>
+                <div class="rec-detail">${weightStr || '籌碼35%＋技術25%＋基本面20%＋盤勢13%＋消息7%'}</div>
             </div>`;
 
         // 渲染到左欄 inline 區塊
@@ -935,9 +941,14 @@ function renderThreeLayerAnalysis(data) {
     if (data.fundamental) {
         const f = data.fundamental;
         const vStyle = VALUATION_LABELS[f.valuation] || { cls: 'fair' };
-        const peText = f.pe != null ? f.pe.toFixed(1) : '--';
-        const dyText = f.dy != null ? f.dy.toFixed(1) + '%' : '--';
+        const peText = f.pe != null ? f.pe.toFixed(2) : '--';
+        const dyText = f.dy != null ? f.dy.toFixed(2) + '%' : '--';
         const pbText = f.pb != null ? f.pb.toFixed(2) : '--';
+
+        const momText = f.mom != null ? (f.mom > 0 ? '+' : '') + f.mom.toFixed(2) + '%' : '--';
+        const yoyText = f.yoy != null ? (f.yoy > 0 ? '+' : '') + f.yoy.toFixed(2) + '%' : '--';
+        const momCls = f.mom != null ? (f.mom > 0 ? 'bullish' : f.mom < 0 ? 'bearish' : 'neutral') : 'neutral';
+        const yoyCls = f.yoy != null ? (f.yoy > 0 ? 'bullish' : f.yoy < 0 ? 'bearish' : 'neutral') : 'neutral';
 
         // 分數 badge
         if (f.buy_score != null) {
@@ -964,10 +975,103 @@ function renderThreeLayerAnalysis(data) {
                 <span class="tla-row-label">股價淨值比</span>
                 <span class="tla-row-value">${pbText}</span>
             </div>
+            <div class="tla-row">
+                <span class="tla-row-label">月營收 (MoM)</span>
+                <span class="tla-badge ${momCls}">${momText}</span>
+            </div>
+            <div class="tla-row">
+                <span class="tla-row-label">年營收 (YoY)</span>
+                <span class="tla-badge ${yoyCls}">${yoyText}</span>
+            </div>
             ${f.advice ? `<div class="tla-advice">${f.advice}</div>` : ''}`;
     } else {
         fundEl.innerHTML = '<span style="color:var(--text-muted)">無基本面資料</span>';
         fundScoreBadge.textContent = '';
+    }
+
+    // ── 籌碼面 ──
+    const chipEl = document.getElementById('tla-chipflow');
+    const chipScoreBadge = document.getElementById('tla-chip-score');
+    if (chipEl) {
+        if (data.chipflow && data.chipflow.status === 'active') {
+            const c = data.chipflow;
+
+            if (c.buy_score != null) {
+                chipScoreBadge.textContent = c.buy_score + '分';
+                chipScoreBadge.className = 'tla-score-badge ' + _scoreBadgeCls(c.buy_score);
+            } else {
+                chipScoreBadge.textContent = '';
+            }
+
+            const chipLabelCls = c.buy_score >= 65 ? 'bullish' : c.buy_score <= 35 ? 'bearish' : 'neutral';
+
+            // 外資連買/賣文字
+            const fc = c.foreign_consec_buy || 0;
+            const foreignCls = fc > 0 ? 'bullish' : fc < 0 ? 'bearish' : 'neutral';
+            // 投信連買/賣文字
+            const tc = c.trust_consec_buy || 0;
+            const trustCls = tc > 0 ? 'bullish' : tc < 0 ? 'bearish' : 'neutral';
+            // 融資增減
+            const mc = c.margin_change_sum || 0;
+            const marginCls = mc < 0 ? 'bullish' : mc > 0 ? 'bearish' : 'neutral';
+            const marginText = mc < 0 ? `減少${Math.abs(mc).toLocaleString()}張` : mc > 0 ? `增加${mc.toLocaleString()}張` : '持平';
+
+            // 每日明細（最近3個有效交易日，略過全零的非交易日）
+            let dailyHtml = '';
+            const validDays = (c.daily_data || []).filter(d =>
+                (d.foreign_net || 0) !== 0 || (d.trust_net || 0) !== 0 || (d.dealer_net || 0) !== 0
+            );
+            if (validDays.length > 0) {
+                dailyHtml = '<div class="tla-chip-daily">';
+                for (const d of validDays.slice(0, 3)) {
+                    const fNet = d.foreign_net || 0;
+                    const tNet = d.trust_net || 0;
+                    const fCls = fNet > 0 ? 'news-pos' : fNet < 0 ? 'news-neg' : 'news-neu';
+                    const tCls = tNet > 0 ? 'news-pos' : tNet < 0 ? 'news-neg' : 'news-neu';
+                    
+                    const formatNet = (val) => {
+                        const absVal = Math.abs(val);
+                        if (absVal === 0) return '0張';
+                        if (absVal < 1000) return `${val > 0 ? '+' : ''}${val}張`;
+                        return `${val > 0 ? '+' : ''}${(val/1000).toFixed(1).replace('.0', '')}千張`;
+                    };
+
+                    dailyHtml += `<div class="tla-chip-day">
+                        <span class="tla-chip-date">${d.date.slice(4,6)}/${d.date.slice(6)}</span>
+                        <span class="${fCls}">外${formatNet(fNet)}</span>
+                        <span class="${tCls}">投${formatNet(tNet)}</span>
+                    </div>`;
+                }
+                dailyHtml += '</div>';
+            }
+
+            chipEl.innerHTML = `
+                <div class="tla-row">
+                    <span class="tla-row-label">籌碼判定</span>
+                    <span class="tla-badge ${chipLabelCls}">${c.label}</span>
+                </div>
+                <div class="tla-row">
+                    <span class="tla-row-label">外資</span>
+                    <span class="tla-badge ${foreignCls}">${c.foreign_text}</span>
+                </div>
+                <div class="tla-row">
+                    <span class="tla-row-label">投信</span>
+                    <span class="tla-badge ${trustCls}">${c.trust_text}</span>
+                </div>
+                <div class="tla-row">
+                    <span class="tla-row-label">融資變化</span>
+                    <span class="tla-badge ${marginCls}">${marginText}</span>
+                </div>
+                <div class="tla-row">
+                    <span class="tla-row-label">融券餘額</span>
+                    <span class="tla-row-value">${(c.short_balance_latest || 0).toLocaleString()}張</span>
+                </div>
+                ${dailyHtml}
+                ${c.advice ? `<div class="tla-advice">${c.advice}</div>` : ''}`;
+        } else {
+            chipEl.innerHTML = '<span style="color:var(--text-muted)">無籌碼資料</span>';
+            if (chipScoreBadge) chipScoreBadge.textContent = '';
+        }
     }
 
     // ── 消息面 ──
@@ -1034,6 +1138,153 @@ function hideThreeLayerAnalysis() {
     if (container) container.style.display = 'none';
     const recInline = document.getElementById('tla-recommendation-inline');
     if (recInline) recInline.style.display = 'none';
+}
+
+// ── 超級選股系統 ──
+
+async function fetchScreenerPicks() {
+    const section = document.getElementById('screener-section');
+    const container = document.getElementById('screener-categories');
+    const updatedEl = document.getElementById('screener-updated');
+    if (!section || !container) return;
+
+    try {
+        const res = await fetch('/api/screener/picks');
+        const data = await res.json();
+
+        if (data.scanning && (!data.categories || data.categories.length === 0)) {
+            section.style.display = 'block';
+            container.innerHTML = '<div class="screener-loading">選股系統掃描中，請稍後重新整理...</div>';
+            if (updatedEl) updatedEl.textContent = '';
+            return;
+        }
+
+        if (!data.categories || data.categories.length === 0) {
+            section.style.display = 'block';
+            container.innerHTML = `
+                <div class="screener-loading" style="display:flex; flex-direction:column; align-items:center; gap:20px;">
+                    <div>${data.message || '尚未掃描，請點擊下方按鈕開始掃描'}</div>
+                    <button class="btn-primary" onclick="document.getElementById('screener-refresh-btn').click()" style="padding: 12px 24px; font-size: 16px; border-radius: 8px; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size:20px;">↻</span> 立即掃描市場
+                    </button>
+                </div>`;
+            if (updatedEl) updatedEl.textContent = '';
+            return;
+        }
+
+        section.style.display = 'block';
+        if (updatedEl && data.updated_at) {
+            updatedEl.textContent = `更新: ${data.updated_at}`;
+        }
+
+        renderScreenerCards(data.categories);
+    } catch (e) {
+        console.warn('選股系統載入失敗:', e);
+    }
+}
+
+function renderScreenerCards(categories) {
+    const container = document.getElementById('screener-categories');
+    if (!container) return;
+
+    const DEFAULT_SHOW = 5;
+
+    container.innerHTML = categories.map(cat => {
+        const stocks = cat.stocks || [];
+        const isRanking = cat.id === 'top_ranked';
+        const hasMore = stocks.length > DEFAULT_SHOW;
+
+        const stocksHtml = stocks.length > 0
+            ? stocks.map((s, idx) => {
+                const scoreCls = s.composite_score >= 70 ? 'score-high' : s.composite_score >= 45 ? 'score-mid' : 'score-low';
+                const hiddenCls = (isRanking && idx >= DEFAULT_SHOW) ? ' screener-hidden' : '';
+                const rankBadge = isRanking ? `<span class="screener-rank">${idx + 1}</span>` : '';
+                return `<div class="screener-stock-row${hiddenCls}" data-symbol="${s.symbol}" data-market="stock">
+                    ${rankBadge}
+                    <span class="screener-stock-sym">${s.symbol.replace('.TW','')}</span>
+                    <span class="screener-stock-name">${s.name}</span>
+                    <span class="screener-stock-score ${scoreCls}">${Math.round(s.composite_score)}</span>
+                    <span class="screener-stock-hl">${s.highlight}</span>
+                </div>`;
+            }).join('')
+            : '<div class="screener-empty">暫無符合條件的標的</div>';
+
+        const expandBtn = (isRanking && hasMore)
+            ? `<button class="screener-expand-btn" data-cat="${cat.id}">顯示更多 (${stocks.length}檔) ▼</button>`
+            : '';
+
+        return `<div class="screener-cat-card glass-panel ${isRanking ? 'screener-ranking-card' : ''}">
+            <div class="screener-cat-header">
+                <span class="screener-cat-icon">${cat.icon}</span>
+                <span class="screener-cat-name">${cat.name}</span>
+                ${cat.description ? `<span class="info-tooltip" data-tip="${cat.description}" style="margin-left: 4px;"><i>i</i></span>` : ''}
+                <span class="screener-cat-count">${stocks.length}檔</span>
+            </div>
+            <div class="screener-cat-stocks">${stocksHtml}</div>
+            ${expandBtn}
+        </div>`;
+    }).join('');
+
+    // 點擊個股 → 切換到該標的
+    container.querySelectorAll('.screener-stock-row').forEach(row => {
+        row.addEventListener('click', () => {
+            const symbol = row.dataset.symbol;
+            const market = row.dataset.market || 'stock';
+            if (window.changeSymbol) {
+                window.changeSymbol(symbol, market);
+            }
+        });
+    });
+
+    // 顯示更多 / 收起
+    container.querySelectorAll('.screener-expand-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const card = btn.closest('.screener-cat-card');
+            const hidden = card.querySelectorAll('.screener-hidden');
+            const isExpanded = btn.dataset.expanded === '1';
+            if (isExpanded) {
+                card.querySelectorAll('.screener-stock-row').forEach((row, i) => {
+                    if (i >= DEFAULT_SHOW) row.classList.add('screener-hidden');
+                });
+                btn.dataset.expanded = '0';
+                btn.textContent = `顯示更多 (${card.querySelectorAll('.screener-stock-row').length}檔) ▼`;
+            } else {
+                hidden.forEach(el => el.classList.remove('screener-hidden'));
+                btn.dataset.expanded = '1';
+                btn.textContent = '收起 ▲';
+            }
+        });
+    });
+}
+
+// 初始化選股系統
+function initScreener() {
+    // 載入選股資料
+    fetchScreenerPicks();
+
+    // 重新整理按鈕
+    const refreshBtn = document.getElementById('screener-refresh-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', async () => {
+            refreshBtn.disabled = true;
+            refreshBtn.textContent = '⏳';
+            try {
+                await fetch('/api/screener/refresh', { method: 'POST' });
+                // 等 3 秒後重新載入
+                setTimeout(() => {
+                    fetchScreenerPicks();
+                    refreshBtn.disabled = false;
+                    refreshBtn.textContent = '↻';
+                }, 3000);
+            } catch (e) {
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = '↻';
+            }
+        });
+    }
+
+    // 每 30 分鐘自動刷新
+    setInterval(fetchScreenerPicks, 30 * 60 * 1000);
 }
 
 function initExpandLogic() {
@@ -1846,6 +2097,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initChart();
     startHeartbeat();
     initTickerData(); // 載入時一次拉取所有 ticker（含台股）
+    initScreener();   // 載入超級選股系統
 
     // --- 跑馬燈點擊 → 切換到該標的 ---
     const tickerStrip = document.getElementById('ticker-content');

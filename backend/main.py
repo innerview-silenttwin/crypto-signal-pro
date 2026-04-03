@@ -997,13 +997,15 @@ from sector_auto_trader import auto_trader as sector_auto_trader
 @app.get("/api/sector-trading/sectors")
 async def list_sectors():
     """列出所有類股及其摘要"""
-    from sector_auto_trader import _price_cache
+    from sector_auto_trader import get_current_price
     results = []
     for sector_id, mgr in get_all_sector_managers().items():
         current_prices = {}
-        for symbol in mgr.state.get("stocks", []):
-            if symbol in _price_cache and "price" in _price_cache[symbol]:
-                current_prices[symbol] = _price_cache[symbol]["price"]
+        for symbol, hold in mgr.state.get("holdings", {}).items():
+            if hold.get("qty", 0) > 0:
+                price = get_current_price(symbol)
+                if price:
+                    current_prices[symbol] = price
         results.append(mgr.get_summary(current_prices))
     return results
 
@@ -1042,12 +1044,14 @@ async def get_sector_status(sector_id: str):
     mgr = get_manager(sector_id)
     if not mgr:
         return {"error": f"未知的類股 ID: {sector_id}"}
-    # 從 auto_trader 的價格快取取得即時價格
-    from sector_auto_trader import _price_cache
+    # 統一取價：多來源比較日期，取最新的收盤價
+    from sector_auto_trader import get_current_price
     current_prices = {}
-    for symbol in mgr.state.get("stocks", []):
-        if symbol in _price_cache and "price" in _price_cache[symbol]:
-            current_prices[symbol] = _price_cache[symbol]["price"]
+    for symbol, hold in mgr.state.get("holdings", {}).items():
+        if hold.get("qty", 0) > 0:
+            price = get_current_price(symbol)
+            if price:
+                current_prices[symbol] = price
     return mgr.get_summary(current_prices)
 
 @app.post("/api/sector-trading/{sector_id}/toggle")
@@ -1151,17 +1155,18 @@ async def get_sector_regime(sector_id: str):
 @app.get("/api/stock-analysis")
 async def get_stock_analysis(symbol: str):
     """
-    單一股票三面分析：技術面摘要 + 基本面 P/E + 盤勢辨識
+    單一股票四面分析：技術面 + 基本面 P/E + 盤勢辨識 + 籌碼面 + 消息面
     用於首頁查詢台股時一次揭露完整資訊。
     """
     from layers.fundamental import fetch_twse_pe_all, FundamentalLayer, _strip_tw
     from layers.regime import RegimeLayer
     from layers.sentiment import get_stock_sentiment, get_market_sentiment, fetch_rss_articles
+    from layers.chipflow import fetch_chip_summary, compute_chip_score
     from sector_auto_trader import fetch_signal_data
     from signals.aggregator import SignalAggregator
     import pandas as pd
 
-    result = {"symbol": symbol, "fundamental": None, "regime": None, "technical": None}
+    result = {"symbol": symbol, "fundamental": None, "regime": None, "technical": None, "chipflow": None}
 
     # ── 1. 基本面 P/E ──
     fund_buy_score = 50  # 預設中性
@@ -1172,45 +1177,101 @@ async def get_stock_analysis(symbol: str):
         pe = info.get("pe")
         dy = info.get("dy")
         pb = info.get("pb")
-
-        # 估值判斷 + 做多建議分數（0~100, 越高越適合買進）
+        
+        from layers.fundamental import fetch_twse_revenue_all, get_sector_pe_stats
+        all_rev = fetch_twse_revenue_all()
+        rev_info = all_rev.get(code, {})
+        mom = rev_info.get("mom")
+        yoy = rev_info.get("yoy")
+        sector = rev_info.get("sector")
+        
+        # 尋找同產業的股票
+        same_sector_symbols = []
+        if sector:
+            same_sector_symbols = [f"{c}.TW" for c, v in all_rev.items() if v.get("sector") == sector]
+        
+        # 如果有產業資訊，改用產業排名計算估值；若無，回退到絕對 P/E 判斷
         valuation = "無數據"
         fund_advice = "資料不足"
-        if pe is not None and pe > 0:
-            if pe < 8:
-                valuation = "明顯低估"
-                fund_buy_score = 90
-                fund_advice = "估值極具吸引力，適合積極布局"
-            elif pe < 12:
-                valuation = "偏低估"
-                fund_buy_score = 75
-                fund_advice = "估值偏低，適合逢低承接"
-            elif pe < 20:
-                valuation = "合理"
-                fund_buy_score = 55
-                fund_advice = "估值合理，可正常操作"
-            elif pe < 30:
-                valuation = "偏高估"
-                fund_buy_score = 30
-                fund_advice = "估值偏高，追高須謹慎"
-            else:
-                valuation = "明顯高估"
-                fund_buy_score = 15
-                fund_advice = "估值過高，不建議進場"
+        sector_pe_median = None
+        pe_percentile = None
 
-        # 殖利率加分
+        if same_sector_symbols and len(same_sector_symbols) >= 3 and pe is not None and pe > 0:
+            pe_stats = get_sector_pe_stats(same_sector_symbols, all_pe)
+            sym_key = f"{code}.TW"
+            if sym_key in pe_stats:
+                stat = pe_stats[sym_key]
+                pe_percentile = stat.get("percentile")
+                sector_pe_median = stat.get("sector_median_pe")
+                valuation = stat.get("valuation", "無數據")
+                
+                # 依據產業內排名 (percentile 越低 = 本益比越低 = 越便宜)
+                if pe_percentile is not None:
+                    if pe_percentile <= 20: # 產業前 20% 便宜
+                        fund_buy_score = 90
+                        fund_advice = f"本益比擊敗 {100-pe_percentile}% 的同業 ({sector})，極具吸引力"
+                    elif pe_percentile <= 40:
+                        fund_buy_score = 75
+                        fund_advice = f"於 {sector} 中偏低估，具備投資價值"
+                    elif pe_percentile <= 60:
+                        fund_buy_score = 55
+                        fund_advice = f"於 {sector} 中估值落在合理區間"
+                    elif pe_percentile <= 80:
+                        fund_buy_score = 30
+                        fund_advice = f"高於多數同業 ({sector})，追高須謹慎"
+                    else:
+                        fund_buy_score = 15
+                        fund_advice = f"本益比為 {sector} 中最昂貴群體，注意估值風險"
+        else:
+            # Fallback 絕對值判斷
+            if pe is not None and pe > 0:
+                if pe < 8:
+                    valuation = "明顯低估"
+                    fund_buy_score = 90
+                    fund_advice = "絕對估值極低，適合積極布局"
+                elif pe < 12:
+                    valuation = "偏低估"
+                    fund_buy_score = 75
+                    fund_advice = "絕對估值偏低，適合逢低承接"
+                elif pe < 20:
+                    valuation = "合理"
+                    fund_buy_score = 55
+                    fund_advice = "絕對估值合理"
+                elif pe < 30:
+                    valuation = "偏高估"
+                    fund_buy_score = 30
+                    fund_advice = "絕對估值偏高，追高須謹慎"
+                else:
+                    valuation = "明顯高估"
+                    fund_buy_score = 15
+                    fund_advice = "絕對估值過高，不建議進場"
+
+        # 基礎面營收動能 (MoM, YoY) 輔助調整
+        if yoy is not None:
+            if yoy > 20:
+                fund_buy_score = min(100, fund_buy_score + 10)
+                fund_advice += f"｜營收高成長 YoY +{yoy:.1f}%"
+            elif yoy > 0:
+                fund_buy_score = min(100, fund_buy_score + 5)
+            elif yoy < -20:
+                fund_buy_score = max(0, fund_buy_score - 10)
+                fund_advice += f"｜營收衰退 YoY {yoy:.1f}%"
+
+        # 殖利率加分 (高股息保護)
         if dy is not None and dy > 0:
             if dy >= 5.0:
                 fund_buy_score = min(100, fund_buy_score + 10)
-                fund_advice += f"（高殖利率 {dy:.1f}% 具防禦力）"
+                fund_advice += f"｜高息防禦 (殖利率 {dy:.1f}%)"
             elif dy >= 3.0:
                 fund_buy_score = min(100, fund_buy_score + 5)
 
         result["fundamental"] = {
             "pe": pe, "dy": dy, "pb": pb,
+            "mom": mom, "yoy": yoy,
+            "sector": sector, "sector_pe_median": sector_pe_median, "pe_percentile": pe_percentile,
             "name": info.get("name", ""),
             "valuation": valuation,
-            "buy_score": fund_buy_score,
+            "buy_score": int(fund_buy_score),
             "advice": fund_advice,
         }
 
@@ -1230,6 +1291,12 @@ async def get_stock_analysis(symbol: str):
             "盤整": 50, "高檔轉折": 25, "空頭": 15,
         }
         regime_buy_score = regime_scores.get(regime_state, 50)
+
+        # 傳產 Regime Veto-Only：回測顯示多頭加乘在循環股（航運等）有害
+        from screener import get_symbol_sector
+        if get_symbol_sector(symbol) == "traditional" and regime_state in ("強勢多頭", "多頭"):
+            regime_buy_score = min(regime_buy_score, 60)
+
         regime_advices = {
             "強勢多頭": "趨勢強勁，順勢做多",
             "多頭": "多頭格局，適合持有或加碼",
@@ -1252,8 +1319,10 @@ async def get_stock_analysis(symbol: str):
             "advice": regime_advices.get(regime_state, ""),
         }
 
-        # 技術面指標摘要
-        agg = SignalAggregator()
+        # 技術面指標摘要（按產業使用回測最佳權重）
+        from screener import get_sector_weights, get_symbol_sector
+        sector_weights = get_sector_weights(symbol)
+        agg = SignalAggregator(weights=sector_weights)
         signal = agg.analyze(df.copy(), symbol, "1d")
         tech_buy_score = round(float(signal.buy_score), 1)
 
@@ -1278,7 +1347,45 @@ async def get_stock_analysis(symbol: str):
             "advice": tech_advice,
         }
 
-    # ── 3. 消息面情緒分析 ──
+    # ── 3. 籌碼面分析（用 to_thread 避免阻塞 event loop）──
+    import asyncio
+    chip_buy_score = None
+    try:
+        chip_summary = await asyncio.to_thread(fetch_chip_summary, symbol)
+        if chip_summary:
+            chip = compute_chip_score(chip_summary)
+            chip_buy_score = chip["score"]
+
+            # 外資/投信連買天數文字
+            fc = chip_summary.get("foreign_consec_buy", 0)
+            tc = chip_summary.get("trust_consec_buy", 0)
+            foreign_text = f"連買{fc}天" if fc > 0 else (f"連賣{abs(fc)}天" if fc < 0 else "持平")
+            trust_text = f"連買{tc}天" if tc > 0 else (f"連賣{abs(tc)}天" if tc < 0 else "持平")
+
+            result["chipflow"] = {
+                "status": "active",
+                "buy_score": chip_buy_score,
+                "label": chip["label"],
+                "advice": chip["advice"],
+                "foreign_consec_buy": fc,
+                "foreign_text": foreign_text,
+                "foreign_total_net": chip_summary.get("foreign_total_net", 0),
+                "trust_consec_buy": tc,
+                "trust_text": trust_text,
+                "trust_total_net": chip_summary.get("trust_total_net", 0),
+                "dealer_total_net": chip_summary.get("dealer_total_net", 0),
+                "margin_change_sum": chip_summary.get("margin_change_sum", 0),
+                "short_balance_latest": chip_summary.get("short_balance_latest", 0),
+                "sub_scores": chip["sub_scores"],
+                "latest_date": chip_summary.get("latest_date", ""),
+                "days_analyzed": chip_summary.get("days_analyzed", 0),
+                "daily_data": chip_summary.get("daily_data", []),
+            }
+    except Exception as e:
+        print(f"⚠️ 籌碼面分析失敗: {e}")
+        result["chipflow"] = {"status": "error", "buy_score": None, "message": str(e)}
+
+    # ── 5. 消息面情緒分析 ──
     sent_buy_score = None
     try:
         articles = fetch_rss_articles()
@@ -1288,7 +1395,13 @@ async def get_stock_analysis(symbol: str):
 
         # 情緒做多分數（0~100）
         raw_sent = sentiment["score"]  # -100 ~ +100
-        sent_buy_score = round(max(0, min(100, 50 + raw_sent * 0.5)), 1)
+        
+        # 如果完全沒有相關新聞，將分數設為 None (即不參與綜合評分計算，避免被預設 50 分拉低整體的評等)
+        if sentiment["total_related"] == 0:
+            sent_buy_score = None
+            sentiment["advice"] += " (無新聞，不列入綜合評分)"
+        else:
+            sent_buy_score = round(max(0, min(100, 50 + raw_sent * 0.5)), 1)
 
         result["sentiment"] = {
             "status": "active",
@@ -1310,9 +1423,11 @@ async def get_stock_analysis(symbol: str):
         print(f"⚠️ 消息面分析失敗: {e}")
         result["sentiment"] = {"status": "error", "buy_score": None, "message": str(e)}
 
-    # ── 4. 綜合做多建議 ──
+    # ── 6. 綜合做多建議（按產業使用不同五維權重）──
     scores = []
-    score_weights = {"technical": 0.40, "fundamental": 0.30, "regime": 0.15, "sentiment": 0.15}
+    from screener import get_symbol_sector, SECTOR_COMPOSITE_WEIGHTS
+    _sector = get_symbol_sector(symbol)
+    score_weights = SECTOR_COMPOSITE_WEIGHTS.get(_sector, SECTOR_COMPOSITE_WEIGHTS["default"])
     for key, w in score_weights.items():
         layer = result.get(key)
         if layer and layer.get("buy_score") is not None:
@@ -1343,6 +1458,8 @@ async def get_stock_analysis(symbol: str):
             "composite_score": composite,
             "action": action,
             "action_class": action_cls,
+            "weights": {k: round(v * 100) for k, v in score_weights.items()},
+            "sector": _sector,
         }
     else:
         result["recommendation"] = {
@@ -1352,6 +1469,86 @@ async def get_stock_analysis(symbol: str):
         }
 
     return result
+
+
+# ── 超級選股系統 API ──
+
+@app.get("/api/screener/picks")
+async def get_screener_picks():
+    """取得五大精選類別（從快取讀取）"""
+    from screener import get_screener_results, trigger_background_scan, is_scanning
+
+    data = get_screener_results()
+
+    # 若無快取，不自動觸發（需手動按重新掃描按鈕）
+    if data.get("status") == "no_cache":
+        return {
+            "categories": [],
+            "updated_at": "",
+            "total": 0,
+            "scanning": is_scanning(),
+            "message": "尚未掃描，請點擊重新掃描按鈕",
+        }
+
+    return {
+        "categories": data.get("categories", []),
+        "updated_at": data.get("updated_at", ""),
+        "total": data.get("total", 0),
+        "scanning": is_scanning(),
+    }
+
+
+@app.get("/api/screener/full")
+async def get_screener_full(min_score: float = 0, category: str = ""):
+    """取得完整排行（可篩選）"""
+    from screener import get_screener_results
+
+    data = get_screener_results()
+    results = data.get("results", [])
+
+    # 篩選最低分數
+    if min_score > 0:
+        results = [r for r in results if r.get("composite", 0) >= min_score]
+
+    # 篩選類別
+    if category:
+        categories = data.get("categories", [])
+        cat_symbols = set()
+        for cat in categories:
+            if cat["id"] == category:
+                cat_symbols = {s["symbol"] for s in cat.get("stocks", [])}
+                break
+        if cat_symbols:
+            results = [r for r in results if r["symbol"] in cat_symbols]
+
+    return {
+        "results": results,
+        "updated_at": data.get("updated_at", ""),
+        "total": len(results),
+    }
+
+
+@app.post("/api/screener/refresh")
+async def refresh_screener():
+    """手動觸發背景重新掃描"""
+    from screener import trigger_background_scan, is_scanning
+
+    if is_scanning():
+        return {"status": "already_scanning", "message": "掃描已在執行中"}
+
+    started = trigger_background_scan()
+    return {
+        "status": "started" if started else "failed",
+        "message": "背景掃描已啟動" if started else "啟動失敗",
+    }
+
+
+@app.post("/api/screener/clear-cache")
+async def clear_screener_cache():
+    """清除選股快取檔案"""
+    from screener import clear_cache
+    clear_cache()
+    return {"status": "ok", "message": "快取已清除"}
 
 
 @app.get("/api/sector-trading/{sector_id}/fundamental")

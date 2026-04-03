@@ -28,15 +28,62 @@ logger = logging.getLogger(__name__)
 _pe_cache: Dict = {}       # {"data": {symbol: {...}}, "time": float}
 PE_CACHE_TTL = 3600 * 4    # 4 小時（盤中資料每日更新，不需太頻繁）
 
+_rev_cache: Dict = {}      # 營收快取
+REV_CACHE_TTL = 3600 * 24
+
+def fetch_twse_revenue_all() -> Dict[str, dict]:
+    """
+    從 TWSE OpenAPI 抓取所有上市公司最新營收（MoM, YoY）
+    """
+    now = time.time()
+    if _rev_cache and now - _rev_cache.get("time", 0) < REV_CACHE_TTL:
+        return _rev_cache["data"]
+
+    url = "https://openapi.twse.com.tw/v1/opendata/t187ap05_L"
+    try:
+        try:
+            resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        except requests.exceptions.SSLError:
+            resp = requests.get(url, timeout=10, verify=False, headers={"User-Agent": "Mozilla/5.0"})
+        data = resp.json()
+        result = {}
+        for row in data:
+            code = row.get("公司代號")
+            mom = row.get("營業收入-上月比較增減(%)")
+            yoy = row.get("營業收入-去年同月增減(%)")
+            sector = row.get("產業別", "")
+            if code and mom and yoy:
+                try:
+                    result[code] = {"mom": float(mom), "yoy": float(yoy), "sector": sector.strip()}
+                except ValueError:
+                    pass
+        if result:
+            _rev_cache["data"] = result
+            _rev_cache["time"] = now
+            logger.info(f"TWSE 營收資料已更新: {len(result)} 筆")
+            return result
+    except Exception as e:
+        logger.warning(f"TWSE 營收抓取失敗: {e}")
+    return _rev_cache.get("data", {})
+
 
 def _strip_tw(symbol: str) -> str:
     """2330.TW → 2330"""
     return symbol.replace(".TW", "").replace(".TWO", "")
 
 
+def _safe_float(val) -> Optional[float]:
+    """安全解析浮點數"""
+    try:
+        v = str(val).strip().replace(",", "")
+        return float(v) if v and v not in ("-", "--", "") else None
+    except (ValueError, AttributeError):
+        return None
+
+
 def fetch_twse_pe_all() -> Dict[str, dict]:
     """
-    從 TWSE 抓取全市場本益比/殖利率/股價淨值比
+    從 TWSE OpenAPI 抓取全市場本益比/殖利率/股價淨值比
 
     Returns:
         {stock_code: {"pe": float, "dy": float, "pb": float, "name": str}}
@@ -47,86 +94,35 @@ def fetch_twse_pe_all() -> Dict[str, dict]:
 
     result = {}
 
-    # 嘗試最近幾個交易日（遇假日可能沒資料）
-    for days_ago in range(0, 5):
-        date = datetime.now() - timedelta(days=days_ago)
-        date_str = date.strftime("%Y%m%d")
-        url = (
-            f"https://www.twse.com.tw/exchangeReport/BWIBBU_ALL"
-            f"?response=json&date={date_str}"
-        )
-
+    # 優先使用 OpenAPI（不需日期參數，直接回傳最新資料）
+    openapi_url = "https://openapi.twse.com.tw/v1/exchangeReport/BWIBBU_ALL"
+    try:
         try:
-            try:
-                resp = requests.get(url, timeout=10, headers={
-                    "User-Agent": "Mozilla/5.0",
-                })
-            except requests.exceptions.SSLError:
-                resp = requests.get(url, timeout=10, verify=False, headers={
-                    "User-Agent": "Mozilla/5.0",
-                })
-            data = resp.json()
-
-            if data.get("stat") != "OK" or not data.get("data"):
-                continue
-
-            # 動態解析欄位位置（TWSE 欄位順序可能變動）
-            fields = data.get("fields", [])
-            field_map = {}
-            for i, f in enumerate(fields):
-                fl = f.strip()
-                if "代號" in fl:
-                    field_map["code"] = i
-                elif "名稱" in fl:
-                    field_map["name"] = i
-                elif "本益比" in fl:
-                    field_map["pe"] = i
-                elif "殖利率" in fl:
-                    field_map["dy"] = i
-                elif "淨值比" in fl:
-                    field_map["pb"] = i
-
-            idx_code = field_map.get("code", 0)
-            idx_name = field_map.get("name", 1)
-            idx_pe = field_map.get("pe", 2)
-            idx_dy = field_map.get("dy", 3)
-            idx_pb = field_map.get("pb", 4)
-
-            def _parse_float(val):
-                try:
-                    v = val.strip().replace(",", "")
-                    return float(v) if v and v != "-" else None
-                except (ValueError, AttributeError):
-                    return None
-
-            for row in data["data"]:
-                if len(row) < 3:
+            resp = requests.get(openapi_url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+        except requests.exceptions.SSLError:
+            resp = requests.get(openapi_url, timeout=15, headers={"User-Agent": "Mozilla/5.0"}, verify=False)
+        data = resp.json()
+        if isinstance(data, list) and len(data) > 0:
+            for row in data:
+                code = row.get("Code", "").strip()
+                name = row.get("Name", "").strip()
+                if not code:
                     continue
-                code = row[idx_code].strip()
-                name = row[idx_name].strip()
-
-                pe = _parse_float(row[idx_pe])   # 本益比
-                dy = _parse_float(row[idx_dy])   # 殖利率
-                pb = _parse_float(row[idx_pb]) if idx_pb < len(row) else None  # 股價淨值比
-
                 result[code] = {
                     "name": name,
-                    "pe": pe,
-                    "dy": dy,
-                    "pb": pb,
+                    "pe": _safe_float(row.get("PEratio")),
+                    "dy": _safe_float(row.get("DividendYield")),
+                    "pb": _safe_float(row.get("PBratio")),
                 }
-
             if result:
                 _pe_cache["data"] = result
                 _pe_cache["time"] = now
-                logger.info(f"TWSE P/E 資料已更新: {len(result)} 筆 (日期: {date_str})")
+                logger.info(f"TWSE P/E 資料已更新 (OpenAPI): {len(result)} 筆")
                 return result
+    except Exception as e:
+        logger.warning(f"TWSE OpenAPI P/E 抓取失敗: {e}")
 
-        except Exception as e:
-            logger.warning(f"TWSE P/E 抓取失敗 (日期 {date_str}): {e}")
-            continue
-
-    logger.error("TWSE P/E 資料連續 5 天皆無法取得")
+    logger.error("TWSE P/E OpenAPI 抓取失敗")
     return _pe_cache.get("data", {})
 
 
@@ -236,12 +232,20 @@ class FundamentalLayer(BaseLayer):
         pe = info["pe"]
         dy = info.get("dy")  # 殖利率
         pb = info.get("pb")  # 股價淨值比
+        
+        # 抓取營收資料 (MoM, YoY)
+        all_rev = fetch_twse_revenue_all()
+        rev_info = all_rev.get(code, {})
+        mom = rev_info.get("mom")
+        yoy = rev_info.get("yoy")
 
         result = LayerModifier(layer_name=self.name)
         result.details = {
             "pe": pe,
             "dy": dy,
             "pb": pb,
+            "mom": mom,
+            "yoy": yoy,
             "name": info.get("name", ""),
         }
 

@@ -223,6 +223,7 @@
         }
         .history-table .buy-row td:nth-child(3) { color: var(--buy-color, #10b981); font-weight: 700; }
         .history-table .sell-row td:nth-child(3) { color: var(--sell-color, #ef4444); font-weight: 700; }
+        .history-table th { position: relative; overflow: visible; white-space: nowrap; }
     </style>
 </head>
 <body>
@@ -332,9 +333,9 @@
                                             <th>標的</th>
                                             <th>操作</th>
                                             <th>成交價</th>
-                                            <th>數量</th>
-                                            <th>損益</th>
-                                            <th>信號</th>
+                                            <th>數量 <span class="info-tooltip" data-tip="交易張數。每次買入投入帳戶餘額的 20%，依成交價換算張數。"><i>i</i></span></th>
+                                            <th>損益 <span class="info-tooltip" data-tip="買進：顯示未實現損益（依最新價計算）。賣出：顯示已實現損益（扣除手續費+證交稅後實際收益）。"><i>i</i></span></th>
+                                            <th>信號 <span class="info-tooltip" data-tip="記錄交易當下的分數，非現在即時分數。格式：(技術XX, 綜合XX, 強度) [盤勢]。技術分=指標經各層修正後的信號分，決定進出場時機。綜合分=五維加權平均(籌碼+技術+基本面+盤勢+消息)，決定標的品質。買入需：技術分≥門檻 且 綜合分≥50。賣出/停損僅看技術分。"><i>i</i></span></th>
                                         </tr>
                                     </thead>
                                     <tbody id="history-body"></tbody>
@@ -784,8 +785,19 @@
             } else {
                 body.innerHTML = data.data.map(h => {
                     const isBuy = h.type === 'BUY';
-                    const plText = isBuy ? `成本 ${(h.cost||0).toLocaleString()}` :
-                        `<span style="color:${h.profit >= 0 ? 'var(--buy-color)' : 'var(--sell-color)'}; font-weight:700">${h.profit >= 0 ? '+' : ''}${(h.profit||0).toLocaleString()}</span>`;
+                    let plText;
+                    if (isBuy) {
+                        const holding = sectorsData[currentSector]?.holdings?.[h.symbol];
+                        if (holding) {
+                            const upl = holding.unrealized_pl;
+                            const color = upl >= 0 ? 'var(--buy-color)' : 'var(--sell-color)';
+                            plText = `<span style="color:${color}; font-weight:700">${upl >= 0 ? '+' : ''}${Math.round(upl).toLocaleString()}</span> <small style="color:var(--text-muted)">未實現</small>`;
+                        } else {
+                            plText = `<span style="color:var(--text-muted)">已平倉</span>`;
+                        }
+                    } else {
+                        plText = `<span style="color:${h.profit >= 0 ? 'var(--buy-color)' : 'var(--sell-color)'}; font-weight:700">${h.profit >= 0 ? '+' : ''}${(h.profit||0).toLocaleString()}</span> <small style="color:var(--text-muted)">已實現</small>`;
+                    }
                     return `<tr class="${isBuy ? 'buy-row' : 'sell-row'}">
                         <td>${h.time}</td>
                         <td>${h.name || h.symbol}</td>
@@ -904,5 +916,6 @@
         init();
     })();
     </script>
+    <script src="tooltip.js"></script>
 </body>
 </html>
