@@ -15,6 +15,8 @@ import time
 from datetime import datetime
 from typing import Dict, Optional, List
 
+from notifier import notify_trade
+
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "sector_accounts")
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -317,6 +319,8 @@ class SectorTradingManager:
             })
             self._save()
             print(f"[{self.sector_name}] BUY {qty} {symbol} @ {price}")
+            notify_trade(self.sector_name, symbol, self.stocks.get(symbol, symbol),
+                         "BUY", price, qty, signal_desc)
             return True
 
         elif trade_type == "SELL":
@@ -352,6 +356,8 @@ class SectorTradingManager:
             })
             self._save()
             print(f"[{self.sector_name}] SELL {qty} {symbol} @ {price} (P&L: {profit:+.0f})")
+            notify_trade(self.sector_name, symbol, self.stocks.get(symbol, symbol),
+                         "SELL", price, qty, signal_desc, profit=profit)
             return True
 
         return False

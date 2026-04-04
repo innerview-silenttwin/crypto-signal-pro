@@ -27,6 +27,9 @@ import pytz
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
+
 from signals.aggregator import SignalAggregator, MarketType
 from business.sentiment import sentiment_engine
 from trading_manager import trading_manager
