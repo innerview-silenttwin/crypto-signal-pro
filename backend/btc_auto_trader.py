@@ -1,15 +1,20 @@
 """
 BTC 自動交易引擎（虛擬交易）
 
-回測驗證策略：日線門檻35 + CryptoFlowLayer
-- 7 年回測：+131.8%、勝率 52.9%、34 筆交易
-- 停損 12%、停利 25%
+四策略並行監控，任一觸發即交易，通知標明觸發策略與回測績效：
+
+策略 #1 日線35+CryptoFlow — +131.8% 勝率52.9% 34筆 Sharpe0.22
+策略 #2 日線40 純技術    — +120.0% 勝率75.0%  8筆 Sharpe0.71
+策略 #3 日線40+CryptoFlow — +119.7% 勝率54.5% 22筆 Sharpe0.25
+策略 #4 日線35 純技術    — +116.1% 勝率46.7% 30筆 Sharpe0.24
+
+停損 12% / 停利 25%
 
 運作方式：
 1. 背景執行緒每小時檢查一次
-2. 從 Binance 取得最新 200 根日線 K 棒
-3. 技術面 7 指標 + CryptoFlowLayer（恐懼貪婪＋資金費率）計算信號
-4. 達門檻自動買賣，透過 Telegram 推播通知
+2. 從 Binance 取得最新 250 根日線 K 棒
+3. 四策略各自計算信號（不同門檻 × 有無 CryptoFlowLayer）
+4. 任一策略達門檻即觸發交易，通知中列出所有觸發策略及其回測結果
 """
 
 import sys
@@ -36,11 +41,46 @@ logger = logging.getLogger(__name__)
 
 SYMBOL = "BTC/USDT"
 TIMEFRAME = "1d"
-BUY_THRESHOLD = 35.0
-SELL_THRESHOLD = 35.0
 STOP_LOSS_PCT = 12.0
 TAKE_PROFIT_PCT = 25.0
 TRADE_FEE_PCT = 0.1  # Binance 0.1% 手續費
+
+# ── 四策略定義（含回測績效）──
+
+STRATEGIES = [
+    {
+        "id": "S1",
+        "name": "日線35+CryptoFlow",
+        "buy_threshold": 35.0,
+        "sell_threshold": 35.0,
+        "use_flow": True,
+        "backtest": "+131.8% | 勝率52.9% | 34筆 | Sharpe 0.22",
+    },
+    {
+        "id": "S2",
+        "name": "日線40 純技術",
+        "buy_threshold": 40.0,
+        "sell_threshold": 40.0,
+        "use_flow": False,
+        "backtest": "+120.0% | 勝率75.0% | 8筆 | Sharpe 0.71",
+    },
+    {
+        "id": "S3",
+        "name": "日線40+CryptoFlow",
+        "buy_threshold": 40.0,
+        "sell_threshold": 40.0,
+        "use_flow": True,
+        "backtest": "+119.7% | 勝率54.5% | 22筆 | Sharpe 0.25",
+    },
+    {
+        "id": "S4",
+        "name": "日線35 純技術",
+        "buy_threshold": 35.0,
+        "sell_threshold": 35.0,
+        "use_flow": False,
+        "backtest": "+116.1% | 勝率46.7% | 30筆 | Sharpe 0.24",
+    },
+]
 
 ACCOUNT_FILE = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -311,7 +351,7 @@ def update_flow_data():
 # ═══════════════════════════════════════════════
 
 def check_and_trade(account: BTCAccount):
-    """核心：檢查信號並執行交易"""
+    """核心：四策略並行檢查信號並執行交易"""
 
     # 1. 取得最新日線
     df = fetch_btc_daily(250)
@@ -324,31 +364,34 @@ def check_and_trade(account: BTCAccount):
     # 2. 更新 Flow 資料
     update_flow_data()
 
-    # 3. 計算信號
+    # 3. 計算兩種信號（有/無 CryptoFlow）
     aggregator = SignalAggregator()
     crypto_flow = CryptoFlowLayer(data_dir=DATA_DIR)
-    signal = aggregator.analyze(df, SYMBOL, TIMEFRAME, layers=[crypto_flow])
+
+    signal_with_flow = aggregator.analyze(df.copy(), SYMBOL, TIMEFRAME, layers=[crypto_flow])
+    signal_pure_tech = SignalAggregator().analyze(df.copy(), SYMBOL, TIMEFRAME, layers=None)
 
     logger.info(
-        f"[BTC] 價格=${current_price:,.0f} | "
-        f"方向={signal.direction} | 信心={signal.confidence:.1f} | "
-        f"等級={signal.signal_level}"
+        f"[BTC] ${current_price:,.0f} | "
+        f"純技術: {signal_pure_tech.direction} {signal_pure_tech.confidence:.1f} | "
+        f"+Flow: {signal_with_flow.direction} {signal_with_flow.confidence:.1f}"
     )
 
     holding = account.get_holding()
 
-    # 4. 交易決策
+    # 4. 四策略並行判斷
     if holding is None or holding["qty"] <= 0:
         # === 無持倉 → 檢查買入 ===
-        if signal.direction == "BUY" and signal.confidence >= BUY_THRESHOLD:
-            reasons = ", ".join(
-                f"{s.indicator_name}:{s.reason}" for s in signal.buy_signals[:3]
-            )
-            desc = f"信號 {signal.confidence:.0f}分 ({signal.signal_level}): {reasons}"
+        triggered = _check_buy_strategies(signal_pure_tech, signal_with_flow)
+
+        if triggered:
+            # 取信號分數最高的作為主要描述
+            best = max(triggered, key=lambda t: t["score"])
+            desc = f"[{best['id']}] {best['name']} {best['score']:.0f}分"
             entry = account.buy(current_price, desc)
             if entry:
-                logger.info(f"🟢 買入 BTC @ ${current_price:,.0f}")
-                _notify_btc_trade("BUY", entry, signal)
+                logger.info(f"🟢 買入 BTC @ ${current_price:,.0f} ({len(triggered)}策略觸發)")
+                _notify_btc_trade("BUY", entry, triggered, signal_with_flow)
     else:
         # === 有持倉 → 檢查賣出 ===
         avg_price = holding["avg_price"]
@@ -356,32 +399,67 @@ def check_and_trade(account: BTCAccount):
 
         should_sell = False
         sell_reason = ""
+        sell_triggered = []
 
+        # 停損/停利（優先，不分策略）
         if change_pct <= -STOP_LOSS_PCT:
             should_sell = True
             sell_reason = f"觸發停損 ({change_pct:+.1f}%)"
         elif change_pct >= TAKE_PROFIT_PCT:
             should_sell = True
             sell_reason = f"觸發停利 ({change_pct:+.1f}%)"
-        elif signal.direction == "SELL" and signal.confidence >= SELL_THRESHOLD:
-            should_sell = True
-            reasons = ", ".join(
-                f"{s.indicator_name}:{s.reason}" for s in signal.sell_signals[:3]
-            )
-            sell_reason = f"賣出信號 {signal.confidence:.0f}分: {reasons}"
+        else:
+            # 四策略各自檢查賣出信號
+            sell_triggered = _check_sell_strategies(signal_pure_tech, signal_with_flow)
+            if sell_triggered:
+                should_sell = True
+                best = max(sell_triggered, key=lambda t: t["score"])
+                sell_reason = f"[{best['id']}] {best['name']} 賣出 {best['score']:.0f}分"
 
         if should_sell:
             entry = account.sell(current_price, sell_reason)
             if entry:
                 logger.info(f"🔴 賣出 BTC @ ${current_price:,.0f} ({sell_reason})")
-                _notify_btc_trade("SELL", entry, signal)
+                _notify_btc_trade("SELL", entry, sell_triggered, signal_with_flow)
 
     # 5. 記錄權益
     account.record_equity(current_price)
 
 
-def _notify_btc_trade(trade_type: str, entry: dict, signal):
-    """Telegram 通知"""
+def _check_buy_strategies(sig_pure, sig_flow) -> list:
+    """檢查四策略的買入條件，回傳所有觸發的策略"""
+    triggered = []
+    for s in STRATEGIES:
+        sig = sig_flow if s["use_flow"] else sig_pure
+        if sig.direction == "BUY" and sig.confidence >= s["buy_threshold"]:
+            triggered.append({
+                "id": s["id"],
+                "name": s["name"],
+                "score": sig.confidence,
+                "backtest": s["backtest"],
+                "use_flow": s["use_flow"],
+            })
+    return triggered
+
+
+def _check_sell_strategies(sig_pure, sig_flow) -> list:
+    """檢查四策略的賣出條件，回傳所有觸發的策略"""
+    triggered = []
+    for s in STRATEGIES:
+        sig = sig_flow if s["use_flow"] else sig_pure
+        if sig.direction == "SELL" and sig.confidence >= s["sell_threshold"]:
+            triggered.append({
+                "id": s["id"],
+                "name": s["name"],
+                "score": sig.confidence,
+                "backtest": s["backtest"],
+                "use_flow": s["use_flow"],
+            })
+    return triggered
+
+
+def _notify_btc_trade(trade_type: str, entry: dict, triggered: list, signal):
+    """Telegram 通知（含觸發策略與回測績效）"""
     emoji = "\U0001f7e2" if trade_type == "BUY" else "\U0001f534"
     action = "買入" if trade_type == "BUY" else "賣出"
 
@@ -399,15 +477,23 @@ def _notify_btc_trade(trade_type: str, entry: dict, signal):
             pnl_emoji = "\U0001f4c8" if entry["profit"] >= 0 else "\U0001f4c9"
             lines.append(f"損益：{pnl_emoji} ${entry['profit']:,.2f}")
 
-    lines.append(f"原因：{entry['signal'][:100]}")
+    lines.append(f"原因：{entry['signal']}")
     lines.append(f"餘額：${entry['balance_after']:,.2f}")
+
+    # 觸發策略明細
+    if triggered:
+        lines.append("")
+        lines.append(f"<b>觸發策略 ({len(triggered)}/{len(STRATEGIES)})</b>")
+        for t in triggered:
+            lines.append(f"  [{t['id']}] {t['name']} {t['score']:.0f}分")
+            lines.append(f"      回測: {t['backtest']}")
 
     # Flow 資訊
     for mod in signal.layer_modifiers:
         if mod.layer_name == "crypto_flow" and mod.active:
             fng = mod.details.get("fear_greed", "N/A")
             fr = mod.details.get("funding_rate", "N/A")
-            lines.append(f"恐懼貪婪: {fng} | 費率: {fr}%")
+            lines.append(f"\n恐懼貪婪: {fng} | 費率: {fr}%")
 
     send_telegram("\n".join(lines))
 
@@ -477,14 +563,13 @@ class BTCAutoTrader:
             "interval_seconds": self.interval,
             "last_run_time": self.last_run_time,
             "btc_price": price,
-            "strategy": {
-                "timeframe": TIMEFRAME,
-                "buy_threshold": BUY_THRESHOLD,
-                "sell_threshold": SELL_THRESHOLD,
-                "stop_loss_pct": STOP_LOSS_PCT,
-                "take_profit_pct": TAKE_PROFIT_PCT,
-                "layers": ["CryptoFlowLayer (恐懼貪婪+資金費率)"],
-            },
+            "strategies": [
+                {"id": s["id"], "name": s["name"], "threshold": s["buy_threshold"],
+                 "use_flow": s["use_flow"], "backtest": s["backtest"]}
+                for s in STRATEGIES
+            ],
+            "stop_loss_pct": STOP_LOSS_PCT,
+            "take_profit_pct": TAKE_PROFIT_PCT,
             **summary,
         }
 
