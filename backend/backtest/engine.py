@@ -150,10 +150,11 @@ class BacktestEngine:
         stop_loss_pct: float = 5.0,
         take_profit_pct: float = 15.0,
         lookback: int = 200,
+        layers: list = None,
     ) -> BacktestResult:
         """
         執行回測
-        
+
         Args:
             df: 歷史 OHLCV DataFrame
             symbol: 交易對
@@ -163,6 +164,7 @@ class BacktestEngine:
             stop_loss_pct: 停損百分比
             take_profit_pct: 停利百分比
             lookback: 每次計算指標時使用的回溯行數
+            layers: 分析層列表（如 CryptoFlowLayer）
         """
         print(f"\n🔄 開始回測 {symbol} ({timeframe})...")
         print(f"   數據範圍: {df.index[0]} ~ {df.index[-1]}")
@@ -195,10 +197,9 @@ class BacktestEngine:
             current_time = df.index[i]
             current_price = df['close'].iloc[i]
             
-            # 計算所有指標
+            # 計算所有指標（若有分析層則一併套用修正）
             try:
-                window = self.aggregator.calculate_all(window)
-                signal = self.aggregator.generate_signals(window, symbol, timeframe)
+                signal = self.aggregator.analyze(window, symbol, timeframe, layers=layers)
             except Exception as e:
                 continue
             

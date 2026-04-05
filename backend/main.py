@@ -191,6 +191,13 @@ async def startup_event():
         print("[Startup] 類股自動交易引擎已啟動")
     except Exception as e:
         print(f"[Startup] 類股交易引擎啟動失敗: {e}")
+    # 自動啟動 BTC 交易引擎
+    try:
+        from btc_auto_trader import btc_trader as _bt
+        _bt.start()
+        print("[Startup] BTC 自動交易引擎已啟動")
+    except Exception as e:
+        print(f"[Startup] BTC 交易引擎啟動失敗: {e}")
 
 
 async def preload_tw_ticker_data():
@@ -1038,6 +1045,48 @@ async def run_auto_trader_once():
     t = threading.Thread(target=sector_auto_trader.run_once_now, daemon=True)
     t.start()
     return {"triggered": True, "message": "已觸發一次交易檢查，請稍後查看結果"}
+
+# ════════════════════════════════════════════════════
+# BTC 自動交易 API
+# ════════════════════════════════════════════════════
+
+@app.get("/api/btc-trading/status")
+async def btc_trading_status():
+    """取得 BTC 交易帳戶狀態"""
+    from btc_auto_trader import btc_trader
+    return btc_trader.get_status()
+
+@app.post("/api/btc-trading/toggle")
+async def btc_trading_toggle(active: bool = True):
+    """開啟/關閉 BTC 自動交易"""
+    from btc_auto_trader import btc_trader
+    btc_trader.account.toggle(active)
+    if active and not btc_trader.is_running:
+        btc_trader.start()
+    return {"is_active": active, "message": f"BTC 自動交易已{'開啟' if active else '關閉'}"}
+
+@app.post("/api/btc-trading/run-once")
+async def btc_trading_run_once():
+    """手動觸發一次 BTC 交易檢查"""
+    import threading
+    from btc_auto_trader import btc_trader
+    if not btc_trader.account.is_active:
+        return {"error": "BTC 交易未啟用，請先開啟"}
+    t = threading.Thread(target=btc_trader.run_once, daemon=True)
+    t.start()
+    return {"triggered": True, "message": "已觸發 BTC 交易檢查"}
+
+@app.get("/api/btc-trading/history")
+async def btc_trading_history():
+    """取得 BTC 交易歷史"""
+    from btc_auto_trader import btc_trader
+    return btc_trader.account.state.get("history", [])[:50]
+
+@app.get("/api/btc-trading/equity-curve")
+async def btc_equity_curve():
+    """取得 BTC 權益曲線"""
+    from btc_auto_trader import btc_trader
+    return btc_trader.account.state.get("equity_curve", [])
 
 # ── 類股個別操作 ──
 
