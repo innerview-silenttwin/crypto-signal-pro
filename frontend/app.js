@@ -882,9 +882,9 @@ function renderThreeLayerAnalysis(data) {
         const dirCls = t.direction === 'BUY' ? 'bullish' : t.direction === 'SELL' ? 'bearish' : 'neutral';
         const dirText = t.direction === 'BUY' ? '偏多' : t.direction === 'SELL' ? '偏空' : '中性';
 
-        // 分數 badge — 顯示主導方的分數（confidence）
-        techScoreBadge.textContent = t.confidence + '分';
-        techScoreBadge.className = 'tla-score-badge ' + _scoreBadgeCls(t.confidence);
+        // 分數 badge — 做多視角，顯示 buy_score（綜合分數計算也是用此值）
+        techScoreBadge.textContent = t.buy_score + '分';
+        techScoreBadge.className = 'tla-score-badge ' + _scoreBadgeCls(t.buy_score);
 
         let regimeHtml = '';
         if (data.regime) {
