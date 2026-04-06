@@ -1489,6 +1489,7 @@ async def get_stock_analysis(symbol: str):
             "advice": sentiment["advice"],
             "positive_count": sentiment["positive_count"],
             "negative_count": sentiment["negative_count"],
+            "neutral_count": sentiment["neutral_count"],
             "total_related": sentiment["total_related"],
             "recent_news": sentiment["recent_news"],
             "market": {

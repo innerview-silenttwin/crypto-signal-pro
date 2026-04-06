@@ -1125,7 +1125,7 @@ function renderThreeLayerAnalysis(data) {
             </div>
             <div class="tla-row">
                 <span class="tla-row-label">相關新聞</span>
-                <span class="tla-row-value">${s.total_related}則（正${s.positive_count} / 負${s.negative_count}）</span>
+                <span class="tla-row-value">${s.total_related}則（正${s.positive_count} / 中${s.neutral_count} / 負${s.negative_count}）</span>
             </div>
             ${marketHtml}
             ${newsHtml}
