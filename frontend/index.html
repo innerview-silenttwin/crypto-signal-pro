@@ -345,26 +345,34 @@
                 <div id="screener-categories" class="screener-categories"></div>
             </div>
 
-            <!-- 四面分析（台股查詢時顯示） -->
+            <!-- 五面分析（台股查詢時顯示） -->
             <div id="three-layer-analysis" class="three-layer-analysis" style="display:none;">
-                <h3 class="tla-title">四面分析</h3>
+                <h3 class="tla-title">五面分析</h3>
                 <div id="tla-recommendation" class="tla-recommendation glass-panel" style="display:none;"></div>
-                <div class="tla-grid tla-grid-4">
+                <div class="tla-grid tla-grid-5">
                     <div class="tla-card glass-panel">
                         <div class="tla-card-header">
                             <span class="tla-icon">📊</span>
                             <span class="tla-label">技術面</span>
-                            <span class="info-tooltip" data-tip="技術面信號分數由 7 項指標各自判斷後加權合計（滿分 100）。使用最近 200 根日線 K 棒的 OHLCV 計算。K 線來源：虛擬幣=Binance API、台股=Yahoo Finance。指標與權重（台股）：RSI(14) 10%、MACD(12,26,9) 15%、布林帶(20,2) 10%、MFI(14) 15%、EMA交叉(9,21) 15%、成交量 25%、ADX(14) 10%。虛擬幣權重略不同：RSI 20%、MACD 20%、成交量 15%、EMA 15%。下方各欄位皆從此計算結果衍生。"><i>i</i></span>
+                            <span class="info-tooltip" data-tip="技術面信號分數由 7 項指標各自判斷後加權合計（滿分 100）。使用最近 200 根日線 K 棒的 OHLCV 計算。K 線來源：虛擬幣=Binance API、台股=Yahoo Finance。指標與權重（台股）：RSI(14) 10%、MACD(12,26,9) 15%、布林帶(20,2) 10%、MFI(14) 15%、EMA交叉(9,21) 15%、成交量 25%、ADX(14) 10%。虛擬幣權重略不同：RSI 20%、MACD 20%、成交量 15%、EMA 15%。"><i>i</i></span>
                             <span id="tla-tech-score" class="tla-score-badge"></span>
                         </div>
                         <div id="tla-technical" class="tla-body">--</div>
                     </div>
                     <div class="tla-card glass-panel">
                         <div class="tla-card-header">
+                            <span class="tla-icon">🧭</span>
+                            <span class="tla-label">盤勢</span>
+                            <span class="info-tooltip" data-tip="盤勢辨識層（RegimeLayer）綜合 6 項子信號判斷市場所處階段。使用最近 120 根日 K 計算：(1)趨勢確認（Swing High/Low 頭頭高底底高）、(2)均線排列（5/10/20/60MA 排列+方向，六六大順 0-6 分）、(3)位階偵測（120日高低點相對位置百分比）、(4)K線型態（長紅/長黑/吞噬/十字星等 7 種）、(5)量價分析（底部爆量/高檔爆量不漲等 5 種）、(6)ADX趨勢強度（>25有趨勢）。產出 6 種狀態，做多分數對照：強勢多頭=90、多頭=75、底部轉強=70、盤整=50、高檔轉折=25、空頭=15。綜合分數權重依產業不同：半導體/電子 18%、金融 13%、傳產 5%。"><i>i</i></span>
+                            <span id="tla-regime-score" class="tla-score-badge"></span>
+                        </div>
+                        <div id="tla-regime" class="tla-body">--</div>
+                    </div>
+                    <div class="tla-card glass-panel">
+                        <div class="tla-card-header">
                             <span class="tla-icon">📋</span>
                             <span class="tla-label">基本面</span>
-                            <span class="info-tooltip"
-                                  data-tip="【數據說明】本益比：依據證交所近四季財報 EPS。殖利率：依據最新配息與當前股價。MoM/YoY 營收：當月營收較上月 (MoM) 或去年同月 (YoY) 增減幅 (%)。"><i>i</i></span>
+                            <span class="info-tooltip" data-tip="本益比（P/E）：依據證交所公布的近四季財報 EPS 與當前股價計算。殖利率：依據最新年度配息金額與當前股價計算。股價淨值比（P/B）：股價 / 每股淨值。月營收 MoM：當月營收較上月增減幅（%）。年營收 YoY：當月營收較去年同月增減幅（%）。資料來源：證交所公開資訊觀測站（TWSE MOPS）。"><i>i</i></span>
                             <span id="tla-fund-score" class="tla-score-badge"></span>
                         </div>
                         <div id="tla-fundamental" class="tla-body">--</div>
@@ -373,7 +381,7 @@
                         <div class="tla-card-header">
                             <span class="tla-icon">🏦</span>
                             <span class="tla-label">籌碼面</span>
-                            <span class="info-tooltip" data-tip="【數據說明】追蹤三大法人近10天進出量能，結合融資融券增減變化。以「外資/投信連買」或「法人買且融資退」為最強加分項。"><i>i</i></span>
+                            <span class="info-tooltip" data-tip="追蹤三大法人（外資/投信/自營商）近 10 個交易日的買賣超張數，結合融資融券增減變化。資料來源：證交所每日收盤後公布的法人買賣超統計。最強加分：外資/投信連續買超 + 融資同步減少（籌碼穩定集中）。最強扣分：法人連續賣超 + 融資暴增（散戶接刀）。綜合分數權重依產業：半導體/電子 35%、傳產 30%、金融 15%。"><i>i</i></span>
                             <span id="tla-chip-score" class="tla-score-badge"></span>
                         </div>
                         <div id="tla-chipflow" class="tla-body">--</div>
@@ -382,7 +390,7 @@
                         <div class="tla-card-header">
                             <span class="tla-icon">📰</span>
                             <span class="tla-label">消息面</span>
-                            <span class="info-tooltip" data-tip="【數據說明】即時掃描財經新聞與論壇，透過 AI NLP 引擎分析文章的多/空情緒。若查無相關新聞將不計入總分，避免分數失真。"><i>i</i></span>
+                            <span class="info-tooltip" data-tip="即時掃描 Yahoo 股市新聞 RSS，透過正負面關鍵字（三級權重：強/中/弱）分析每則新聞的多空情緒。標題權重 30%、摘要權重 100%（防標題殺人）。情緒分數正規化至 -100~+100。若查無相關新聞則不計入綜合分數，避免失真。綜合分數權重：半導體/電子 7%、金融 14%、傳產 10%。"><i>i</i></span>
                             <span id="tla-sent-score" class="tla-score-badge"></span>
                         </div>
                         <div id="tla-sentiment" class="tla-body">--</div>

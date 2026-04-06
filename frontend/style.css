@@ -2407,6 +2407,9 @@ a.event-item:hover {
 .tla-grid.tla-grid-4 {
     grid-template-columns: repeat(2, 1fr);
 }
+.tla-grid.tla-grid-5 {
+    grid-template-columns: repeat(3, 1fr);
+}
 
 .tla-card {
     padding: 14px 16px;
