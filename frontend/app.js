@@ -882,9 +882,9 @@ function renderThreeLayerAnalysis(data) {
         const dirCls = t.direction === 'BUY' ? 'bullish' : t.direction === 'SELL' ? 'bearish' : 'neutral';
         const dirText = t.direction === 'BUY' ? '偏多' : t.direction === 'SELL' ? '偏空' : '中性';
 
-        // 分數 badge
-        techScoreBadge.textContent = t.buy_score + '分';
-        techScoreBadge.className = 'tla-score-badge ' + _scoreBadgeCls(t.buy_score);
+        // 分數 badge — 顯示主導方的分數（confidence）
+        techScoreBadge.textContent = t.confidence + '分';
+        techScoreBadge.className = 'tla-score-badge ' + _scoreBadgeCls(t.confidence);
 
         let regimeHtml = '';
         if (data.regime) {
@@ -917,15 +917,19 @@ function renderThreeLayerAnalysis(data) {
 
         techEl.innerHTML = `
             <div class="tla-row">
-                <span class="tla-row-label">方向 <span class="info-tooltip" data-tip="買入分 > 賣出分 → 偏多（BUY）；賣出分 > 買入分 → 偏空（SELL）。旁邊的分數 = 較高方的分數（即信心度 confidence），代表該方向的確信程度。"><i>i</i></span></span>
+                <span class="tla-row-label">方向 <span class="info-tooltip" data-tip="比較做多分數與做空分數：做多 > 做空 → 偏多（BUY）；做空 > 做多 → 偏空（SELL）。旁邊的分數 = 主導方的分數（即信心度），代表該方向的確信程度。"><i>i</i></span></span>
                 <span class="tla-badge ${dirCls}">${dirText} ${t.confidence}分</span>
             </div>
             <div class="tla-row">
-                <span class="tla-row-label">做多分數 <span class="info-tooltip" data-tip="7 項指標中判定為買入信號的加權合計。例如 RSI<30（超賣，看多）貢獻其權重分；MACD 金叉貢獻其權重分。所有看多指標的分數加總即為做多分數，滿分 100。做多分數越高，代表越多指標同時看多。"><i>i</i></span></span>
+                <span class="tla-row-label">做多分數 <span class="info-tooltip" data-tip="7 項指標中判定為買入信號的加權合計（滿分 100）。例如 RSI<30（超賣）貢獻其權重分；MACD 金叉貢獻其權重分。數值越高代表越多指標同時看多。"><i>i</i></span></span>
                 <span class="tla-row-value">${t.buy_score}</span>
             </div>
             <div class="tla-row">
-                <span class="tla-row-label">信號強度 <span class="info-tooltip" data-tip="根據信心度（方向分數）分級：≥90=極強信號、70-89=強信號、50-69=中等信號、30-49=弱信號、<30=無信號。強信號代表多數指標方向一致，信號可靠度高。"><i>i</i></span></span>
+                <span class="tla-row-label">做空分數 <span class="info-tooltip" data-tip="7 項指標中判定為賣出信號的加權合計（滿分 100）。例如 RSI>70（超買）貢獻其權重分；MACD 死叉貢獻其權重分。數值越高代表越多指標同時看空。"><i>i</i></span></span>
+                <span class="tla-row-value">${t.sell_score}</span>
+            </div>
+            <div class="tla-row">
+                <span class="tla-row-label">信號強度 <span class="info-tooltip" data-tip="根據主導方分數分級：≥90=極強信號、70-89=強信號、50-69=中等信號、30-49=弱信號、<30=無信號。強信號代表多數指標方向一致，信號可靠度高。"><i>i</i></span></span>
                 <span class="tla-row-value">${t.signal_level}</span>
             </div>
             ${regimeHtml}
