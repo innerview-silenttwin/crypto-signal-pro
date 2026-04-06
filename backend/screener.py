@@ -520,7 +520,7 @@ def categorize_picks(results: List[dict]) -> List[dict]:
     for r in results:
         regime = r.get("details", {}).get("regime_state", "")
         tech_score = r.get("scores", {}).get("technical", 0)
-        if regime in ("強勢多頭", "底部轉強") and tech_score >= 70:
+        if regime in ("強勢多頭", "底部轉強") and tech_score >= 55:
             r["_highlight"] = f"盤勢{regime}＋技術{tech_score}分"
             tech_picks.append(r)
     tech_picks.sort(key=lambda x: x["composite"], reverse=True)
@@ -528,7 +528,7 @@ def categorize_picks(results: List[dict]) -> List[dict]:
         "id": "tech_breakout",
         "name": "技術突破股",
         "icon": "🚀",
-        "description": "篩選條件：盤勢狀態為「強勢多頭」或「底部轉強」，且技術面分數 ≥ 70。技術分數綜合 EMA 趨勢、ADX 動能、MACD、RSI 等指標，各產業權重不同。",
+        "description": "篩選條件：盤勢狀態為「強勢多頭」或「底部轉強」，且技術面分數 ≥ 55。技術分數綜合 EMA 趨勢、ADX 動能、MACD、RSI 等指標，各產業權重不同。",
         "stocks": _format_picks(tech_picks[:10]),
     })
 
