@@ -165,7 +165,7 @@
                             <div class="tf-title">
                                 日線 (1D) 戰略波段
                                 <span class="info-tooltip"
-                                    data-tip="動能分數 (0-100)：≥70 強勢信號 / 50-69 中等傾向 / 30-49 弱勢觀望 / <30 多空不明。綠色=做多、紅色=做空、灰色=無方向。"><i>i</i></span>
+                                    data-tip="使用最近 200 根日線 K 棒（每根=1天開高低收量）計算 7 項技術指標加權合計。K 線資料來源：虛擬幣=Binance 現貨 API（api.binance.com/api/v3/klines），台股=Yahoo Finance API（盤中即時/盤後快取，頁面上方會顯示資料來源標籤）。圓環數字=動能分數（0-100），取買入分與賣出分中較高者。分數分級：≥70 強勢信號、50-69 中等傾向、30-49 弱勢觀望、<30 多空不明。顏色：綠色=買入方向、紅色=賣出方向、灰色=分數<30 無參考價值。"><i>i</i></span>
                             </div>
                             <div class="tf-content" id="tf-btc-1d">
                                 <div class="score-ring">
@@ -182,6 +182,7 @@
                                     <div class="signal-level" id="lvl-btc-1d">Loading</div>
                                     <div class="score-breakdown">
                                         買: <span id="buy-btc-1d">0</span> | 賣: <span id="sell-btc-1d">0</span>
+                                        <span class="info-tooltip" data-tip="買入分/賣出分由 7 項技術指標各自判斷後加權合計（滿分 100）。各指標根據最近 200 根日 K 的 OHLCV 計算：RSI(14) 20% — 相對強弱指標，判斷超買(>70)超賣(<30)。MACD(12,26,9) 20% — 趨勢動能，金叉=買、死叉=賣。EMA交叉(9,21) 15% — 均線交叉方向。成交量 15% — 當日量 vs 20日均量比較，量增確認趨勢。布林帶(20,2) 10% — 價格在帶中的位置，靠近下軌=買、上軌=賣。MFI(14) 10% — 資金流量指標，結合價量判斷資金進出。ADX(14) 10% — 趨勢強度，>25=有趨勢、<20=盤整。買入分>賣出分→方向=BUY；賣出分>買入分→方向=SELL。"><i>i</i></span>
                                     </div>
                                 </div>
                             </div>
@@ -192,7 +193,7 @@
                             <div class="tf-title">
                                 4小時 (4H) 戰術進場
                                 <span class="info-tooltip"
-                                    data-tip="4H 動能：用於確認短期進出場點。≥70 為強訊號，<30 為噪音。當與日線方向一致時，稱為『共振』，勝率最高。"><i>i</i></span>
+                                    data-tip="使用最近 200 根 4H K 棒（每根=4小時開高低收量）計算，計算邏輯與日線相同（7 項指標加權）。K 線來源：虛擬幣=Binance 現貨 API（interval=4h），台股不支援 4H（僅顯示日線）。4H 時框更敏感，適合確認短期進出場點。當 4H 與日線方向一致且分數皆≥35 時稱為『共振』，歷史回測顯示共振信號的勝率顯著高於單一時框。"><i>i</i></span>
                             </div>
                             <div class="tf-content" id="tf-btc-4h">
                                 <div class="score-ring mini">
@@ -215,6 +216,9 @@
 
                     <div class="resonance-alert" id="res-btc">
                         💡 建議：等待日線與4小時產生共振。
+                    </div>
+                    <div style="font-size:10px; color:var(--text-muted); padding:4px 12px; font-weight:600; opacity:0.7">
+                        建議語根據日線動能分數與方向即時產生 — 分數與方向變動時建議會同步更新
                     </div>
                 </div>
 
