@@ -1088,6 +1088,32 @@ async def btc_equity_curve():
     from btc_auto_trader import btc_trader
     return btc_trader.account.state.get("equity_curve", [])
 
+@app.get("/api/btc-trading/flow-info")
+async def btc_flow_info():
+    """取得最新恐懼貪婪指數與資金費率"""
+    try:
+        from layers.crypto_flow import CryptoFlowLayer
+        import pandas as pd
+        layer = CryptoFlowLayer()
+        layer._load_data()
+        now = pd.Timestamp.now()
+        fng = layer._get_fng(now)
+        fr_pct = layer._get_funding_rate_percentile(now)
+        # 取得 fng class
+        if fng <= 25:
+            fng_class = "極度恐懼"
+        elif fng <= 45:
+            fng_class = "恐懼"
+        elif fng <= 55:
+            fng_class = "中性"
+        elif fng <= 75:
+            fng_class = "貪婪"
+        else:
+            fng_class = "極度貪婪"
+        return {"fear_greed": fng, "fng_class": fng_class, "funding_rate_pct": fr_pct}
+    except Exception as e:
+        return {"fear_greed": 50, "fng_class": "N/A", "funding_rate_pct": 50, "error": str(e)}
+
 # ── 類股個別操作 ──
 
 @app.get("/api/sector-trading/{sector_id}/status")

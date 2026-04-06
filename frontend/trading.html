@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trading Station | 虛擬交易中心</title>
+    <title>BTC Trading | 虛擬交易中心</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script>
@@ -15,47 +15,48 @@
     <style>
         .trading-layout {
             display: grid;
-            grid-template-columns: 1fr 350px;
+            grid-template-columns: 1fr 380px;
             gap: 24px;
             padding: 24px;
         }
         .main-stats-grid {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 20px;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
             margin-bottom: 24px;
         }
         .stat-card {
-            padding: 24px;
+            padding: 20px;
             text-align: center;
         }
         .stat-label {
-            font-size: 12px;
+            font-size: 11px;
             color: var(--text-muted);
             text-transform: uppercase;
-            margin-bottom: 8px;
+            margin-bottom: 6px;
             font-weight: 700;
         }
         .stat-value {
-            font-size: 28px;
+            font-size: 24px;
             font-weight: 800;
             font-family: 'Nunito', 'Outfit';
             color: var(--text-main);
         }
+        .stat-value.small { font-size: 18px; }
         .history-section {
-            grid-column: span 2;
+            grid-column: span 1;
         }
         .trading-controls-hero {
             background: rgba(52, 211, 153, 0.06);
             border: 1.5px solid rgba(52, 211, 153, 0.2);
-            padding: 32px;
+            padding: 28px;
             border-radius: 24px;
             text-align: center;
             margin-bottom: 24px;
         }
         .hero-title {
             font-size: 20px;
-            margin-bottom: 12px;
+            margin-bottom: 10px;
             color: var(--text-main);
         }
         .btn-hero {
@@ -63,6 +64,73 @@
             padding: 14px 40px;
             border-radius: 16px;
         }
+        .strategy-card {
+            padding: 14px 16px;
+            border-radius: 14px;
+            margin-bottom: 10px;
+            border: 1.5px solid rgba(167,139,250,0.12);
+            background: rgba(167,139,250,0.03);
+            transition: all 0.2s;
+        }
+        .strategy-card.triggered {
+            border-color: rgba(52, 211, 153, 0.4);
+            background: rgba(52, 211, 153, 0.06);
+        }
+        .strategy-id {
+            display: inline-block;
+            background: rgba(167,139,250,0.15);
+            color: var(--primary);
+            font-size: 11px;
+            font-weight: 800;
+            padding: 2px 8px;
+            border-radius: 6px;
+            margin-right: 6px;
+        }
+        .strategy-name {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+        .strategy-meta {
+            font-size: 11px;
+            color: var(--text-muted);
+            font-weight: 600;
+            margin-top: 4px;
+        }
+        .strategy-backtest {
+            font-size: 11px;
+            color: var(--buy-color);
+            font-weight: 700;
+            margin-top: 3px;
+        }
+        .fng-bar {
+            height: 8px;
+            border-radius: 4px;
+            background: linear-gradient(to right, #ef4444, #f59e0b, #22c55e);
+            position: relative;
+            margin-top: 8px;
+        }
+        .fng-marker {
+            position: absolute;
+            top: -4px;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: var(--text-main);
+            border: 2px solid white;
+            transform: translateX(-50%);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+        }
+        .hold-detail {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 13px;
+            border-bottom: 1px solid rgba(167,139,250,0.06);
+        }
+        .hold-detail:last-child { border-bottom: none; }
+        .hold-label { color: var(--text-muted); font-weight: 600; }
+        .hold-value { font-weight: 700; color: var(--text-main); }
     </style>
 </head>
 <body>
@@ -86,16 +154,16 @@
                 <a href="trading.html" class="nav-item active">虛擬交易中心</a>
                 <a href="sector_trading.html" class="nav-item">台股交易中心</a>
             </nav>
-            
+
             <div class="market-panel" style="margin-top:auto; background:rgba(167,139,250,0.05); padding:16px; border-radius:14px; border:1.5px solid rgba(167,139,250,0.1)">
-                <div style="font-size:11px; color:var(--text-muted); margin-bottom:8px; font-weight:700">策略偏好 (1H 趨勢)</div>
-                <div style="font-size:13px; font-weight:600">當前狀態: <span id="sidebar-status" class="status-badge inactive">未啟動</span></div>
+                <div style="font-size:11px; color:var(--text-muted); margin-bottom:8px; font-weight:700">BTC 自動交易</div>
+                <div style="font-size:13px; font-weight:600">狀態: <span id="sidebar-status" class="status-badge inactive">未啟動</span></div>
             </div>
         </aside>
 
         <main class="main-content">
             <header class="top-bar">
-                <h1>虛擬交易控制中心 (Virtual Trading Station)</h1>
+                <h1>BTC 虛擬交易中心</h1>
                 <div class="top-bar-right">
                     <span id="last-refresh-time" style="font-size:12px; color:var(--text-muted)">最後更新: --</span>
                 </div>
@@ -103,116 +171,124 @@
 
             <div class="trading-layout">
                 <div class="trading-main-area">
-                    <!-- 狀態控制大區塊 -->
+                    <!-- 狀態控制 -->
                     <div class="trading-controls-hero" id="status-hero">
-                        <h2 class="hero-title">🤖 智能共振機器人 (1D + 1H)</h2>
-                        <p style="color:var(--text-muted); margin-bottom:20px">監控 1D 核心趨勢與 1H 短線信號：產生時框架共振時，自動分配 50% 資金強力進場</p>
+                        <h2 class="hero-title">BTC 四策略智能交易</h2>
+                        <p style="color:var(--text-muted); margin-bottom:16px; font-size:13px">
+                            四組回測驗證策略並行監控，任一觸發即交易<br>
+                            通知標明觸發策略與該策略的歷史回測績效
+                        </p>
                         <button id="btn-toggle-trading-hero" class="btn-start btn-hero">開啟自動交易</button>
+                        <button id="btn-run-once" style="margin-left:12px; padding:14px 28px; border-radius:16px; font-size:16px; background:rgba(167,139,250,0.1); color:var(--primary); border:1.5px solid rgba(167,139,250,0.3); cursor:pointer; font-weight:700; font-family:'Nunito',sans-serif">手動檢查一次</button>
                     </div>
 
-                    <!-- 帳戶數據大項 -->
+                    <!-- 帳戶數據 -->
                     <div class="main-stats-grid">
                         <div class="stat-card glass-panel">
-                            <div class="stat-label">初始本金</div>
-                            <div class="stat-value">1,000,000</div>
+                            <div class="stat-label">BTC 即時價格</div>
+                            <div id="btc-price" class="stat-value small">--</div>
+                        </div>
+                        <div class="stat-card glass-panel">
+                            <div class="stat-label">初始本金 (USDT)</div>
+                            <div id="initial-balance" class="stat-value small">100,000</div>
                         </div>
                         <div class="stat-card glass-panel highlight">
-                            <div class="stat-label">當前資產淨值</div>
-                            <div id="trade-equity" class="stat-value">--</div>
+                            <div class="stat-label">當前淨值</div>
+                            <div id="trade-equity" class="stat-value small">--</div>
                         </div>
                         <div class="stat-card glass-panel" id="pl-card">
-                            <div class="stat-label">累積損益</div>
-                            <div id="trade-pl" class="stat-value">--</div>
+                            <div class="stat-label">總報酬率</div>
+                            <div id="trade-pl" class="stat-value small">--</div>
                         </div>
                     </div>
 
-                    <!-- 交易紀錄清單 -->
+                    <!-- 交易歷史 -->
                     <div class="history-section card glass-panel">
-                        <div class="card-header" style="flex-wrap: wrap; gap: 15px;">
-                            <h2>📜 交易歷史明細</h2>
-                            
-                            <!-- 篩選器列 -->
-                            <div class="history-filters" style="display: flex; gap: 10px; align-items: center; background: rgba(167,139,250,0.05); padding: 8px 15px; border-radius: 12px; flex-wrap: wrap;">
-                                <div class="filter-group">
-                                    <label style="font-size:11px; color:var(--text-muted); font-weight:700">標的:</label>
-                                    <input type="text" id="filter-symbol" placeholder="全部" style="width:80px; font-size:12px; height:26px; padding:0 6px; background:rgba(255,255,255,0.6); border:1.5px solid var(--border-color); color:var(--text-main); border-radius:8px; font-family:'Nunito',sans-serif">
-                                </div>
-                                <div class="filter-group">
-                                    <label style="font-size:11px; color:var(--text-muted); font-weight:700">起始:</label>
-                                    <input type="date" id="filter-start" style="font-size:12px; height:26px; background:rgba(255,255,255,0.6); border:1.5px solid var(--border-color); color:var(--text-main); border-radius:8px; font-family:'Nunito',sans-serif">
-                                </div>
-                                <div class="filter-group">
-                                    <label style="font-size:11px; color:var(--text-muted); font-weight:700">結束:</label>
-                                    <input type="date" id="filter-end" style="font-size:12px; height:26px; background:rgba(255,255,255,0.6); border:1.5px solid var(--border-color); color:var(--text-main); border-radius:8px; font-family:'Nunito',sans-serif">
-                                </div>
-                                <button id="btn-apply-filters" class="btn-start" style="padding:4px 14px; font-size:12px; border-radius:10px">套用篩選</button>
-                                <button id="btn-reset-filters" style="padding:4px 14px; font-size:12px; background:rgba(167,139,250,0.08); color:var(--text-main); border:1.5px solid var(--border-color); border-radius:10px; cursor:pointer; font-family:'Nunito',sans-serif; font-weight:700">重置</button>
-                            </div>
+                        <div class="card-header">
+                            <h2>交易歷史</h2>
+                            <span id="trade-count" style="font-size:12px; color:var(--text-muted); font-weight:600">0 筆交易</span>
                         </div>
-                        
-                        <div class="history-table-container" style="max-height: 500px; min-height: 200px;">
+                        <div class="history-table-container" style="max-height:500px; min-height:200px;">
                             <table class="history-table">
                                 <thead>
                                     <tr>
                                         <th>日期時間</th>
-                                        <th>標的</th>
                                         <th>操作</th>
-                                        <th>成交價</th>
-                                        <th>數量</th>
-                                        <th>淨損益 (TWD)</th>
+                                        <th>價格</th>
+                                        <th>數量 (BTC)</th>
+                                        <th>金額 (USDT)</th>
+                                        <th>損益</th>
+                                        <th>觸發策略</th>
                                     </tr>
                                 </thead>
                                 <tbody id="trade-history-body">
-                                    <!-- 紀錄由 JS 動態生成 -->
                                 </tbody>
                             </table>
-                        </div>
-
-                        <!-- 分頁控制列 -->
-                        <div class="pagination-bar" style="display: flex; justify-content: space-between; align-items: center; padding: 15px 24px; border-top: 1.5px solid rgba(167,139,250,0.08);">
-                            <div class="page-info" style="font-size: 12px; color: var(--text-muted); font-weight: 600;">
-                                顯示第 <span id="page-start-idx">0</span> - <span id="page-end-idx">0</span> 筆，共 <span id="total-count">0</span> 筆
-                            </div>
-                            <div class="page-controls" style="display: flex; gap: 10px;">
-                                <button id="btn-prev-page" style="padding: 5px 14px; font-size: 12px; background: rgba(167,139,250,0.08); color: var(--text-main); border: 1.5px solid var(--border-color); border-radius: 10px; cursor: pointer; font-family: 'Nunito',sans-serif; font-weight: 700;">上一頁</button>
-                                <span id="current-page-label" style="font-size: 12px; font-weight: 800; align-self: center; color: var(--primary);">1</span>
-                                <button id="btn-next-page" style="padding: 5px 14px; font-size: 12px; background: rgba(167,139,250,0.08); color: var(--text-main); border: 1.5px solid var(--border-color); border-radius: 10px; cursor: pointer; font-family: 'Nunito',sans-serif; font-weight: 700;">下一頁</button>
-                            </div>
                         </div>
                     </div>
                 </div>
 
+                <!-- 右側面板 -->
                 <div class="trading-side-area">
-                    <!-- 新增：策略監控標的管理 -->
-                    <div class="card glass-panel" style="padding:20px; margin-bottom:20px">
-                        <h3 style="margin-bottom:15px; font-size:16px; color:var(--text-main)">🎯 策略監控標的</h3>
-                        <div class="symbol-management">
-                            <div style="display:flex; gap:8px; margin-bottom:12px">
-                                <input type="text" id="new-symbol-input" placeholder="代碼 (2330 / BTC/USDT)"
-                                       style="padding:8px; border-radius:10px; border:1.5px solid var(--border-color); background:rgba(255,255,255,0.6); color:var(--text-main); flex:1; font-size:12px; font-family:'Nunito',sans-serif">
-                                <button id="btn-add-symbol" class="btn-start" style="padding:4px 14px; font-size:12px; border-radius:10px">新增</button>
-                            </div>
-                            <div id="active-symbols-list" style="display:flex; flex-wrap:wrap; gap:8px">
-                                <!-- 由 JS 動態生成標籤 -->
-                            </div>
+                    <!-- 持倉資訊 -->
+                    <div class="card glass-panel" style="padding:20px; margin-bottom:16px">
+                        <h3 style="margin-bottom:15px; font-size:16px; color:var(--text-main)">當前持倉</h3>
+                        <div id="holdings-display">
+                            <div style="text-align:center; padding:20px; color:var(--text-muted); font-size:13px; font-weight:600">無持倉</div>
                         </div>
                     </div>
 
+                    <!-- 恐懼貪婪指數 -->
+                    <div class="card glass-panel" style="padding:20px; margin-bottom:16px">
+                        <h3 style="margin-bottom:12px; font-size:16px; color:var(--text-main)">市場情緒</h3>
+                        <div style="text-align:center; margin-bottom:6px">
+                            <span id="fng-value" style="font-size:36px; font-weight:800; color:var(--text-main)">--</span>
+                            <span id="fng-label" style="display:block; font-size:13px; font-weight:700; color:var(--text-muted)">--</span>
+                        </div>
+                        <div class="fng-bar">
+                            <div id="fng-marker" class="fng-marker" style="left:50%"></div>
+                        </div>
+                        <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-muted); margin-top:4px; font-weight:600">
+                            <span>極度恐懼</span>
+                            <span>中性</span>
+                            <span>極度貪婪</span>
+                        </div>
+                        <div style="margin-top:12px; font-size:12px; color:var(--text-muted); font-weight:600">
+                            資金費率百分位: <span id="fr-pct" style="color:var(--text-main); font-weight:700">--</span>
+                        </div>
+                    </div>
+
+                    <!-- 四策略監控 -->
+                    <div class="card glass-panel" style="padding:20px; margin-bottom:16px">
+                        <h3 style="margin-bottom:12px; font-size:16px; color:var(--text-main)">四策略監控</h3>
+                        <div id="strategies-list">
+                            <!-- JS 動態生成 -->
+                        </div>
+                    </div>
+
+                    <!-- 風控參數 -->
                     <div class="card glass-panel" style="padding:20px">
-                        <h3 style="margin-bottom:15px; font-size:16px; color:var(--text-main)">💼 當前持倉</h3>
-                        <div id="holdings-display" class="current-holdings" style="margin:0">
-                            <!-- 持倉資訊 -->
+                        <h3 style="margin-bottom:12px; font-size:16px; color:var(--text-main)">風控參數</h3>
+                        <div class="hold-detail">
+                            <span class="hold-label">時間框架</span>
+                            <span class="hold-value">日線 (1D)</span>
                         </div>
-                    </div>
-
-                    <div class="card glass-panel" style="padding:20px; margin-top:20px">
-                        <h3 style="margin-bottom:15px; font-size:16px; color:var(--text-main)">⚙️ 策略設定</h3>
-                        <ul style="font-size:13px; color:var(--text-muted); padding-left:15px; font-weight:600">
-                            <li style="margin-bottom:10px">核心週期: <strong style="color:var(--text-main)">1H (+ 1D 共振分析)</strong></li>
-                            <li style="margin-bottom:10px">指標權重: EMA / RSI / BB</li>
-                            <li style="margin-bottom:10px">單筆限額: <strong style="color:var(--text-main)">10% - 50% (共振加碼)</strong></li>
-                            <li>手續費率: 0.1425% (含稅)</li>
-                        </ul>
+                        <div class="hold-detail">
+                            <span class="hold-label">停損</span>
+                            <span class="hold-value" style="color:var(--sell-color)">-12%</span>
+                        </div>
+                        <div class="hold-detail">
+                            <span class="hold-label">停利</span>
+                            <span class="hold-value" style="color:var(--buy-color)">+25%</span>
+                        </div>
+                        <div class="hold-detail">
+                            <span class="hold-label">手續費</span>
+                            <span class="hold-value">0.1%</span>
+                        </div>
+                        <div class="hold-detail">
+                            <span class="hold-label">檢查頻率</span>
+                            <span class="hold-value">每小時</span>
+                        </div>
                     </div>
                 </div>
             </div>
