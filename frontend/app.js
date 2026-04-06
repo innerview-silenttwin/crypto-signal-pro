@@ -892,20 +892,20 @@ function renderThreeLayerAnalysis(data) {
             const rStyle = REGIME_LABELS[r.state] || { cls: 'neutral', text: r.state };
             regimeHtml = `
                 <div class="tla-row">
-                    <span class="tla-row-label">盤勢</span>
+                    <span class="tla-row-label">盤勢 <span class="info-tooltip" data-tip="盤勢辨識層（RegimeLayer）綜合 6 項子信號判斷：(1)趨勢確認（Swing High/Low 頭頭高底底高）、(2)均線排列（5/10/20/60MA 多空排列）、(3)位階偵測（120日高低點相對位置）、(4)K線型態（長紅/長黑/吞噬/十字星）、(5)量價分析（底部爆量/高檔爆量不漲）、(6)ADX趨勢強度。產出 6 種狀態：強勢多頭/多頭/盤整/空頭/高檔轉折/底部轉強。使用最近 120 根日 K 計算。"><i>i</i></span></span>
                     <span class="tla-badge ${rStyle.cls}">${rStyle.text}</span>
                 </div>`;
             if (r.position && r.position.percentile != null) {
                 regimeHtml += `
                 <div class="tla-row">
-                    <span class="tla-row-label">位階</span>
+                    <span class="tla-row-label">位階 <span class="info-tooltip" data-tip="目前股價在近 120 根日 K 的相對位置百分比。計算：(現價 - 120日最低) / (120日最高 - 120日最低) × 100%。>85%=高檔區、60-85%=中高檔、40-60%=中間、15-40%=中低檔、<15%=低檔區。高檔區出現利空 K 線型態→可能觸發高檔轉折判定。"><i>i</i></span></span>
                     <span class="tla-row-value">${r.position.percentile}%</span>
                 </div>`;
             }
             if (r.ma_alignment && r.ma_alignment.score != null) {
                 regimeHtml += `
                 <div class="tla-row">
-                    <span class="tla-row-label">均線排列</span>
+                    <span class="tla-row-label">均線排列 <span class="info-tooltip" data-tip="六六大順評分（0-6 分），衡量均線多頭排列程度。6 項子條件各 1 分：(1)多頭排列（收盤>5MA>10MA>20MA>60MA）、(2)股價在 5MA 之上、(3)股價在 20MA 之上、(4)20MA 方向向上（vs 5日前）、(5)60MA 方向向上、(6)股價在 60MA 之上。6/6=完美多頭排列，0/6=完全空頭。使用最近 60 根日 K 計算均線。"><i>i</i></span></span>
                     <span class="tla-row-value">${r.ma_alignment.score}/6</span>
                 </div>`;
             }
@@ -917,15 +917,15 @@ function renderThreeLayerAnalysis(data) {
 
         techEl.innerHTML = `
             <div class="tla-row">
-                <span class="tla-row-label">方向</span>
+                <span class="tla-row-label">方向 <span class="info-tooltip" data-tip="買入分 > 賣出分 → 偏多（BUY）；賣出分 > 買入分 → 偏空（SELL）。旁邊的分數 = 較高方的分數（即信心度 confidence），代表該方向的確信程度。"><i>i</i></span></span>
                 <span class="tla-badge ${dirCls}">${dirText} ${t.confidence}分</span>
             </div>
             <div class="tla-row">
-                <span class="tla-row-label">做多分數</span>
+                <span class="tla-row-label">做多分數 <span class="info-tooltip" data-tip="7 項指標中判定為買入信號的加權合計。例如 RSI<30（超賣，看多）貢獻其權重分；MACD 金叉貢獻其權重分。所有看多指標的分數加總即為做多分數，滿分 100。做多分數越高，代表越多指標同時看多。"><i>i</i></span></span>
                 <span class="tla-row-value">${t.buy_score}</span>
             </div>
             <div class="tla-row">
-                <span class="tla-row-label">信號強度</span>
+                <span class="tla-row-label">信號強度 <span class="info-tooltip" data-tip="根據信心度（方向分數）分級：≥90=極強信號、70-89=強信號、50-69=中等信號、30-49=弱信號、<30=無信號。強信號代表多數指標方向一致，信號可靠度高。"><i>i</i></span></span>
                 <span class="tla-row-value">${t.signal_level}</span>
             </div>
             ${regimeHtml}
