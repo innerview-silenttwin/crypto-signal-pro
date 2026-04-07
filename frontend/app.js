@@ -1171,8 +1171,10 @@ async function fetchScreenerPicks() {
 
         if (data.scanning && (!data.categories || data.categories.length === 0)) {
             section.style.display = 'block';
-            container.innerHTML = '<div class="screener-loading">選股系統掃描中，請稍後重新整理...</div>';
+            container.innerHTML = '<div class="screener-loading">選股系統掃描中，約需 1-2 分鐘...</div>';
             if (updatedEl) updatedEl.textContent = '';
+            // 掃描中每 10 秒自動重試
+            setTimeout(fetchScreenerPicks, 10000);
             return;
         }
 

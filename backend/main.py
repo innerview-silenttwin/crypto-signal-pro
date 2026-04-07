@@ -1569,14 +1569,16 @@ async def get_screener_picks():
 
     data = get_screener_results()
 
-    # 若無快取，不自動觸發（需手動按重新掃描按鈕）
+    # 若無快取，自動觸發背景掃描
     if data.get("status") == "no_cache":
+        if not is_scanning():
+            trigger_background_scan()
         return {
             "categories": [],
             "updated_at": "",
             "total": 0,
-            "scanning": is_scanning(),
-            "message": "尚未掃描，請點擊重新掃描按鈕",
+            "scanning": True,
+            "message": "首次掃描中，約需 1-2 分鐘...",
         }
 
     return {
