@@ -1533,11 +1533,21 @@ async def get_stock_analysis(symbol: str):
             action = "不建議進場"
             action_cls = "avoid"
 
+        # 只回傳實際參與計算的權重（重新分配後）
+        actual_keys = set()
+        for key, w in score_weights.items():
+            layer = result.get(key)
+            if layer and layer.get("buy_score") is not None:
+                actual_keys.add(key)
+        actual_weights = {k: v for k, v in score_weights.items() if k in actual_keys}
+        actual_total = sum(actual_weights.values()) or 1
+        normalized_weights = {k: round(v / actual_total * 100) for k, v in actual_weights.items()}
+
         result["recommendation"] = {
             "composite_score": composite,
             "action": action,
             "action_class": action_cls,
-            "weights": {k: round(v * 100) for k, v in score_weights.items()},
+            "weights": normalized_weights,
             "sector": _sector,
         }
     else:
