@@ -335,21 +335,20 @@
 
             </div>
 
-            <!-- 超級選股系統 -->
-            <div id="screener-section" class="screener-section" style="display:none;">
-                <div class="screener-header">
-                    <h3 class="screener-title">超級選股</h3>
-                    <span id="screener-updated" class="screener-updated"></span>
-                    <button id="screener-refresh-btn" class="screener-refresh-btn" title="重新掃描">↻</button>
-                </div>
-                <div id="screener-categories" class="screener-categories"></div>
-            </div>
-
             <!-- 五面分析（台股查詢時顯示） -->
             <div id="three-layer-analysis" class="three-layer-analysis" style="display:none;">
                 <h3 class="tla-title">五面分析</h3>
                 <div id="tla-recommendation" class="tla-recommendation glass-panel" style="display:none;"></div>
                 <div class="tla-grid tla-grid-5">
+                    <div class="tla-card glass-panel">
+                        <div class="tla-card-header">
+                            <span class="tla-icon">🏦</span>
+                            <span class="tla-label">籌碼面</span>
+                            <span class="info-tooltip" data-tip="追蹤三大法人（外資/投信/自營商）近 10 個交易日的買賣超張數，結合融資融券增減變化。資料來源：證交所每日收盤後公布的法人買賣超統計。最強加分：外資/投信連續買超 + 融資同步減少（籌碼穩定集中）。最強扣分：法人連續賣超 + 融資暴增（散戶接刀）。綜合分數權重依產業：半導體/電子 35%、傳產 30%、金融 15%。"><i>i</i></span>
+                            <span id="tla-chip-score" class="tla-score-badge"></span>
+                        </div>
+                        <div id="tla-chipflow" class="tla-body">--</div>
+                    </div>
                     <div class="tla-card glass-panel">
                         <div class="tla-card-header">
                             <span class="tla-icon">📊</span>
@@ -358,6 +357,15 @@
                             <span id="tla-tech-score" class="tla-score-badge"></span>
                         </div>
                         <div id="tla-technical" class="tla-body">--</div>
+                    </div>
+                    <div class="tla-card glass-panel">
+                        <div class="tla-card-header">
+                            <span class="tla-icon">📋</span>
+                            <span class="tla-label">基本面</span>
+                            <span class="info-tooltip" data-tip="成長股用 PEG 比率（P/E÷營收成長率）評估，< 1 為低估；價值股用傳統 P/E + 殖利率評估。營收動能（YoY/MoM）反映未來訂單趨勢。資料來源：證交所公開資訊觀測站（TWSE MOPS）。"><i>i</i></span>
+                            <span id="tla-fund-score" class="tla-score-badge"></span>
+                        </div>
+                        <div id="tla-fundamental" class="tla-body">--</div>
                     </div>
                     <div class="tla-card glass-panel">
                         <div class="tla-card-header">
@@ -370,24 +378,6 @@
                     </div>
                     <div class="tla-card glass-panel">
                         <div class="tla-card-header">
-                            <span class="tla-icon">📋</span>
-                            <span class="tla-label">基本面</span>
-                            <span class="info-tooltip" data-tip="本益比（P/E）：依據證交所公布的近四季財報 EPS 與當前股價計算。殖利率：依據最新年度配息金額與當前股價計算。股價淨值比（P/B）：股價 / 每股淨值。月營收 MoM：當月營收較上月增減幅（%）。年營收 YoY：當月營收較去年同月增減幅（%）。資料來源：證交所公開資訊觀測站（TWSE MOPS）。"><i>i</i></span>
-                            <span id="tla-fund-score" class="tla-score-badge"></span>
-                        </div>
-                        <div id="tla-fundamental" class="tla-body">--</div>
-                    </div>
-                    <div class="tla-card glass-panel">
-                        <div class="tla-card-header">
-                            <span class="tla-icon">🏦</span>
-                            <span class="tla-label">籌碼面</span>
-                            <span class="info-tooltip" data-tip="追蹤三大法人（外資/投信/自營商）近 10 個交易日的買賣超張數，結合融資融券增減變化。資料來源：證交所每日收盤後公布的法人買賣超統計。最強加分：外資/投信連續買超 + 融資同步減少（籌碼穩定集中）。最強扣分：法人連續賣超 + 融資暴增（散戶接刀）。綜合分數權重依產業：半導體/電子 35%、傳產 30%、金融 15%。"><i>i</i></span>
-                            <span id="tla-chip-score" class="tla-score-badge"></span>
-                        </div>
-                        <div id="tla-chipflow" class="tla-body">--</div>
-                    </div>
-                    <div class="tla-card glass-panel">
-                        <div class="tla-card-header">
                             <span class="tla-icon">📰</span>
                             <span class="tla-label">消息面</span>
                             <span class="info-tooltip" data-tip="即時掃描 Yahoo 股市新聞 RSS，透過正負面關鍵字（三級權重：強/中/弱）分析每則新聞的多空情緒。標題權重 30%、摘要權重 100%（防標題殺人）。情緒分數正規化至 -100~+100。若查無相關新聞則不計入綜合分數，避免失真。綜合分數權重：半導體/電子 7%、金融 14%、傳產 10%。"><i>i</i></span>
@@ -396,6 +386,16 @@
                         <div id="tla-sentiment" class="tla-body">--</div>
                     </div>
                 </div>
+            </div>
+
+            <!-- 超級選股系統 -->
+            <div id="screener-section" class="screener-section" style="display:none;">
+                <div class="screener-header">
+                    <h3 class="screener-title">超級選股</h3>
+                    <span id="screener-updated" class="screener-updated"></span>
+                    <button id="screener-refresh-btn" class="screener-refresh-btn" title="重新掃描">↻</button>
+                </div>
+                <div id="screener-categories" class="screener-categories"></div>
             </div>
 
             <!-- 其他幣種微縮卡片 -->

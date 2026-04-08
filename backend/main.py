@@ -1148,7 +1148,16 @@ async def get_sector_history(sector_id: str, page: int = 1, pageSize: int = 15,
     mgr = get_manager(sector_id)
     if not mgr:
         return {"error": f"未知的類股 ID: {sector_id}"}
-    return mgr.get_history(page, pageSize, symbol, startDate, endDate)
+    # 取得目前持倉的即時價格，用於計算未實現損益
+    from sector_auto_trader import get_current_price
+    current_prices = {}
+    for sym, hold in mgr.state.get("holdings", {}).items():
+        if hold.get("qty", 0) > 0:
+            price = get_current_price(sym)
+            if price:
+                current_prices[sym] = price
+    return mgr.get_history(page, pageSize, symbol, startDate, endDate,
+                           current_prices=current_prices)
 
 @app.post("/api/sector-trading/{sector_id}/strategy")
 async def update_sector_strategy(sector_id: str, strategy: dict):
@@ -1236,7 +1245,7 @@ async def get_stock_analysis(symbol: str):
     單一股票四面分析：技術面 + 基本面 P/E + 盤勢辨識 + 籌碼面 + 消息面
     用於首頁查詢台股時一次揭露完整資訊。
     """
-    from layers.fundamental import fetch_twse_pe_all, FundamentalLayer, _strip_tw
+    from layers.fundamental import fetch_twse_pe_all, FundamentalLayer, _strip_tw, compute_fundamental_score
     from layers.regime import RegimeLayer
     from layers.sentiment import get_stock_sentiment, get_market_sentiment, fetch_rss_articles
     from layers.chipflow import fetch_chip_summary, compute_chip_score
@@ -1246,8 +1255,8 @@ async def get_stock_analysis(symbol: str):
 
     result = {"symbol": symbol, "fundamental": None, "regime": None, "technical": None, "chipflow": None}
 
-    # ── 1. 基本面 P/E ──
-    fund_buy_score = 50  # 預設中性
+    # ── 1. 基本面（成長/價值雙軌） ──
+    fund_buy_score = 50
     all_pe = fetch_twse_pe_all()
     code = _strip_tw(symbol)
     if all_pe and code in all_pe:
@@ -1255,93 +1264,34 @@ async def get_stock_analysis(symbol: str):
         pe = info.get("pe")
         dy = info.get("dy")
         pb = info.get("pb")
-        
+
         from layers.fundamental import fetch_twse_revenue_all, get_sector_pe_stats
         all_rev = fetch_twse_revenue_all()
         rev_info = all_rev.get(code, {})
         mom = rev_info.get("mom")
         yoy = rev_info.get("yoy")
         sector = rev_info.get("sector")
-        
-        # 尋找同產業的股票
-        same_sector_symbols = []
-        if sector:
-            same_sector_symbols = [f"{c}.TW" for c, v in all_rev.items() if v.get("sector") == sector]
-        
-        # 如果有產業資訊，改用產業排名計算估值；若無，回退到絕對 P/E 判斷
-        valuation = "無數據"
-        fund_advice = "資料不足"
+
+        # 產業百分位
         sector_pe_median = None
         pe_percentile = None
+        valuation = "無數據"
+        if sector and pe is not None and pe > 0:
+            same_sector_symbols = [f"{c}.TW" for c, v in all_rev.items() if v.get("sector") == sector]
+            if len(same_sector_symbols) >= 3:
+                pe_stats = get_sector_pe_stats(same_sector_symbols, all_pe)
+                sym_key = f"{code}.TW"
+                if sym_key in pe_stats:
+                    stat = pe_stats[sym_key]
+                    pe_percentile = stat.get("percentile")
+                    sector_pe_median = stat.get("sector_median_pe")
+                    valuation = stat.get("valuation", "無數據")
 
-        if same_sector_symbols and len(same_sector_symbols) >= 3 and pe is not None and pe > 0:
-            pe_stats = get_sector_pe_stats(same_sector_symbols, all_pe)
-            sym_key = f"{code}.TW"
-            if sym_key in pe_stats:
-                stat = pe_stats[sym_key]
-                pe_percentile = stat.get("percentile")
-                sector_pe_median = stat.get("sector_median_pe")
-                valuation = stat.get("valuation", "無數據")
-                
-                # 依據產業內排名 (percentile 越低 = 本益比越低 = 越便宜)
-                if pe_percentile is not None:
-                    if pe_percentile <= 20: # 產業前 20% 便宜
-                        fund_buy_score = 90
-                        fund_advice = f"本益比擊敗 {100-pe_percentile}% 的同業 ({sector})，極具吸引力"
-                    elif pe_percentile <= 40:
-                        fund_buy_score = 75
-                        fund_advice = f"於 {sector} 中偏低估，具備投資價值"
-                    elif pe_percentile <= 60:
-                        fund_buy_score = 55
-                        fund_advice = f"於 {sector} 中估值落在合理區間"
-                    elif pe_percentile <= 80:
-                        fund_buy_score = 30
-                        fund_advice = f"高於多數同業 ({sector})，追高須謹慎"
-                    else:
-                        fund_buy_score = 15
-                        fund_advice = f"本益比為 {sector} 中最昂貴群體，注意估值風險"
-        else:
-            # Fallback 絕對值判斷
-            if pe is not None and pe > 0:
-                if pe < 8:
-                    valuation = "明顯低估"
-                    fund_buy_score = 90
-                    fund_advice = "絕對估值極低，適合積極布局"
-                elif pe < 12:
-                    valuation = "偏低估"
-                    fund_buy_score = 75
-                    fund_advice = "絕對估值偏低，適合逢低承接"
-                elif pe < 20:
-                    valuation = "合理"
-                    fund_buy_score = 55
-                    fund_advice = "絕對估值合理"
-                elif pe < 30:
-                    valuation = "偏高估"
-                    fund_buy_score = 30
-                    fund_advice = "絕對估值偏高，追高須謹慎"
-                else:
-                    valuation = "明顯高估"
-                    fund_buy_score = 15
-                    fund_advice = "絕對估值過高，不建議進場"
-
-        # 基礎面營收動能 (MoM, YoY) 輔助調整
-        if yoy is not None:
-            if yoy > 20:
-                fund_buy_score = min(100, fund_buy_score + 10)
-                fund_advice += f"｜營收高成長 YoY +{yoy:.1f}%"
-            elif yoy > 0:
-                fund_buy_score = min(100, fund_buy_score + 5)
-            elif yoy < -20:
-                fund_buy_score = max(0, fund_buy_score - 10)
-                fund_advice += f"｜營收衰退 YoY {yoy:.1f}%"
-
-        # 殖利率加分 (高股息保護)
-        if dy is not None and dy > 0:
-            if dy >= 5.0:
-                fund_buy_score = min(100, fund_buy_score + 10)
-                fund_advice += f"｜高息防禦 (殖利率 {dy:.1f}%)"
-            elif dy >= 3.0:
-                fund_buy_score = min(100, fund_buy_score + 5)
+        # 統一評分函數
+        fund_result = compute_fundamental_score(
+            pe=pe, dy=dy, yoy=yoy, mom=mom, pe_percentile=pe_percentile)
+        fund_buy_score = fund_result["score"]
+        fund_advice = fund_result["advice"]
 
         result["fundamental"] = {
             "pe": pe, "dy": dy, "pb": pb,
@@ -1351,6 +1301,8 @@ async def get_stock_analysis(symbol: str):
             "valuation": valuation,
             "buy_score": int(fund_buy_score),
             "advice": fund_advice,
+            "peg": fund_result["peg"],
+            "track": fund_result["track"],
         }
 
     # ── 2. 盤勢辨識 + 技術面摘要 ──
@@ -1640,6 +1592,42 @@ async def clear_screener_cache():
     from screener import clear_cache
     clear_cache()
     return {"status": "ok", "message": "快取已清除"}
+
+
+@app.get("/api/custom-stocks")
+async def list_custom_stocks():
+    """取得使用者自選股清單"""
+    from screener import get_custom_stocks
+    return {"stocks": get_custom_stocks()}
+
+
+@app.post("/api/custom-stocks")
+async def add_custom_stock_api(symbol: str, name: str = ""):
+    """新增自選股（搜尋時自動觸發）"""
+    # 標準化代碼
+    if not symbol.endswith(".TW"):
+        symbol = symbol.split(".")[0] + ".TW"
+
+    # 若沒提供名稱，自動查詢
+    if not name:
+        name = fetch_stock_name(symbol) or symbol.split(".")[0]
+
+    from screener import add_custom_stock, _BUILTIN_UNIVERSE
+    if symbol in _BUILTIN_UNIVERSE:
+        return {"added": False, "reason": "builtin", "symbol": symbol, "name": name}
+
+    added = add_custom_stock(symbol, name)
+    return {"added": added, "symbol": symbol, "name": name}
+
+
+@app.delete("/api/custom-stocks")
+async def remove_custom_stock_api(symbol: str):
+    """移除自選股"""
+    from screener import remove_custom_stock
+    if not symbol.endswith(".TW"):
+        symbol = symbol.split(".")[0] + ".TW"
+    removed = remove_custom_stock(symbol)
+    return {"removed": removed, "symbol": symbol}
 
 
 @app.get("/api/sector-trading/{sector_id}/fundamental")

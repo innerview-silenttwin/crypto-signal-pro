@@ -400,6 +400,20 @@ async function fetchStockInfo(symbol) {
     }
 }
 
+// --- 載入自選股到搜尋映射 ---
+(async function loadCustomStocks() {
+    try {
+        const res = await fetch('/api/custom-stocks');
+        if (!res.ok) return;
+        const data = await res.json();
+        const stocks = data.stocks || {};
+        for (const [sym, name] of Object.entries(stocks)) {
+            if (!stockNames[sym]) stockNames[sym] = name;
+            if (!stockNameSearchMapping[name]) stockNameSearchMapping[name] = sym;
+        }
+    } catch (e) { /* ignore */ }
+})();
+
 // --- 搜尋紀錄邏輯 ---
 let searchHistory = JSON.parse(localStorage.getItem('searchHistory') || '[]');
 
@@ -473,12 +487,15 @@ window.changeSymbol = async function (sym, market = 'crypto') {
     let compName = market === 'stock' ? (stockNames[sym] || '') : '';
     const futName = market === 'futures' ? (futuresNames[baseSym] || '') : '';
 
-    // 若是台股且沒有快取名稱，嘗試線上查詢
+    // 若是台股且沒有快取名稱，嘗試線上查詢並自動加入系統
     if (market === 'stock' && !compName) {
         const info = await fetchStockInfo(sym);
         if (info && info.name) {
             compName = info.name;
             stockNames[sym] = compName;
+            stockNameSearchMapping[compName] = sym;
+            // 自動加入自選股（背景執行，不阻塞）
+            fetch(`/api/custom-stocks?symbol=${encodeURIComponent(sym)}&name=${encodeURIComponent(compName)}`, { method: 'POST' }).catch(() => {});
         }
     }
 
@@ -975,7 +992,16 @@ function renderThreeLayerAnalysis(data) {
             fundScoreBadge.textContent = '';
         }
 
+        const trackLabel = f.track === 'growth' ? '成長股' : '價值股';
+        const trackCls = f.track === 'growth' ? 'bullish' : 'neutral';
+        const pegText = f.peg != null ? f.peg.toFixed(2) : '--';
+        const pegCls = f.peg != null ? (f.peg < 1 ? 'bullish' : f.peg < 1.5 ? 'neutral' : 'bearish') : 'neutral';
+
         fundEl.innerHTML = `
+            <div class="tla-row">
+                <span class="tla-row-label">評估軌道</span>
+                <span class="tla-badge ${trackCls}">${trackLabel}</span>
+            </div>
             <div class="tla-row">
                 <span class="tla-row-label">估值評等</span>
                 <span class="tla-badge ${vStyle.cls}">${f.valuation}</span>
@@ -984,6 +1010,10 @@ function renderThreeLayerAnalysis(data) {
                 <span class="tla-row-label">本益比 (P/E)</span>
                 <span class="tla-row-value">${peText}</span>
             </div>
+            ${f.track === 'growth' ? `<div class="tla-row">
+                <span class="tla-row-label">PEG 比率</span>
+                <span class="tla-badge ${pegCls}">${pegText}</span>
+            </div>` : ''}
             <div class="tla-row">
                 <span class="tla-row-label">殖利率</span>
                 <span class="tla-row-value">${dyText}</span>

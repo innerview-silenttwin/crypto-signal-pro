@@ -246,18 +246,94 @@ class SectorTradingManager:
         }
 
     def get_history(self, page: int = 1, page_size: int = 15,
-                    symbol: str = "", start_date: str = "", end_date: str = "") -> dict:
+                    symbol: str = "", start_date: str = "", end_date: str = "",
+                    current_prices: dict = None) -> dict:
+        current_prices = current_prices or {}
         history = self.state.get("history", [])
-        if symbol:
-            history = [h for h in history if symbol.upper() in h.get("symbol", "").upper()]
-        if start_date:
-            history = [h for h in history if h.get("time", "") >= start_date]
-        if end_date:
-            history = [h for h in history if h.get("time", "")[:10] <= end_date]
 
-        total = len(history)
+        # ── FIFO 配對：為每筆 BUY 標注已實現/未實現損益 ──
+        # 按時間正序走訪（history 存放順序為最新在前）
+        chrono = list(reversed(history))
+        # 每檔標的的買入批次佇列 {symbol: [(index_in_chrono, remaining_qty, cost_per_unit_incl_fee), ...]}
+        buy_lots: dict[str, list] = {}
+        # 結果暫存 {id(record): {pnl, pnl_status}}
+        pnl_map: dict[int, dict] = {}
+
+        for idx, rec in enumerate(chrono):
+            sym = rec.get("symbol", "")
+            if rec["type"] == "BUY":
+                cost_per_unit = rec.get("cost", rec["price"] * rec["qty"]) / rec["qty"] if rec["qty"] else 0
+                buy_lots.setdefault(sym, []).append([idx, rec["qty"], cost_per_unit])
+            elif rec["type"] == "SELL":
+                lots = buy_lots.get(sym, [])
+                sell_qty_remaining = rec["qty"]
+                sell_price = rec["price"]
+                # 賣出淨價（扣手續費+證交稅）
+                gross = sell_qty_remaining * sell_price
+                sell_fee = round(gross * 0.001425)
+                sell_tax = round(gross * 0.003)
+                net_per_unit = (gross - sell_fee - sell_tax) / sell_qty_remaining if sell_qty_remaining else 0
+
+                while sell_qty_remaining > 0 and lots:
+                    lot = lots[0]  # [idx, remaining_qty, cost_per_unit]
+                    matched_qty = min(lot[1], sell_qty_remaining)
+                    realized = round((net_per_unit - lot[2]) * matched_qty)
+
+                    lot_rec = chrono[lot[0]]
+                    lot_id = id(lot_rec)
+                    if lot_id not in pnl_map:
+                        pnl_map[lot_id] = {"pnl": 0, "pnl_status": "realized",
+                                           "sold_qty": 0, "total_qty": lot_rec["qty"]}
+                    pnl_map[lot_id]["pnl"] += realized
+                    pnl_map[lot_id]["sold_qty"] += matched_qty
+
+                    lot[1] -= matched_qty
+                    sell_qty_remaining -= matched_qty
+                    if lot[1] <= 0:
+                        lots.pop(0)
+
+        # 未平倉的買入批次 → 標注未實現損益
+        for sym, lots in buy_lots.items():
+            for lot in lots:
+                if lot[1] <= 0:
+                    continue
+                lot_rec = chrono[lot[0]]
+                lot_id = id(lot_rec)
+                cur_price = current_prices.get(sym, lot_rec["price"])
+                market_value = lot[1] * cur_price
+                sell_fee = round(market_value * 0.001425)
+                sell_tax = round(market_value * 0.003)
+                unrealized = round((market_value - sell_fee - sell_tax) - lot[1] * lot[2])
+
+                if lot_id in pnl_map:
+                    # 部分已賣、部分未賣
+                    pnl_map[lot_id]["pnl"] += unrealized
+                    pnl_map[lot_id]["pnl_status"] = "partial"
+                else:
+                    pnl_map[lot_id] = {"pnl": unrealized, "pnl_status": "unrealized",
+                                       "sold_qty": 0, "total_qty": lot_rec["qty"]}
+
+        # 將 pnl 資訊寫入副本（不改原始 history）
+        annotated = []
+        for rec in history:
+            rec_copy = dict(rec)
+            info = pnl_map.get(id(rec))
+            if info and rec["type"] == "BUY":
+                rec_copy["pnl"] = info["pnl"]
+                rec_copy["pnl_status"] = info["pnl_status"]
+            annotated.append(rec_copy)
+
+        # ── 篩選 ──
+        if symbol:
+            annotated = [h for h in annotated if symbol.upper() in h.get("symbol", "").upper()]
+        if start_date:
+            annotated = [h for h in annotated if h.get("time", "") >= start_date]
+        if end_date:
+            annotated = [h for h in annotated if h.get("time", "")[:10] <= end_date]
+
+        total = len(annotated)
         start = (page - 1) * page_size
-        return {"data": history[start:start + page_size], "total": total, "page": page}
+        return {"data": annotated[start:start + page_size], "total": total, "page": page}
 
     # ── 交易執行 ──
 

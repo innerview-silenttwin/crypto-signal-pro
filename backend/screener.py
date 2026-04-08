@@ -125,9 +125,66 @@ def get_symbol_sector(symbol: str) -> str:
     return SYMBOL_SECTOR_MAP.get(symbol, "default")
 
 
+# ── 自選股持久化 ──
+
+CUSTOM_STOCKS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "custom_stocks.json")
+
+
+def load_custom_stocks() -> dict:
+    """從 JSON 檔載入使用者自選股 {symbol: name}"""
+    try:
+        if os.path.exists(CUSTOM_STOCKS_FILE):
+            with open(CUSTOM_STOCKS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        logger.warning(f"載入自選股失敗: {e}")
+    return {}
+
+
+def save_custom_stocks(stocks: dict):
+    """儲存自選股到 JSON"""
+    try:
+        with open(CUSTOM_STOCKS_FILE, "w", encoding="utf-8") as f:
+            json.dump(stocks, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.warning(f"儲存自選股失敗: {e}")
+
+
+def add_custom_stock(symbol: str, name: str) -> bool:
+    """新增自選股（若已在內建宇宙中則跳過）"""
+    if symbol in _BUILTIN_UNIVERSE:
+        return False  # 已是內建股
+    stocks = load_custom_stocks()
+    if symbol in stocks:
+        return False  # 已加過
+    stocks[symbol] = name
+    save_custom_stocks(stocks)
+    # 同步更新執行期宇宙
+    SCREENER_UNIVERSE[symbol] = name
+    logger.info(f"自選股已新增: {symbol} {name}")
+    return True
+
+
+def remove_custom_stock(symbol: str) -> bool:
+    """移除自選股"""
+    stocks = load_custom_stocks()
+    if symbol not in stocks:
+        return False
+    del stocks[symbol]
+    save_custom_stocks(stocks)
+    SCREENER_UNIVERSE.pop(symbol, None)
+    logger.info(f"自選股已移除: {symbol}")
+    return True
+
+
+def get_custom_stocks() -> dict:
+    """取得所有自選股"""
+    return load_custom_stocks()
+
+
 # ── 選股宇宙（約 100 檔台股權值+熱門股） ──
 
-SCREENER_UNIVERSE = {
+_BUILTIN_UNIVERSE = {
     # 半導體
     "2330.TW": "台積電", "2454.TW": "聯發科", "2303.TW": "聯電",
     "3711.TW": "日月光投控", "2379.TW": "瑞昱", "3034.TW": "聯詠",
@@ -167,6 +224,9 @@ SCREENER_UNIVERSE = {
     "2618.TW": "長榮航",
 }
 
+# 合併內建 + 自選股 → 實際使用的宇宙
+SCREENER_UNIVERSE = {**_BUILTIN_UNIVERSE, **load_custom_stocks()}
+
 # ── 快取 ──
 
 _screener_cache: Dict = {}  # {"results": [...], "categories": [...], "updated_at": str}
@@ -202,64 +262,47 @@ def scan_single_stock(symbol: str, name: str, all_pe: dict, articles: list) -> O
         scores = {}
         details = {}
 
-        # ── 1. 基本面 ──
+        # ── 1. 基本面（成長/價值雙軌） ──
         code = _strip_tw(symbol)
         pe_info = all_pe.get(code)
         fund_score = 50
         pe = None
-        
+
         if pe_info and pe_info.get("pe") and pe_info["pe"] > 0:
             pe = pe_info["pe"]
             dy = pe_info.get("dy")
             details["pe"] = pe
             details["dy"] = dy
-            
-            from layers.fundamental import fetch_twse_revenue_all, get_sector_pe_stats
+
+            from layers.fundamental import (fetch_twse_revenue_all, get_sector_pe_stats,
+                                            compute_fundamental_score)
             all_rev = fetch_twse_revenue_all()
             rev_info = all_rev.get(code, {})
             sector = rev_info.get("sector")
+            yoy = rev_info.get("yoy")
+            mom = rev_info.get("mom")
             details["sector"] = sector
-            
-            same_sector_symbols = []
+            details["yoy"] = yoy
+            details["mom"] = mom
+
+            # 產業百分位（若可取得）
+            pe_percentile = None
             if sector:
                 same_sector_symbols = [f"{c}.TW" for c, v in all_rev.items() if v.get("sector") == sector]
-                
-            pe_percentile = None
-            if same_sector_symbols and len(same_sector_symbols) >= 3:
-                pe_stats = get_sector_pe_stats(same_sector_symbols, all_pe)
-                sym_key = f"{code}.TW"
-                if sym_key in pe_stats:
-                    pe_percentile = pe_stats[sym_key].get("percentile")
-                    details["pe_percentile"] = pe_percentile
-                    
-            if pe_percentile is not None:
-                if pe_percentile <= 20: fund_score = 90
-                elif pe_percentile <= 40: fund_score = 75
-                elif pe_percentile <= 60: fund_score = 55
-                elif pe_percentile <= 80: fund_score = 30
-                else: fund_score = 15
-            else:
-                if pe < 8: fund_score = 90
-                elif pe < 12: fund_score = 75
-                elif pe < 20: fund_score = 55
-                elif pe < 30: fund_score = 30
-                else: fund_score = 15
-            
-            # 殖利率加分
-            if dy and dy >= 5.0:
-                fund_score = min(100, fund_score + 10)
-            elif dy and dy >= 3.0:
-                fund_score = min(100, fund_score + 5)
+                if len(same_sector_symbols) >= 3:
+                    pe_stats = get_sector_pe_stats(same_sector_symbols, all_pe)
+                    sym_key = f"{code}.TW"
+                    if sym_key in pe_stats:
+                        pe_percentile = pe_stats[sym_key].get("percentile")
+                        details["pe_percentile"] = pe_percentile
 
-            # 營收動能加分（與 stock-analysis 一致）
-            yoy = rev_info.get("yoy") if rev_info else None
-            if yoy is not None:
-                if yoy > 20:
-                    fund_score = min(100, fund_score + 10)
-                elif yoy > 0:
-                    fund_score = min(100, fund_score + 5)
-                elif yoy < -20:
-                    fund_score = max(0, fund_score - 10)
+            # 統一評分函數
+            fund_result = compute_fundamental_score(
+                pe=pe, dy=dy, yoy=yoy, mom=mom, pe_percentile=pe_percentile)
+            fund_score = fund_result["score"]
+            details["peg"] = fund_result["peg"]
+            details["fund_track"] = fund_result["track"]
+            details["fund_advice"] = fund_result["advice"]
 
         scores["fundamental"] = fund_score
 
@@ -403,11 +446,51 @@ def scan_all_stocks() -> List[dict]:
             except Exception as e:
                 logger.warning(f"掃描 {symbol} timeout/error: {e}")
 
+    # ── 百分位正規化：讓五個面向有相同的分佈基準 ──
+    # 避免某些面向天然偏高/偏低而在加權時不公平
+    dimensions = ["technical", "fundamental", "chipflow", "regime", "sentiment"]
+
+    for dim in dimensions:
+        # 收集有效分數
+        valid_scores = []
+        for r in results:
+            s = r["scores"].get(dim)
+            if s is not None:
+                valid_scores.append(s)
+
+        if len(valid_scores) < 5:
+            continue  # 樣本太少，不做正規化
+
+        valid_scores_sorted = sorted(valid_scores)
+        n = len(valid_scores_sorted)
+
+        for r in results:
+            raw = r["scores"].get(dim)
+            if raw is None:
+                continue
+            # 保留原始分數
+            r.setdefault("raw_scores", {})[dim] = raw
+            # 百分位排名（0-100）：在所有股票中贏過多少比例
+            rank = sum(1 for v in valid_scores_sorted if v < raw)
+            percentile = round(rank / n * 100, 1)
+            r["scores"][dim] = percentile
+
+    # 重新計算綜合分數（用正規化後的分數）
+    for r in results:
+        symbol_sector = get_symbol_sector(r["symbol"])
+        weights = SECTOR_COMPOSITE_WEIGHTS.get(symbol_sector, SECTOR_COMPOSITE_WEIGHTS["default"])
+        valid = [(r["scores"].get(k, 50), w) for k, w in weights.items()
+                 if r["scores"].get(k) is not None]
+        if not valid:
+            valid = [(50, 1.0)]
+        total_w = sum(w for _, w in valid)
+        r["composite"] = round(sum(s * w for s, w in valid) / total_w, 1)
+
     # 依綜合分數排序
     results.sort(key=lambda x: x["composite"], reverse=True)
 
     elapsed = time.time() - start_time
-    logger.info(f"選股掃描完成: {len(results)} 檔，耗時 {elapsed:.1f}秒")
+    logger.info(f"選股掃描完成: {len(results)} 檔，耗時 {elapsed:.1f}秒（含百分位正規化）")
 
     return results
 
@@ -499,9 +582,12 @@ def categorize_picks(results: List[dict]) -> List[dict]:
         pe_percentile = r.get("details", {}).get("pe_percentile")
         fund_score = r.get("scores", {}).get("fundamental", 0)
         
-        # 條件：傳統本益比小於 12，或是產業估值前 30% 低估，且基本面達 70 分
-        if fund_score >= 70 and ((pe and pe < 12) or (pe_percentile and pe_percentile <= 30)):
-            if pe_percentile and pe_percentile <= 30:
+        # 價值股軌道：用原始分數判斷（非正規化後）
+        raw_fund = r.get("raw_scores", {}).get("fundamental", fund_score)
+        fund_track = r.get("details", {}).get("fund_track", "value")
+        if fund_track == "value" and raw_fund >= 70 and (
+                (pe and pe < 12) or (pe_percentile is not None and pe_percentile <= 30)):
+            if pe_percentile is not None and pe_percentile <= 30:
                 r["_highlight"] = f"產業低估前{pe_percentile}%，基本面{fund_score}分"
             else:
                 r["_highlight"] = f"P/E {pe:.1f}，基本面{fund_score}分"
@@ -511,17 +597,41 @@ def categorize_picks(results: List[dict]) -> List[dict]:
         "id": "value_underpriced",
         "name": "價值低估股",
         "icon": "💎",
-        "description": "篩選條件：本益比 < 12 或產業估值前 30% 低估，且基本面分數 ≥ 70。基本面分數綜合本益比、殖利率、營收年增率計算。",
+        "description": "篩選條件：價值股軌道 + 本益比 < 12 或產業估值前 30% 低估，且基本面分數 ≥ 70。適合穩健型投資人。",
         "stocks": _format_picks(value_picks[:10]),
     })
 
-    # ── 5. 技術突破股 ──
+    # ── 5. 成長動能股 ──
+    growth_picks = []
+    for r in results:
+        fund_track = r.get("details", {}).get("fund_track", "value")
+        raw_fund = r.get("raw_scores", {}).get("fundamental", r.get("scores", {}).get("fundamental", 0))
+        peg = r.get("details", {}).get("peg")
+        yoy = r.get("details", {}).get("yoy")
+
+        if fund_track == "growth" and raw_fund >= 65 and peg is not None:
+            parts = [f"PEG={peg}"]
+            if yoy is not None:
+                parts.append(f"營收YoY+{yoy:.0f}%")
+            parts.append(f"基本面{fund_score}分")
+            r["_highlight"] = "，".join(parts)
+            growth_picks.append(r)
+    growth_picks.sort(key=lambda x: x.get("details", {}).get("peg", 99))
+    categories.append({
+        "id": "growth_momentum",
+        "name": "成長動能股",
+        "icon": "📈",
+        "description": "篩選條件：營收 YoY > 15% 且 PEG < 1.5（P/E ÷ 營收成長率）。高成長但估值合理的股票，適合積極型投資人。PEG < 1 表示成長遠超估值。",
+        "stocks": _format_picks(growth_picks[:10]),
+    })
+
+    # ── 6. 技術突破股 ──
     tech_picks = []
     for r in results:
         regime = r.get("details", {}).get("regime_state", "")
-        tech_score = r.get("scores", {}).get("technical", 0)
-        if regime in ("強勢多頭", "底部轉強") and tech_score >= 55:
-            r["_highlight"] = f"盤勢{regime}＋技術{tech_score}分"
+        raw_tech = r.get("raw_scores", {}).get("technical", r.get("scores", {}).get("technical", 0))
+        if regime in ("強勢多頭", "底部轉強") and raw_tech >= 55:
+            r["_highlight"] = f"盤勢{regime}＋技術{raw_tech}分"
             tech_picks.append(r)
     tech_picks.sort(key=lambda x: x["composite"], reverse=True)
     categories.append({
@@ -555,6 +665,7 @@ def _format_picks(picks: List[dict]) -> List[dict]:
             "composite_score": p["composite"],
             "highlight": p.get("_highlight", ""),
             "scores": p["scores"],
+            "raw_scores": p.get("raw_scores", {}),
         })
     return formatted
 
@@ -622,6 +733,7 @@ def run_screener_scan() -> dict:
             "name": r["name"],
             "composite": r["composite"],
             "scores": r["scores"],
+            "raw_scores": r.get("raw_scores", {}),
             "highlights": r["highlights"],
         })
 
