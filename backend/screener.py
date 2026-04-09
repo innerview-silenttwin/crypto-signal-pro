@@ -11,7 +11,7 @@
 - 投信認養股：投信連買 >= 3天
 - 籌碼集中股：融資減少 + 法人買超
 - 價值低估股：PE < 12 + 基本面分數 >= 70
-- 技術突破股：盤勢=強勢多頭/底部轉強 + 技術分數 >= 70
+- 技術突破股：盤勢=強勢多頭/底部轉強 + 原始技術分數 >= 55
 """
 
 import os
@@ -37,27 +37,48 @@ from layers.sentiment import get_stock_sentiment, get_market_sentiment, fetch_rs
 logger = logging.getLogger(__name__)
 
 # ── 各產業最佳技術指標權重（回測驗證） ──
-# 來源：sector_backtest_report.txt (2019-2026, 7 年回測)
+# 來源：chipflow_backtest_20260410 指標歸因分析（D模式，2019-2026 7年）
+# 指標集：RSI、MACD、Bollinger、MFI、EMA Cross、Volume、ADX
+#         + StochRSI（拉回超賣）、VolumeReversal（爆量反轉/破底警示）、PullbackSupport（均線拉回+破底保護）
+# 調整原則：Bollinger/MFI 全產業負貢獻 → 降至 2；釋出權重補回各產業歸因最強指標
 SECTOR_WEIGHTS = {
-    "semiconductor": {  # 半導體：趨勢追蹤 EMA+ADX（標準）
-        'rsi': 10.0, 'macd': 15.0, 'bollinger': 5.0,
-        'mfi': 5.0, 'ema_cross': 30.0, 'volume': 10.0, 'adx': 25.0,
+    # 歸因依據：chipflow_backtest_20260410 D模式分析
+    # Bollinger/MFI 在所有產業均負貢獻 → 全面降至 2
+    # 釋出的權重回補至各產業歸因最強指標
+    "semiconductor": {
+        # 歸因最強：MACD +12.2%勝率提升、ADX +3.15%報酬提升
+        # bollinger:5→2(-3), mfi:5→2(-3) 釋出6，補到 macd(+3)、adx(+3)
+        'rsi': 10.0, 'macd': 18.0, 'bollinger': 2.0,
+        'mfi': 2.0, 'ema_cross': 30.0, 'volume': 10.0, 'adx': 28.0,
+        'stoch_rsi': 6.0, 'volume_reversal': 12.0, 'pullback_support': 10.0,
     },
-    "electronics": {  # 電子：趨勢追蹤 EMA+ADX（寬鬆）
-        'rsi': 10.0, 'macd': 15.0, 'bollinger': 5.0,
-        'mfi': 5.0, 'ema_cross': 30.0, 'volume': 10.0, 'adx': 25.0,
+    "electronics": {
+        # 歸因最強：Pullback Support +4.8%勝率提升、ADX +1.59%報酬提升
+        # bollinger:5→2(-3), mfi:5→2(-3) 釋出6，補到 pullback(+4)、adx(+2)
+        'rsi': 10.0, 'macd': 15.0, 'bollinger': 2.0,
+        'mfi': 2.0, 'ema_cross': 30.0, 'volume': 10.0, 'adx': 27.0,
+        'stoch_rsi': 6.0, 'volume_reversal': 12.0, 'pullback_support': 14.0,
     },
-    "finance": {  # 金融：動能+趨勢 RSI+MACD+EMA（標準）
-        'rsi': 20.0, 'macd': 25.0, 'bollinger': 5.0,
-        'mfi': 5.0, 'ema_cross': 25.0, 'volume': 10.0, 'adx': 10.0,
+    "finance": {
+        # 歸因最強：VolumeReversal +15.4%勝率提升、PullbackSupport +14.9%
+        # bollinger:5→2(-3), mfi:5→2(-3) 釋出6，補到 volume_reversal(+4)、pullback(+2)
+        'rsi': 20.0, 'macd': 25.0, 'bollinger': 2.0,
+        'mfi': 2.0, 'ema_cross': 25.0, 'volume': 10.0, 'adx': 10.0,
+        'stoch_rsi': 10.0, 'volume_reversal': 12.0, 'pullback_support': 17.0,
     },
-    "traditional": {  # 傳產：趨勢追蹤 EMA+ADX（寬鬆）+ Regime Veto-Only
-        'rsi': 10.0, 'macd': 15.0, 'bollinger': 5.0,
-        'mfi': 5.0, 'ema_cross': 30.0, 'volume': 10.0, 'adx': 25.0,
+    "traditional": {
+        # 歸因最強：Volume +26.6%勝率提升、EMA Cross +8.2%
+        # 負貢獻：Pullback(-10.4%)、VolumeReversal(-9.9%) → 大幅降低
+        # bollinger:5→2(-3), mfi:5→2(-3), pullback:8→3(-5), volume_reversal:18→10(-8) 釋出19
+        # 補到 volume(+9)、ema_cross(+8)、macd(+2)
+        'rsi': 10.0, 'macd': 17.0, 'bollinger': 2.0,
+        'mfi': 2.0, 'ema_cross': 38.0, 'volume': 19.0, 'adx': 25.0,
+        'stoch_rsi': 6.0, 'volume_reversal': 10.0, 'pullback_support': 3.0,
     },
     "default": {  # 其他（生技、ETF 等）：通用台股權重
-        'rsi': 10.0, 'macd': 15.0, 'bollinger': 10.0,
-        'mfi': 15.0, 'ema_cross': 15.0, 'volume': 25.0, 'adx': 10.0,
+        'rsi': 10.0, 'macd': 15.0, 'bollinger': 3.0,
+        'mfi': 5.0, 'ema_cross': 18.0, 'volume': 25.0, 'adx': 14.0,
+        'stoch_rsi': 8.0, 'volume_reversal': 15.0, 'pullback_support': 14.0,
     },
 }
 
@@ -638,7 +659,7 @@ def categorize_picks(results: List[dict]) -> List[dict]:
         "id": "tech_breakout",
         "name": "技術突破股",
         "icon": "🚀",
-        "description": "篩選條件：盤勢狀態為「強勢多頭」或「底部轉強」，且技術面分數 ≥ 55。技術分數綜合 EMA 趨勢、ADX 動能、MACD、RSI 等指標，各產業權重不同。",
+        "description": "篩選條件：盤勢狀態為「強勢多頭」或「底部轉強」，且原始技術分數 ≥ 55（非百分位）。技術分數綜合 10 個指標：EMA 趨勢、ADX 動能、MACD、RSI、Stoch RSI（拉回超賣）、Volume Reversal（爆量反轉）、Pullback Support（均線拉回）等，各產業權重依回測歸因分析調整。",
         "stocks": _format_picks(tech_picks[:10]),
     })
 

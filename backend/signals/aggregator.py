@@ -20,7 +20,8 @@ from indicators.base import BaseIndicator, IndicatorSignal, SignalType
 from indicators.registry import IndicatorRegistry
 
 # 匯入所有指標插件以觸發註冊
-from indicators import rsi, macd, bollinger, mfi, ema, volume, adx
+from indicators import rsi, macd, bollinger, mfi, ema, volume, adx  # noqa: F401
+from indicators import stoch_rsi, volume_reversal, pullback_support  # noqa: F401
 from enum import Enum
 
 class MarketType(Enum):
@@ -98,7 +99,8 @@ class SignalAggregator:
         if market_type == MarketType.STOCK:
             default_weights = {
                 'rsi': 10.0, 'macd': 15.0, 'bollinger': 10.0,
-                'mfi': 15.0, 'ema_cross': 15.0, 'volume': 25.0, 'adx': 10.0, # 台股更重成交量
+                'mfi': 15.0, 'ema_cross': 15.0, 'volume': 25.0, 'adx': 10.0,  # 台股更重成交量
+                'stoch_rsi': 8.0, 'volume_reversal': 15.0, 'pullback_support': 12.0,
             }
         elif market_type == MarketType.FUTURES:
             default_weights = {

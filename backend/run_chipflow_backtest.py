@@ -354,15 +354,15 @@ def compute_score_with_chip(
     inst_data: Optional[Dict[str, dict]],
     current_date_str: str,
     sector_id: str = "",
-) -> Tuple[float, float, bool]:
+) -> Tuple[float, float, bool, List[str]]:
     """
     計算買入/賣出分數（含籌碼面修正）
 
     Returns:
-        (buy_score, sell_score, veto_buy)
+        (buy_score, sell_score, veto_buy, buy_indicator_names)
     """
     if len(df_window) < MIN_DATA_DAYS:
-        return 0.0, 0.0, False
+        return 0.0, 0.0, False, []
 
     try:
         df_calc = aggregator.calculate_all(df_window.copy())
@@ -371,6 +371,7 @@ def compute_score_with_chip(
         buy_score = signal.buy_score
         sell_score = signal.sell_score
         veto_buy = False
+        buy_indicator_names: List[str] = [s.indicator_name for s in signal.buy_signals]
 
         # Regime 修正
         if regime_layer is not None:
@@ -406,10 +407,10 @@ def compute_score_with_chip(
             if chip_veto:
                 veto_buy = True
 
-        return float(buy_score), float(sell_score), veto_buy
+        return float(buy_score), float(sell_score), veto_buy, buy_indicator_names
 
     except Exception:
-        return 0.0, 0.0, False
+        return 0.0, 0.0, False, []
 
 
 # ── 資料下載 ──
@@ -454,6 +455,8 @@ class Position:
     entry_date: pd.Timestamp
     shares: float
     cost: float
+    entry_score: float = 0.0
+    entry_indicators: str = ""
 
 
 @dataclass
@@ -535,7 +538,7 @@ def run_portfolio_backtest(
             if loc >= MIN_DATA_DAYS:
                 window = df_sym.iloc[max(0, loc - LOOKBACK): loc + 1]
                 sym_inst = inst_data_all.get(sym, {}) if use_chipflow and inst_data_all else None
-                buy_s, sell_s, _ = compute_score_with_chip(
+                buy_s, sell_s, _, _inds = compute_score_with_chip(
                     window, sym, aggregator, regime_layer,
                     sym_inst, date_str, sector_id
                 )
@@ -554,6 +557,8 @@ def run_portfolio_backtest(
                 "entry_price": pos.entry_price, "exit_price": price,
                 "pnl_pct": pnl_pct, "pnl": pnl, "hold_days": hold_days,
                 "exit_reason": reason,
+                "entry_score": pos.entry_score,
+                "entry_indicators": pos.entry_indicators,
             })
 
         # ── 2. 掃描買入信號 ──
@@ -570,15 +575,15 @@ def run_portfolio_backtest(
                     continue
                 window = df_sym.iloc[max(0, loc - LOOKBACK): loc + 1]
                 sym_inst = inst_data_all.get(sym, {}) if use_chipflow and inst_data_all else None
-                buy_s, sell_s, veto = compute_score_with_chip(
+                buy_s, sell_s, veto, entry_inds = compute_score_with_chip(
                     window, sym, aggregator, regime_layer,
                     sym_inst, date_str, sector_id
                 )
                 if not veto and buy_s >= buy_threshold and buy_s > sell_s:
-                    candidates.append((sym, buy_s))
+                    candidates.append((sym, buy_s, entry_inds))
 
             candidates.sort(key=lambda x: x[1], reverse=True)
-            for sym, score in candidates[:available_slots]:
+            for sym, score, inds in candidates[:available_slots]:
                 if capital < INITIAL_CAPITAL * POSITION_PCT:
                     break
                 price = stock_data[sym].loc[date, "close"]
@@ -591,6 +596,7 @@ def run_portfolio_backtest(
                 positions[sym] = Position(
                     symbol=sym, entry_price=price, entry_date=date,
                     shares=shares, cost=cost_with_fee,
+                    entry_score=score, entry_indicators=",".join(inds),
                 )
 
         # ── 3. 計算當日總資產 ──
@@ -618,6 +624,8 @@ def run_portfolio_backtest(
                 "pnl_pct": pnl_pct, "pnl": pnl,
                 "hold_days": (last_date - pos.entry_date).days,
                 "exit_reason": "期末強制平倉",
+                "entry_score": pos.entry_score,
+                "entry_indicators": pos.entry_indicators,
             })
 
     # ── 績效計算 ──
