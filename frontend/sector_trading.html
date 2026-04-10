@@ -64,12 +64,12 @@
         }
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 16px;
-            margin-bottom: 20px;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+            margin-bottom: 14px;
         }
         .stat-card {
-            padding: 18px;
+            padding: 10px 12px;
             text-align: center;
         }
         .stat-label {
@@ -80,7 +80,7 @@
             font-weight: 700;
         }
         .stat-value {
-            font-size: 22px;
+            font-size: 17px;
             font-weight: 800;
             font-family: 'Nunito', 'Outfit';
             color: var(--text-main);
@@ -170,16 +170,22 @@
         /* ── 全域控制 ── */
         .global-control-bar {
             display: flex;
-            gap: 12px;
+            gap: 10px;
             align-items: center;
-            padding: 16px 24px;
+            padding: 10px 20px;
             background: rgba(167,139,250,0.04);
             border-radius: 16px;
-            margin: 0 24px 20px;
+            margin: 0 24px 16px;
             border: 1.5px solid var(--border-color);
         }
+        .global-control-bar .ctrl-divider {
+            width: 1.5px;
+            height: 24px;
+            background: var(--border-color);
+            margin: 0 4px;
+        }
         .global-control-bar .btn-global {
-            padding: 10px 20px;
+            padding: 8px 16px;
             border-radius: 12px;
             font-size: 13px;
             font-weight: 700;
@@ -263,55 +269,56 @@
                 <button id="btn-start-auto" class="btn-global">啟動背景交易引擎</button>
                 <button id="btn-stop-auto" class="btn-global">停止</button>
                 <button id="btn-run-once" class="btn-global">手動執行一次</button>
+                <div class="ctrl-divider"></div>
+                <button id="btn-toggle-sector" class="btn-toggle start" style="padding:8px 20px; font-size:13px">開啟交易</button>
                 <div class="auto-status">
                     <span id="auto-status-text">引擎狀態: 未啟動</span>
-                    <br><span id="auto-last-run">上次執行: --</span>
+                    <span style="margin-left:12px" id="auto-last-run">上次執行: --</span>
+                </div>
+            </div>
+
+            <!-- 各類股損益長條圖 -->
+            <div class="glass-panel" style="margin: 0 24px 16px; padding: 12px 20px 8px">
+                <div style="font-size:11px; color:var(--text-muted); margin-bottom:6px; font-weight:700">各類股損益比較</div>
+                <div style="height:150px; position:relative">
+                    <canvas id="sector-bar-chart"></canvas>
                 </div>
             </div>
 
             <!-- 類股 Tab -->
-            <div class="sector-tabs" style="margin: 0 24px 20px" id="sector-tabs">
+            <div class="sector-tabs" style="margin: 0 24px 16px" id="sector-tabs">
                 <!-- 動態生成 -->
             </div>
 
             <!-- 類股內容 -->
             <div id="sector-content">
-                <!-- 控制列 -->
-                <div class="control-bar glass-panel" style="margin: 0 24px 16px; border-radius:16px">
-                    <div>
-                        <span class="status-text" id="sector-title">--</span>
-                        <span style="font-size:12px; color:var(--text-muted); margin-left:12px" id="sector-desc"></span>
-                    </div>
-                    <button id="btn-toggle-sector" class="btn-toggle start">開啟交易</button>
-                </div>
+                <!-- 隱藏元素，供 JS 更新用（不顯示） -->
+                <span id="sector-title" style="display:none"></span>
+                <span id="sector-desc" style="display:none"></span>
 
                 <div class="sector-layout">
                     <div class="sector-main">
                         <!-- 數據卡片 -->
                         <div class="stats-grid">
-                            <div class="stat-card glass-panel">
-                                <div class="stat-label">初始本金</div>
-                                <div class="stat-value">1,000,000</div>
+                            <div class="stat-card glass-panel" style="border-top: 2px solid var(--primary)">
+                                <div class="stat-label">五類總損益</div>
+                                <div class="stat-value" id="g-pl">--</div>
+                            </div>
+                            <div class="stat-card glass-panel" style="border-top: 2px solid var(--primary)">
+                                <div class="stat-label">五類總投報率</div>
+                                <div class="stat-value" id="g-roi">--</div>
                             </div>
                             <div class="stat-card glass-panel">
-                                <div class="stat-label">當前淨值</div>
+                                <div class="stat-label">當前類股淨值</div>
                                 <div class="stat-value" id="s-equity">--</div>
                             </div>
                             <div class="stat-card glass-panel" id="s-pl-card">
-                                <div class="stat-label">累積損益</div>
+                                <div class="stat-label">當前類股損益</div>
                                 <div class="stat-value" id="s-pl">--</div>
                             </div>
                             <div class="stat-card glass-panel">
-                                <div class="stat-label">勝率</div>
+                                <div class="stat-label">當前類股勝率</div>
                                 <div class="stat-value" id="s-winrate">--</div>
-                            </div>
-                        </div>
-
-                        <!-- 權益曲線圖 -->
-                        <div class="card glass-panel" style="padding:20px; margin-bottom:20px">
-                            <h3 style="font-size:14px; margin-bottom:12px; color:var(--text-main)">權益曲線</h3>
-                            <div class="chart-container">
-                                <canvas id="equity-chart"></canvas>
                             </div>
                         </div>
 
@@ -387,10 +394,10 @@
     <script>
     (function() {
         const API = '';
-        const SECTORS = ['semiconductor', 'electronics', 'finance', 'traditional'];
+        const SECTORS = ['semiconductor', 'electronics', 'finance', 'traditional', 'telecom'];
         const SECTOR_LABELS = {
             semiconductor: '半導體', electronics: '電子代工/零組件',
-            finance: '金融', traditional: '傳產/航運'
+            finance: '金融', traditional: '傳產/航運', telecom: '電信/其他'
         };
         const WEIGHT_NAMES = {
             rsi: 'RSI', macd: 'MACD', bollinger: 'BB',
@@ -405,7 +412,7 @@
         let currentSector = SECTORS[0];
         let sectorsData = {};
         let historyPage = 1;
-        let equityChart = null;
+        let sectorBarChart = null;
 
         // ── Init ──
         async function init() {
@@ -459,6 +466,7 @@
                 });
 
                 renderSector();
+                renderGlobalStats();
                 refreshAutoStatus();
                 refreshHistory();
                 refreshRegime();
@@ -691,6 +699,27 @@
             }
         }
 
+        // ── 五類彙總統計 ──
+        function renderGlobalStats() {
+            const all = Object.values(sectorsData);
+            if (!all.length) return;
+            const INITIAL_TOTAL = all.length * 1000000;
+            const totalPl = all.reduce((s, d) => s + (d.total_pl || 0), 0);
+            const totalRoi = INITIAL_TOTAL > 0 ? (totalPl / INITIAL_TOTAL * 100) : 0;
+            const roiStr = (totalRoi >= 0 ? '+' : '') + totalRoi.toFixed(2) + '%';
+            const plStr = (totalPl >= 0 ? '+' : '') + totalPl.toLocaleString(undefined, {maximumFractionDigits: 0});
+
+            const gPl = document.getElementById('g-pl');
+            gPl.textContent = plStr;
+            gPl.className = 'stat-value ' + (totalPl >= 0 ? 'positive' : 'negative');
+
+            const gRoi = document.getElementById('g-roi');
+            gRoi.textContent = roiStr;
+            gRoi.className = 'stat-value ' + (totalRoi >= 0 ? 'positive' : 'negative');
+
+            renderSectorBarChart();
+        }
+
         // ── Render ──
         function renderSector() {
             const d = sectorsData[currentSector];
@@ -783,8 +812,6 @@
                     ${d.stats.realized_profit >= 0 ? '+' : ''}${d.stats.realized_profit.toLocaleString()}</strong>
             `;
 
-            // Equity chart
-            renderEquityChart(d.equity_curve);
         }
 
         function renderHistory(data) {
@@ -823,83 +850,99 @@
             document.getElementById('page-info').textContent = `${historyPage} / ${Math.max(1, Math.ceil(data.total / 15))}`;
         }
 
-        function renderEquityChart(curve) {
-            const ctx = document.getElementById('equity-chart');
+        function renderSectorBarChart() {
+            const ctx = document.getElementById('sector-bar-chart');
             if (!ctx) return;
 
-            if (equityChart) equityChart.destroy();
+            const realizedProfit = [], unrealizedProfit = [];
+            const realizedLoss = [], unrealizedLoss = [];
 
-            if (!curve || curve.length === 0) {
-                equityChart = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: ['Start'],
-                        datasets: [{ data: [1000000], borderColor: '#a78bfa', fill: true, backgroundColor: 'rgba(167,139,250,0.08)', tension: 0.3 }]
-                    },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
-                });
+            SECTORS.forEach(id => {
+                const d = sectorsData[id];
+                const rp = d ? (d.stats.realized_profit || 0) : 0;
+                const up = d ? ((d.total_pl || 0) - rp) : 0;
+                realizedProfit.push(Math.max(0, rp));
+                unrealizedProfit.push(Math.max(0, up));
+                realizedLoss.push(Math.abs(Math.min(0, rp)));
+                unrealizedLoss.push(Math.abs(Math.min(0, up)));
+            });
+
+            if (sectorBarChart) {
+                sectorBarChart.data.datasets[0].data = realizedLoss;
+                sectorBarChart.data.datasets[1].data = unrealizedLoss;
+                sectorBarChart.data.datasets[2].data = realizedProfit;
+                sectorBarChart.data.datasets[3].data = unrealizedProfit;
+                sectorBarChart.update('none');
                 return;
             }
 
-            // 智慧 Y 軸格式化：根據數值範圍選擇精度
-            const equities = curve.map(c => c.equity);
-            const yMin = Math.min(...equities);
-            const yMax = Math.max(...equities);
-            const yRange = yMax - yMin;
-            const yPadding = Math.max(yRange * 0.1, 100); // 至少留 100 元 padding
-
-            function formatY(v) {
-                // 根據 Y 軸範圍決定精度：範圍小時顯示完整數字
-                if (yRange < 5000) return v.toLocaleString(undefined, {maximumFractionDigits: 0});
-                if (yRange < 50000) return (v / 1000).toFixed(1) + 'K';
-                if (Math.abs(v) >= 1_000_000) return (v / 1_000_000).toFixed(2) + 'M';
-                if (Math.abs(v) >= 10_000) return (v / 1000).toFixed(0) + 'K';
-                return v.toLocaleString();
-            }
-
-            // X 軸標籤：只顯示日期部分，間隔顯示避免擁擠
-            const labels = curve.map(c => {
-                const parts = c.time.split(' ');
-                return parts[0]; // 只取日期 yyyy-mm-dd
-            });
-
-            equityChart = new Chart(ctx, {
-                type: 'line',
+            sectorBarChart = new Chart(ctx, {
+                type: 'bar',
                 data: {
-                    labels: labels,
-                    datasets: [{
-                        data: equities,
-                        borderColor: '#a78bfa',
-                        borderWidth: 2,
-                        fill: true,
-                        backgroundColor: 'rgba(167,139,250,0.08)',
-                        tension: 0.3,
-                        pointRadius: 0,
-                    }]
+                    labels: SECTORS.map(id => SECTOR_LABELS[id]),
+                    datasets: [
+                        {
+                            label: '已實現虧損',
+                            data: realizedLoss,
+                            backgroundColor: 'rgba(239,68,68,0.85)',
+                            borderColor: '#dc2626',
+                            borderWidth: 1,
+                            borderRadius: { topLeft: 0, topRight: 0, bottomLeft: 4, bottomRight: 4 },
+                            stack: 'loss',
+                        },
+                        {
+                            label: '未實現虧損',
+                            data: unrealizedLoss,
+                            backgroundColor: 'rgba(239,68,68,0.35)',
+                            borderColor: '#dc2626',
+                            borderWidth: 1,
+                            borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 },
+                            stack: 'loss',
+                        },
+                        {
+                            label: '已實現獲利',
+                            data: realizedProfit,
+                            backgroundColor: 'rgba(52,211,153,0.85)',
+                            borderColor: '#10b981',
+                            borderWidth: 1,
+                            borderRadius: { topLeft: 0, topRight: 0, bottomLeft: 4, bottomRight: 4 },
+                            stack: 'profit',
+                        },
+                        {
+                            label: '未實現獲利',
+                            data: unrealizedProfit,
+                            backgroundColor: 'rgba(52,211,153,0.35)',
+                            borderColor: '#10b981',
+                            borderWidth: 1,
+                            borderRadius: { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 },
+                            stack: 'profit',
+                        },
+                    ]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'bottom',
+                            labels: { font: { size: 10 }, color: '#94a3b8', boxWidth: 12, padding: 8 }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: item => ' ' + item.dataset.label + ': ' + Math.round(item.raw).toLocaleString() + ' 元'
+                            }
+                        }
+                    },
                     scales: {
                         x: {
-                            display: true,
-                            ticks: {
-                                maxTicksLimit: 6,
-                                maxRotation: 0,
-                                font: { size: 9 },
-                                color: '#94a3b8',
-                            },
+                            ticks: { font: { size: 11 }, color: '#94a3b8' },
                             grid: { display: false },
                         },
                         y: {
-                            min: Math.floor((yMin - yPadding) / 100) * 100,
-                            max: Math.ceil((yMax + yPadding) / 100) * 100,
                             ticks: {
-                                callback: formatY,
-                                maxTicksLimit: 6,
-                                font: { size: 10 },
-                                color: '#94a3b8',
+                                font: { size: 10 }, color: '#94a3b8',
+                                callback: v => Math.abs(v) >= 1000 ? (v/1000).toFixed(0)+'K' : v
                             },
                             grid: { color: 'rgba(167,139,250,0.06)' }
                         }

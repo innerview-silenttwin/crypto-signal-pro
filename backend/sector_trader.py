@@ -37,6 +37,7 @@ DEFAULT_STRATEGIES = {
         "sell_threshold": 40,
         "stop_loss_pct": 8.0,
         "take_profit_pct": 20.0,
+        "buy_ratio": 0.10,
         "description": "EMA+ADX 趨勢為核心，MACD 動能輔助（歸因+12.2%勝率），VR/PS 抓拉回反轉，適合半導體成長股",
     },
     "電子代工/零組件": {
@@ -51,6 +52,7 @@ DEFAULT_STRATEGIES = {
         "sell_threshold": 30,
         "stop_loss_pct": 10.0,
         "take_profit_pct": 25.0,
+        "buy_ratio": 0.08,
         "description": "寬鬆門檻捕捉更多機會，PS 拉回均線支撐（歸因+4.8%勝率）為電子股波動特性加分",
     },
     "金融": {
@@ -65,6 +67,7 @@ DEFAULT_STRATEGIES = {
         "sell_threshold": 40,
         "stop_loss_pct": 8.0,
         "take_profit_pct": 20.0,
+        "buy_ratio": 0.10,
         "description": "VR 爆量反轉（歸因+15.4%勝率）+ PS 拉回支撐（+14.9%）為金融股主要信號，MACD/EMA 趨勢過濾",
     },
     "傳產/航運": {
@@ -79,6 +82,7 @@ DEFAULT_STRATEGIES = {
         "sell_threshold": 30,
         "stop_loss_pct": 10.0,
         "take_profit_pct": 25.0,
+        "buy_ratio": 0.10,
         "description": "成交量爆發（歸因+26.6%勝率）+ EMA 趨勢主導，PS 大幅降權（回測-10.4%勝率），Regime Layer 停用",
         "layers": {
             "regime": {"enabled": False},
@@ -87,6 +91,22 @@ DEFAULT_STRATEGIES = {
             "chipflow": {"enabled": True},
         },
     },
+    "電信/其他": {
+        "name": "穩健動能 (MACD+EMA+RSI)",
+        "param_preset": "標準",
+        "weights": {
+            'macd': 28.0, 'ema_cross': 28.0, 'rsi': 22.0,
+            'pullback_support': 15.0, 'volume_reversal': 8.0,
+            'stoch_rsi': 8.0, 'volume': 8.0,
+            'adx': 8.0, 'bollinger': 2.0, 'mfi': 2.0,
+        },
+        "buy_threshold": 40,
+        "sell_threshold": 40,
+        "stop_loss_pct": 8.0,
+        "take_profit_pct": 18.0,
+        "buy_ratio": 0.12,
+        "description": "電信/公用/零售穩健股，MACD+EMA 趨勢為主，RSI 動能過濾，低波動標的適合較保守停利",
+    },
 }
 
 # ── 類股標的 ──
@@ -94,19 +114,37 @@ DEFAULT_STRATEGIES = {
 SECTOR_STOCKS = {
     "半導體": {
         "2330.TW": "台積電", "2454.TW": "聯發科", "2303.TW": "聯電",
-        "3711.TW": "日月光投控", "2379.TW": "瑞昱",
+        "3711.TW": "日月光投控", "2379.TW": "瑞昱", "3034.TW": "聯詠",
+        "6415.TW": "矽力-KY", "2344.TW": "華邦電", "3529.TW": "力旺",
+        "5274.TW": "信驊", "2408.TW": "南亞科", "6770.TW": "力積電",
     },
     "電子代工/零組件": {
         "2317.TW": "鴻海", "2382.TW": "廣達", "2308.TW": "台達電",
-        "2357.TW": "華碩", "3008.TW": "大立光",
+        "2357.TW": "華碩", "3008.TW": "大立光", "2345.TW": "智邦",
+        "3231.TW": "緯創", "2356.TW": "英業達", "4938.TW": "和碩",
+        "3443.TW": "創意", "2395.TW": "研華", "6669.TW": "緯穎",
+        "3037.TW": "欣興", "2327.TW": "國巨", "3661.TW": "世芯-KY",
+        "2376.TW": "技嘉", "3017.TW": "奇鋐", "2353.TW": "宏碁",
+        "6488.TW": "環球晶", "3653.TW": "健策",
     },
     "金融": {
         "2881.TW": "富邦金", "2882.TW": "國泰金", "2891.TW": "中信金",
-        "2886.TW": "兆豐金", "2884.TW": "玉山金",
+        "2886.TW": "兆豐金", "2884.TW": "玉山金", "2880.TW": "華南金",
+        "2887.TW": "台新金", "2890.TW": "永豐金", "2883.TW": "開發金",
+        "2892.TW": "第一金", "5880.TW": "合庫金", "2885.TW": "元大金",
     },
     "傳產/航運": {
         "1301.TW": "台塑", "2002.TW": "中鋼", "1216.TW": "統一",
-        "2603.TW": "長榮", "2412.TW": "中華電",
+        "2603.TW": "長榮", "2609.TW": "陽明", "2615.TW": "萬海",
+        "1303.TW": "南亞", "1326.TW": "台化", "1101.TW": "台泥",
+        "2207.TW": "和泰車", "9910.TW": "豐泰", "6505.TW": "台塑化",
+        "2618.TW": "長榮航",
+    },
+    "電信/其他": {
+        "2412.TW": "中華電", "3045.TW": "台灣大", "4904.TW": "遠傳",
+        "2912.TW": "統一超", "1590.TW": "亞德客-KY", "2301.TW": "光寶科",
+        "2474.TW": "可成", "2049.TW": "上銀", "1513.TW": "中興電",
+        "8046.TW": "南電",
     },
 }
 
@@ -115,6 +153,7 @@ SECTOR_IDS = {
     "電子代工/零組件": "electronics",
     "金融": "finance",
     "傳產/航運": "traditional",
+    "電信/其他": "telecom",
 }
 
 SECTOR_ID_TO_NAME = {v: k for k, v in SECTOR_IDS.items()}
@@ -132,7 +171,7 @@ class SectorTradingManager:
         self.initial_state = {
             "sector_name": sector_name,
             "sector_id": self.sector_id,
-            "is_active": False,
+            "is_active": True,
             "balance": 1_000_000.0,
             "initial_balance": 1_000_000.0,
             "holdings": {},
