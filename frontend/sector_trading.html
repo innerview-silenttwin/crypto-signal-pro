@@ -348,7 +348,7 @@
                     <div class="sector-side">
                         <!-- 策略設定 -->
                         <div class="strategy-card card glass-panel">
-                            <h4>交易策略 <span class="info-tooltip" data-tip="每個類股有各自的策略權重，由回測結果決定最佳組合。7 項技術指標（RSI、MACD、布林、MFI、EMA交叉、成交量、ADX）各有權重，加總＝100 分。買入門檻：技術信號分數須達此分數才觸發買入。賣出門檻：技術信號分數達此分數觸發賣出。停損/停利：持倉損益達設定百分比時自動平倉。"><i>i</i></span></h4>
+                            <h4>交易策略 <span class="info-tooltip" data-tip="每個類股有各自的策略權重，由回測結果決定最佳組合。10 項技術指標（EMA交叉、ADX、MACD、RSI、成交量、VolumeReversal、PullbackSupport、StochRSI、布林、MFI）各有權重，加總＝100 分。買入門檻：技術信號分數須達此分數才觸發買入。賣出門檻：技術信號分數達此分數觸發賣出。停損/停利：持倉損益達設定百分比時自動平倉。"><i>i</i></span></h4>
                             <div class="strategy-detail" id="strategy-info">--</div>
                             <div class="weight-bar" id="weight-bar"></div>
                         </div>
@@ -394,10 +394,12 @@
         };
         const WEIGHT_NAMES = {
             rsi: 'RSI', macd: 'MACD', bollinger: 'BB',
-            mfi: 'MFI', ema_cross: 'EMA', volume: 'Vol', adx: 'ADX'
+            mfi: 'MFI', ema_cross: 'EMA', volume: 'Vol', adx: 'ADX',
+            stoch_rsi: 'StochRSI', volume_reversal: 'VR', pullback_support: 'PS'
         };
         const WEIGHT_COLORS = [
-            '#a78bfa','#34d399','#f59e0b','#60a5fa','#f472b6','#fb923c','#38bdf8'
+            '#a78bfa','#34d399','#f59e0b','#60a5fa','#f472b6','#fb923c','#38bdf8',
+            '#e879f9','#4ade80','#fbbf24'
         ];
 
         let currentSector = SECTORS[0];

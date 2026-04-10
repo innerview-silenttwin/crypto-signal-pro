@@ -22,58 +22,64 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 # ── 預設策略（來自回測最佳結果）──
 
+# 權重依據：chipflow_backtest_20260410 指標歸因分析（2019-2026 七年回測）
+# 縮寫：VR=volume_reversal, PS=pullback_support
 DEFAULT_STRATEGIES = {
     "半導體": {
         "name": "趨勢追蹤 (EMA+ADX)",
         "param_preset": "標準",
         "weights": {
-            'rsi': 10.0, 'macd': 15.0, 'bollinger': 5.0,
-            'mfi': 5.0, 'ema_cross': 30.0, 'volume': 10.0, 'adx': 25.0,
+            'ema_cross': 30.0, 'adx': 28.0, 'macd': 18.0, 'volume_reversal': 12.0,
+            'rsi': 10.0, 'volume': 10.0, 'pullback_support': 10.0,
+            'stoch_rsi': 6.0, 'bollinger': 2.0, 'mfi': 2.0,
         },
         "buy_threshold": 40,
         "sell_threshold": 40,
         "stop_loss_pct": 8.0,
         "take_profit_pct": 20.0,
-        "description": "以 EMA 交叉 + ADX 趨勢強度為核心，適合半導體成長股趨勢明確的特性",
+        "description": "EMA+ADX 趨勢為核心，MACD 動能輔助（歸因+12.2%勝率），VR/PS 抓拉回反轉，適合半導體成長股",
     },
     "電子代工/零組件": {
         "name": "趨勢追蹤 (EMA+ADX)",
         "param_preset": "寬鬆",
         "weights": {
-            'rsi': 10.0, 'macd': 15.0, 'bollinger': 5.0,
-            'mfi': 5.0, 'ema_cross': 30.0, 'volume': 10.0, 'adx': 25.0,
+            'ema_cross': 30.0, 'adx': 27.0, 'pullback_support': 14.0, 'volume_reversal': 12.0,
+            'macd': 15.0, 'rsi': 10.0, 'volume': 10.0,
+            'stoch_rsi': 6.0, 'bollinger': 2.0, 'mfi': 2.0,
         },
         "buy_threshold": 30,
         "sell_threshold": 30,
         "stop_loss_pct": 10.0,
         "take_profit_pct": 25.0,
-        "description": "寬鬆門檻捕捉更多交易機會，適合電子股波動較大的特性",
+        "description": "寬鬆門檻捕捉更多機會，PS 拉回均線支撐（歸因+4.8%勝率）為電子股波動特性加分",
     },
     "金融": {
-        "name": "動能+趨勢 (RSI+MACD+EMA)",
+        "name": "動能+反轉 (MACD+EMA+VR+PS)",
         "param_preset": "標準",
         "weights": {
-            'rsi': 20.0, 'macd': 25.0, 'bollinger': 5.0,
-            'mfi': 5.0, 'ema_cross': 25.0, 'volume': 10.0, 'adx': 10.0,
+            'macd': 25.0, 'ema_cross': 25.0, 'rsi': 20.0, 'pullback_support': 17.0,
+            'volume_reversal': 12.0, 'stoch_rsi': 10.0, 'volume': 10.0,
+            'adx': 10.0, 'bollinger': 2.0, 'mfi': 2.0,
         },
         "buy_threshold": 40,
         "sell_threshold": 40,
         "stop_loss_pct": 8.0,
         "take_profit_pct": 20.0,
-        "description": "RSI+MACD 動能搭配 EMA 趨勢，高勝率適合金融股穩健波動",
+        "description": "VR 爆量反轉（歸因+15.4%勝率）+ PS 拉回支撐（+14.9%）為金融股主要信號，MACD/EMA 趨勢過濾",
     },
     "傳產/航運": {
-        "name": "趨勢追蹤 (EMA+ADX)",
+        "name": "趨勢追蹤 (EMA+ADX+Vol)",
         "param_preset": "寬鬆",
         "weights": {
-            'rsi': 10.0, 'macd': 15.0, 'bollinger': 5.0,
-            'mfi': 5.0, 'ema_cross': 30.0, 'volume': 10.0, 'adx': 25.0,
+            'ema_cross': 38.0, 'adx': 25.0, 'volume': 19.0, 'macd': 17.0,
+            'rsi': 10.0, 'volume_reversal': 10.0, 'stoch_rsi': 6.0,
+            'pullback_support': 3.0, 'bollinger': 2.0, 'mfi': 2.0,
         },
         "buy_threshold": 30,
         "sell_threshold": 30,
         "stop_loss_pct": 10.0,
         "take_profit_pct": 25.0,
-        "description": "寬鬆趨勢追蹤，抓住航運等週期股的大波段行情。Regime Layer 停用（回測顯示景氣循環股加盤勢層反而有害）",
+        "description": "成交量爆發（歸因+26.6%勝率）+ EMA 趨勢主導，PS 大幅降權（回測-10.4%勝率），Regime Layer 停用",
         "layers": {
             "regime": {"enabled": False},
             "fundamental": {"enabled": True},
