@@ -1,155 +1,87 @@
 {
   "results": [
     {
-      "symbol": "3045.TW",
-      "name": "台灣大",
-      "composite": 61.7,
+      "symbol": "2379.TW",
+      "name": "瑞昱",
+      "composite": 84.0,
       "scores": {
-        "fundamental": 80,
-        "chipflow": 76,
-        "technical": 23.0,
-        "regime": 60,
+        "fundamental": 83.8,
+        "chipflow": 86.5,
+        "technical": 86.5,
+        "regime": 75.7,
         "sentiment": null
       },
-      "highlights": [
-        "外資連買9天",
-        "投信連買4天",
-        "產業低本益比(擊敗64.3%同業)"
-      ]
-    },
-    {
-      "symbol": "2881.TW",
-      "name": "富邦金",
-      "composite": 61.2,
-      "scores": {
-        "fundamental": 90,
-        "chipflow": 49,
-        "technical": 10.0,
-        "regime": 70,
-        "sentiment": null
+      "raw_scores": {
+        "technical": 46.8,
+        "fundamental": 93,
+        "chipflow": 68,
+        "regime": 75
       },
       "highlights": [
         "投信連買6天",
-        "產業低本益比(擊敗71.9%同業)",
-        "盤勢底部轉強"
+        "產業低本益比(擊敗81.6%同業)"
       ]
     },
     {
-      "symbol": "2618.TW",
-      "name": "長榮航",
-      "composite": 61.1,
+      "symbol": "2382.TW",
+      "name": "廣達",
+      "composite": 79.3,
       "scores": {
-        "fundamental": 100,
-        "chipflow": 68,
-        "technical": 8.5,
-        "regime": 50,
+        "fundamental": 86.5,
+        "chipflow": 93.2,
+        "technical": 58.1,
+        "regime": 75.7,
         "sentiment": null
       },
-      "highlights": [
-        "投信連買5天",
-        "產業低本益比(擊敗91.7%同業)"
-      ]
-    },
-    {
-      "symbol": "2379.TW",
-      "name": "瑞昱",
-      "composite": 57.7,
-      "scores": {
-        "fundamental": 100,
-        "chipflow": 68,
-        "technical": 23.3,
-        "regime": 50,
-        "sentiment": null
-      },
-      "highlights": [
-        "投信連買5天",
-        "產業低本益比(擊敗80.3%同業)"
-      ]
-    },
-    {
-      "symbol": "4743.TW",
-      "name": "合一",
-      "composite": 56.4,
-      "scores": {
-        "fundamental": 50,
-        "chipflow": 67,
-        "technical": 50,
-        "regime": 50,
-        "sentiment": null
-      },
-      "highlights": [
-        "外資連買5天"
-      ]
-    },
-    {
-      "symbol": "2891.TW",
-      "name": "中信金",
-      "composite": 55.8,
-      "scores": {
-        "fundamental": 65,
-        "chipflow": 68,
-        "technical": 16.5,
-        "regime": 75,
-        "sentiment": null
-      },
-      "highlights": [
-        "投信連買8天"
-      ]
-    },
-    {
-      "symbol": "2883.TW",
-      "name": "開發金",
-      "composite": 55.6,
-      "scores": {
-        "fundamental": 90,
-        "chipflow": 44,
-        "technical": 2.5,
-        "regime": 50,
-        "sentiment": null
-      },
-      "highlights": [
-        "產業低本益比(擊敗65.6%同業)"
-      ]
-    },
-    {
-      "symbol": "1216.TW",
-      "name": "統一",
-      "composite": 54.9,
-      "scores": {
-        "fundamental": 65,
-        "chipflow": 53,
-        "technical": 46.0,
-        "regime": 50,
-        "sentiment": null
-      },
-      "highlights": []
-    },
-    {
-      "symbol": "4938.TW",
-      "name": "和碩",
-      "composite": 54.7,
-      "scores": {
-        "fundamental": 85,
-        "chipflow": 55,
-        "technical": 57.5,
-        "regime": 25,
-        "sentiment": null
+      "raw_scores": {
+        "technical": 25.7,
+        "fundamental": 98,
+        "chipflow": 73,
+        "regime": 75
       },
       "highlights": [
         "外資連買3天",
-        "產業低本益比(擊敗67.3%同業)"
+        "投信連買6天"
+      ]
+    },
+    {
+      "symbol": "2885.TW",
+      "name": "元大金",
+      "composite": 78.1,
+      "scores": {
+        "fundamental": 89.2,
+        "chipflow": 93.2,
+        "technical": 47.3,
+        "regime": 75.7,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 20.7,
+        "fundamental": 100,
+        "chipflow": 73,
+        "regime": 75
+      },
+      "highlights": [
+        "外資連買3天",
+        "投信連買6天"
       ]
     },
     {
       "symbol": "8046.TW",
       "name": "南電",
-      "composite": 54.7,
+      "composite": 75.4,
       "scores": {
-        "fundamental": 20,
-        "chipflow": 64,
-        "technical": 37.0,
-        "regime": 90,
+        "fundamental": 4.1,
+        "chipflow": 86.5,
+        "technical": 87.8,
+        "regime": 95.9,
         "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 47.5,
+        "fundamental": 20,
+        "chipflow": 68,
+        "regime": 90
       },
       "highlights": [
         "投信連買9天",
@@ -157,587 +89,971 @@
       ]
     },
     {
-      "symbol": "2882.TW",
-      "name": "國泰金",
-      "composite": 54.3,
+      "symbol": "3045.TW",
+      "name": "台灣大",
+      "composite": 71.2,
       "scores": {
-        "fundamental": 80,
-        "chipflow": 52,
-        "technical": 10.0,
-        "regime": 50,
+        "fundamental": 68.9,
+        "chipflow": 97.3,
+        "technical": 45.9,
+        "regime": 55.4,
         "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 19.6,
+        "fundamental": 77,
+        "chipflow": 78,
+        "regime": 60
+      },
+      "highlights": [
+        "外資連買9天",
+        "投信連買7天",
+        "產業低本益比(擊敗64.3%同業)"
+      ]
+    },
+    {
+      "symbol": "2376.TW",
+      "name": "技嘉",
+      "composite": 70.9,
+      "scores": {
+        "fundamental": 86.5,
+        "chipflow": 86.5,
+        "technical": 83.8,
+        "regime": 9.5,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 43.5,
+        "fundamental": 98,
+        "chipflow": 68,
+        "regime": 50
       },
       "highlights": [
         "投信連買8天",
-        "產業低本益比(擊敗75.0%同業)"
+        "產業低本益比(擊敗76.9%同業)"
       ]
     },
     {
-      "symbol": "2615.TW",
-      "name": "萬海",
-      "composite": 53.5,
+      "symbol": "2883.TW",
+      "name": "開發金",
+      "composite": 70.7,
       "scores": {
-        "fundamental": 95,
-        "chipflow": 50,
-        "technical": 8.5,
-        "regime": 50,
+        "fundamental": 82.4,
+        "chipflow": 71.6,
+        "technical": 44.6,
+        "regime": 75.7,
         "sentiment": null
       },
-      "highlights": [
-        "產業低本益比(擊敗95.8%同業)"
-      ]
-    },
-    {
-      "symbol": "2912.TW",
-      "name": "統一超",
-      "composite": 53.1,
-      "scores": {
-        "fundamental": 65,
-        "chipflow": 58,
-        "technical": 31.5,
-        "regime": 60,
-        "sentiment": null
+      "raw_scores": {
+        "technical": 19.5,
+        "fundamental": 89,
+        "chipflow": 59,
+        "regime": 75
       },
       "highlights": [
-        "外資連買3天"
+        "外資連買5天"
       ]
     },
     {
       "symbol": "3034.TW",
       "name": "聯詠",
-      "composite": 52.5,
+      "composite": 69.6,
       "scores": {
-        "fundamental": 90,
-        "chipflow": 59,
-        "technical": 22.8,
-        "regime": 50,
+        "fundamental": 78.4,
+        "chipflow": 62.2,
+        "technical": 70.3,
+        "regime": 75.7,
         "sentiment": null
       },
+      "raw_scores": {
+        "technical": 34.6,
+        "fundamental": 86,
+        "chipflow": 58,
+        "regime": 75
+      },
       "highlights": [
-        "投信連買4天",
+        "外資連買3天",
         "產業低本益比(擊敗89.5%同業)"
       ]
     },
     {
-      "symbol": "5274.TW",
-      "name": "信驊",
-      "composite": 49.6,
+      "symbol": "2887.TW",
+      "name": "台新金",
+      "composite": 69.0,
       "scores": {
-        "fundamental": 50,
-        "chipflow": 49,
-        "technical": 50,
-        "regime": 50,
+        "fundamental": 89.2,
+        "chipflow": 60.8,
+        "technical": 32.4,
+        "regime": 75.7,
         "sentiment": null
       },
-      "highlights": [
-        "投信連買9天"
-      ]
-    },
-    {
-      "symbol": "3529.TW",
-      "name": "力旺",
-      "composite": 49.6,
-      "scores": {
-        "fundamental": 50,
-        "chipflow": 49,
-        "technical": 50,
-        "regime": 50,
-        "sentiment": null
-      },
-      "highlights": []
-    },
-    {
-      "symbol": "2376.TW",
-      "name": "技嘉",
-      "composite": 49.4,
-      "scores": {
+      "raw_scores": {
+        "technical": 13.8,
         "fundamental": 100,
-        "chipflow": 61,
-        "technical": 2.5,
-        "regime": 50,
-        "sentiment": null
-      },
-      "highlights": [
-        "投信連買5天",
-        "產業低本益比(擊敗82.7%同業)"
-      ]
-    },
-    {
-      "symbol": "2609.TW",
-      "name": "陽明",
-      "composite": 49.4,
-      "scores": {
-        "fundamental": 80,
-        "chipflow": 49,
-        "technical": 12.9,
-        "regime": 50,
-        "sentiment": null
-      },
-      "highlights": [
-        "投信連買4天",
-        "產業低本益比(擊敗62.5%同業)"
-      ]
-    },
-    {
-      "symbol": "6488.TW",
-      "name": "環球晶",
-      "composite": 48.9,
-      "scores": {
-        "fundamental": 50,
-        "chipflow": 47,
-        "technical": 50,
-        "regime": 50,
-        "sentiment": null
-      },
-      "highlights": []
-    },
-    {
-      "symbol": "2382.TW",
-      "name": "廣達",
-      "composite": 48.0,
-      "scores": {
-        "fundamental": 95,
-        "chipflow": 61,
-        "technical": 0.0,
-        "regime": 50,
-        "sentiment": null
-      },
-      "highlights": [
-        "投信連買5天",
-        "產業低本益比(擊敗65.4%同業)"
-      ]
-    },
-    {
-      "symbol": "3711.TW",
-      "name": "日月光投控",
-      "composite": 47.5,
-      "scores": {
-        "fundamental": 60,
-        "chipflow": 54,
-        "technical": 11.2,
-        "regime": 75,
-        "sentiment": null
-      },
-      "highlights": []
-    },
-    {
-      "symbol": "1760.TW",
-      "name": "寶齡富錦",
-      "composite": 47.1,
-      "scores": {
-        "fundamental": 35,
         "chipflow": 57,
-        "technical": 41.4,
-        "regime": 50,
-        "sentiment": null
-      },
-      "highlights": []
-    },
-    {
-      "symbol": "6415.TW",
-      "name": "矽力-KY",
-      "composite": 46.7,
-      "scores": {
-        "fundamental": 35,
-        "chipflow": 49,
-        "technical": 30.3,
-        "regime": 75,
-        "sentiment": null
-      },
-      "highlights": []
-    },
-    {
-      "symbol": "2884.TW",
-      "name": "玉山金",
-      "composite": 46.6,
-      "scores": {
-        "fundamental": 65,
-        "chipflow": 46,
-        "technical": 10.0,
-        "regime": 50,
-        "sentiment": null
-      },
-      "highlights": []
-    },
-    {
-      "symbol": "2892.TW",
-      "name": "第一金",
-      "composite": 46.4,
-      "scores": {
-        "fundamental": 65,
-        "chipflow": 58,
-        "technical": 0.0,
-        "regime": 50,
-        "sentiment": null
-      },
-      "highlights": [
-        "外資連買4天"
-      ]
-    },
-    {
-      "symbol": "2357.TW",
-      "name": "華碩",
-      "composite": 46.1,
-      "scores": {
-        "fundamental": 100,
-        "chipflow": 49,
-        "technical": 6.9,
-        "regime": 50,
-        "sentiment": null
-      },
-      "highlights": [
-        "投信連買5天",
-        "產業低本益比(擊敗98.1%同業)"
-      ]
-    },
-    {
-      "symbol": "2603.TW",
-      "name": "長榮",
-      "composite": 46.1,
-      "scores": {
-        "fundamental": 90,
-        "chipflow": 40,
-        "technical": 0.0,
-        "regime": 50,
-        "sentiment": null
-      },
-      "highlights": [
-        "產業低本益比(擊敗100.0%同業)"
-      ]
-    },
-    {
-      "symbol": "1326.TW",
-      "name": "台化",
-      "composite": 44.8,
-      "scores": {
-        "fundamental": 50,
-        "chipflow": 55,
-        "technical": 25.2,
-        "regime": 50,
-        "sentiment": null
-      },
-      "highlights": []
-    },
-    {
-      "symbol": "2885.TW",
-      "name": "元大金",
-      "composite": 44.7,
-      "scores": {
-        "fundamental": 45,
-        "chipflow": 55,
-        "technical": 16.9,
-        "regime": 75,
-        "sentiment": null
-      },
-      "highlights": [
-        "投信連買5天"
-      ]
-    },
-    {
-      "symbol": "2412.TW",
-      "name": "中華電",
-      "composite": 44.7,
-      "scores": {
-        "fundamental": 65,
-        "chipflow": 54,
-        "technical": 0.0,
-        "regime": 50,
-        "sentiment": 65.0
-      },
-      "highlights": []
-    },
-    {
-      "symbol": "1301.TW",
-      "name": "台塑",
-      "composite": 44.3,
-      "scores": {
-        "fundamental": 50,
-        "chipflow": 58,
-        "technical": 20.0,
-        "regime": 50,
-        "sentiment": null
+        "regime": 75
       },
       "highlights": []
     },
     {
       "symbol": "4904.TW",
       "name": "遠傳",
-      "composite": 43.9,
+      "composite": 68.7,
       "scores": {
+        "fundamental": 47.3,
+        "chipflow": 93.2,
+        "technical": 67.6,
+        "regime": 55.4,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 31.8,
         "fundamental": 65,
-        "chipflow": 56,
-        "technical": 2.9,
-        "regime": 50,
-        "sentiment": null
+        "chipflow": 73,
+        "regime": 60
       },
       "highlights": [
-        "投信連買4天"
+        "外資連買3天",
+        "投信連買7天"
       ]
     },
     {
-      "symbol": "6669.TW",
-      "name": "緯穎",
-      "composite": 43.8,
+      "symbol": "1301.TW",
+      "name": "台塑",
+      "composite": 66.0,
       "scores": {
-        "fundamental": 100,
-        "chipflow": 40,
-        "technical": 11.1,
-        "regime": 50,
+        "fundamental": 21.6,
+        "chipflow": 85.1,
+        "technical": 98.6,
+        "regime": 55.4,
         "sentiment": null
       },
-      "highlights": [
-        "產業低本益比(擊敗84.6%同業)"
-      ]
-    },
-    {
-      "symbol": "2002.TW",
-      "name": "中鋼",
-      "composite": 43.4,
-      "scores": {
+      "raw_scores": {
+        "technical": 70.8,
         "fundamental": 50,
         "chipflow": 67,
-        "technical": 6.0,
-        "regime": 50,
+        "regime": 60
+      },
+      "highlights": [
+        "外資連買5天"
+      ]
+    },
+    {
+      "symbol": "2308.TW",
+      "name": "台達電",
+      "composite": 62.5,
+      "scores": {
+        "fundamental": 17.6,
+        "chipflow": 54.1,
+        "technical": 77.0,
+        "regime": 95.9,
         "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 36.9,
+        "fundamental": 42,
+        "chipflow": 55,
+        "regime": 90
+      },
+      "highlights": [
+        "外資連買3天",
+        "盤勢強勢多頭"
+      ]
+    },
+    {
+      "symbol": "2912.TW",
+      "name": "統一超",
+      "composite": 62.1,
+      "scores": {
+        "fundamental": 47.3,
+        "chipflow": 62.2,
+        "technical": 81.1,
+        "regime": 55.4,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 40.7,
+        "fundamental": 65,
+        "chipflow": 58,
+        "regime": 60
+      },
+      "highlights": []
+    },
+    {
+      "symbol": "4938.TW",
+      "name": "和碩",
+      "composite": 61.4,
+      "scores": {
+        "fundamental": 67.6,
+        "chipflow": 43.2,
+        "technical": 73.0,
+        "regime": 75.7,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 35.5,
+        "fundamental": 76,
+        "chipflow": 53,
+        "regime": 75
+      },
+      "highlights": [
+        "產業低本益比(擊敗73.1%同業)"
+      ]
+    },
+    {
+      "symbol": "1326.TW",
+      "name": "台化",
+      "composite": 60.0,
+      "scores": {
+        "fundamental": 21.6,
+        "chipflow": 91.9,
+        "technical": 68.9,
+        "regime": 55.4,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 34.0,
+        "fundamental": 50,
+        "chipflow": 71,
+        "regime": 60
       },
       "highlights": [
         "外資連買3天"
       ]
     },
     {
-      "symbol": "2886.TW",
-      "name": "兆豐金",
-      "composite": 43.3,
+      "symbol": "2327.TW",
+      "name": "國巨",
+      "composite": 58.8,
       "scores": {
-        "fundamental": 35,
-        "chipflow": 76,
-        "technical": 17.0,
-        "regime": 70,
+        "fundamental": 39.2,
+        "chipflow": 54.1,
+        "technical": 64.9,
+        "regime": 75.7,
         "sentiment": null
       },
-      "highlights": [
-        "外資連買8天",
-        "投信連買4天",
-        "盤勢底部轉強"
-      ]
-    },
-    {
-      "symbol": "1513.TW",
-      "name": "中興電",
-      "composite": 43.3,
-      "scores": {
-        "fundamental": 80,
-        "chipflow": 44,
-        "technical": 4.0,
-        "regime": 15,
-        "sentiment": null
+      "raw_scores": {
+        "technical": 31.0,
+        "fundamental": 55,
+        "chipflow": 55,
+        "regime": 75
       },
       "highlights": [
-        "產業低本益比(擊敗75.7%同業)"
+        "外資連買3天",
+        "產業低本益比(擊敗62.2%同業)"
       ]
     },
     {
       "symbol": "3017.TW",
       "name": "奇鋐",
-      "composite": 42.7,
+      "composite": 58.6,
       "scores": {
-        "fundamental": 25,
-        "chipflow": 43,
-        "technical": 29.5,
-        "regime": 75,
+        "fundamental": 79.7,
+        "chipflow": 18.9,
+        "technical": 89.2,
+        "regime": 75.7,
         "sentiment": null
       },
-      "highlights": [
-        "投信連買3天"
-      ]
-    },
-    {
-      "symbol": "1590.TW",
-      "name": "亞德客-KY",
-      "composite": 42.3,
-      "scores": {
-        "fundamental": 55,
-        "chipflow": 44,
-        "technical": 23.5,
-        "regime": 50,
-        "sentiment": null
+      "raw_scores": {
+        "technical": 48.4,
+        "fundamental": 88,
+        "chipflow": 43,
+        "regime": 75
       },
       "highlights": []
     },
     {
-      "symbol": "2207.TW",
-      "name": "和泰車",
-      "composite": 41.5,
+      "symbol": "5880.TW",
+      "name": "合庫金",
+      "composite": 58.2,
       "scores": {
-        "fundamental": 80,
-        "chipflow": 40,
-        "technical": 2.5,
-        "regime": 15,
+        "fundamental": 66.2,
+        "chipflow": 62.2,
+        "technical": 71.6,
+        "regime": 9.5,
         "sentiment": null
       },
+      "raw_scores": {
+        "technical": 35.1,
+        "fundamental": 75,
+        "chipflow": 58,
+        "regime": 50
+      },
       "highlights": [
-        "產業低本益比(擊敗74.2%同業)"
+        "外資連買3天"
       ]
     },
     {
-      "symbol": "2303.TW",
-      "name": "聯電",
-      "composite": 41.4,
+      "symbol": "6488.TW",
+      "name": "環球晶",
+      "composite": 58.1,
       "scores": {
-        "fundamental": 100,
-        "chipflow": 39,
-        "technical": 5.0,
-        "regime": 50,
-        "sentiment": 35.0
+        "fundamental": 21.6,
+        "chipflow": 75.7,
+        "technical": 90.5,
+        "regime": 9.5,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 50,
+        "fundamental": 50,
+        "chipflow": 62,
+        "regime": 50
       },
       "highlights": [
-        "產業低本益比(擊敗81.6%同業)"
+        "外資連買4天"
+      ]
+    },
+    {
+      "symbol": "2356.TW",
+      "name": "英業達",
+      "composite": 56.9,
+      "scores": {
+        "fundamental": 44.6,
+        "chipflow": 86.5,
+        "technical": 56.8,
+        "regime": 9.5,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 25.2,
+        "fundamental": 60,
+        "chipflow": 68,
+        "regime": 50
+      },
+      "highlights": [
+        "投信連買5天"
+      ]
+    },
+    {
+      "symbol": "0050.TW",
+      "name": "元大台灣50",
+      "composite": 56.5,
+      "scores": {
+        "fundamental": 21.6,
+        "chipflow": 74.3,
+        "technical": 83.8,
+        "regime": 9.5,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 43.5,
+        "fundamental": 50,
+        "chipflow": 60,
+        "regime": 50
+      },
+      "highlights": []
+    },
+    {
+      "symbol": "00878.TW",
+      "name": "國泰永續高股息",
+      "composite": 55.9,
+      "scores": {
+        "fundamental": 21.6,
+        "chipflow": 75.7,
+        "technical": 79.7,
+        "regime": 9.5,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 40.1,
+        "fundamental": 50,
+        "chipflow": 62,
+        "regime": 50
+      },
+      "highlights": [
+        "外資連買3天"
       ]
     },
     {
       "symbol": "2345.TW",
       "name": "智邦",
-      "composite": 41.1,
+      "composite": 54.6,
       "scores": {
-        "fundamental": 40,
-        "chipflow": 45,
-        "technical": 12.0,
-        "regime": 75,
+        "fundamental": 89.2,
+        "chipflow": 12.2,
+        "technical": 63.5,
+        "regime": 95.9,
         "sentiment": null
       },
-      "highlights": [
-        "投信連買9天"
-      ]
-    },
-    {
-      "symbol": "2330.TW",
-      "name": "台積電",
-      "composite": 40.9,
-      "scores": {
-        "fundamental": 65,
-        "chipflow": 40,
-        "technical": 0.0,
-        "regime": 75,
-        "sentiment": 52.8
-      },
-      "highlights": []
-    },
-    {
-      "symbol": "3008.TW",
-      "name": "大立光",
-      "composite": 40.4,
-      "scores": {
-        "fundamental": 95,
-        "chipflow": 56,
-        "technical": 4.0,
-        "regime": 15,
-        "sentiment": null
-      },
-      "highlights": [
-        "投信連買3天",
-        "產業低本益比(擊敗80.0%同業)"
-      ]
-    },
-    {
-      "symbol": "2454.TW",
-      "name": "聯發科",
-      "composite": 40.3,
-      "scores": {
-        "fundamental": 80,
-        "chipflow": 37,
-        "technical": 14.0,
-        "regime": 50,
-        "sentiment": null
-      },
-      "highlights": [
-        "產業低本益比(擊敗67.1%同業)"
-      ]
-    },
-    {
-      "symbol": "2308.TW",
-      "name": "台達電",
-      "composite": 39.9,
-      "scores": {
-        "fundamental": 40,
-        "chipflow": 55,
-        "technical": 29.5,
-        "regime": 25,
-        "sentiment": null
-      },
-      "highlights": [
-        "投信連買8天"
-      ]
-    },
-    {
-      "symbol": "3037.TW",
-      "name": "欣興",
-      "composite": 39.3,
-      "scores": {
-        "fundamental": 20,
-        "chipflow": 41,
-        "technical": 12.0,
-        "regime": 90,
-        "sentiment": null
+      "raw_scores": {
+        "technical": 30.9,
+        "fundamental": 100,
+        "chipflow": 38,
+        "regime": 90
       },
       "highlights": [
         "盤勢強勢多頭"
       ]
     },
     {
+      "symbol": "1590.TW",
+      "name": "亞德客-KY",
+      "composite": 54.1,
+      "scores": {
+        "fundamental": 39.2,
+        "chipflow": 33.8,
+        "technical": 95.9,
+        "regime": 55.4,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 57.5,
+        "fundamental": 55,
+        "chipflow": 49,
+        "regime": 60
+      },
+      "highlights": [
+        "外資連買3天"
+      ]
+    },
+    {
+      "symbol": "2357.TW",
+      "name": "華碩",
+      "composite": 54.0,
+      "scores": {
+        "fundamental": 77.0,
+        "chipflow": 54.1,
+        "technical": 24.3,
+        "regime": 75.7,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 11.4,
+        "fundamental": 85,
+        "chipflow": 55,
+        "regime": 75
+      },
+      "highlights": [
+        "投信連買6天",
+        "產業低本益比(擊敗98.1%同業)"
+      ]
+    },
+    {
       "symbol": "3443.TW",
       "name": "創意",
-      "composite": 37.4,
+      "composite": 54.0,
       "scores": {
-        "fundamental": 25,
-        "chipflow": 63,
-        "technical": 0.0,
-        "regime": 50,
+        "fundamental": 16.2,
+        "chipflow": 75.7,
+        "technical": 78.4,
+        "regime": 9.5,
         "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 40.0,
+        "fundamental": 41,
+        "chipflow": 62,
+        "regime": 50
+      },
+      "highlights": []
+    },
+    {
+      "symbol": "2330.TW",
+      "name": "台積電",
+      "composite": 53.0,
+      "scores": {
+        "fundamental": 39.2,
+        "chipflow": 62.2,
+        "technical": 28.4,
+        "regime": 75.7,
+        "sentiment": 66.7
+      },
+      "raw_scores": {
+        "technical": 12.6,
+        "fundamental": 55,
+        "chipflow": 58,
+        "regime": 75,
+        "sentiment": 71.0
+      },
+      "highlights": [
+        "外資連買3天"
+      ]
+    },
+    {
+      "symbol": "3008.TW",
+      "name": "大立光",
+      "composite": 52.4,
+      "scores": {
+        "fundamental": 68.9,
+        "chipflow": 62.2,
+        "technical": 59.5,
+        "regime": 9.5,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 27.6,
+        "fundamental": 77,
+        "chipflow": 58,
+        "regime": 50
+      },
+      "highlights": [
+        "外資連買3天",
+        "產業低本益比(擊敗77.1%同業)"
+      ]
+    },
+    {
+      "symbol": "3231.TW",
+      "name": "緯創",
+      "composite": 52.1,
+      "scores": {
+        "fundamental": 89.2,
+        "chipflow": 43.2,
+        "technical": 31.1,
+        "regime": 67.6,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 13.7,
+        "fundamental": 100,
+        "chipflow": 53,
+        "regime": 70
+      },
+      "highlights": [
+        "產業低本益比(擊敗63.5%同業)",
+        "盤勢底部轉強"
+      ]
+    },
+    {
+      "symbol": "2881.TW",
+      "name": "富邦金",
+      "composite": 51.5,
+      "scores": {
+        "fundamental": 89.2,
+        "chipflow": 33.8,
+        "technical": 20.3,
+        "regime": 9.5,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 10.0,
+        "fundamental": 100,
+        "chipflow": 49,
+        "regime": 50
+      },
+      "highlights": [
+        "投信連買6天",
+        "產業低本益比(擊敗71.9%同業)"
+      ]
+    },
+    {
+      "symbol": "2303.TW",
+      "name": "聯電",
+      "composite": 50.0,
+      "scores": {
+        "fundamental": 73.0,
+        "chipflow": 71.6,
+        "technical": 35.1,
+        "regime": 9.5,
+        "sentiment": 50.0
+      },
+      "raw_scores": {
+        "technical": 14.4,
+        "fundamental": 82,
+        "chipflow": 59,
+        "regime": 50,
+        "sentiment": 65.0
+      },
+      "highlights": [
+        "投信連買4天",
+        "產業低本益比(擊敗78.9%同業)"
+      ]
+    },
+    {
+      "symbol": "3529.TW",
+      "name": "力旺",
+      "composite": 49.0,
+      "scores": {
+        "fundamental": 21.6,
+        "chipflow": 51.4,
+        "technical": 90.5,
+        "regime": 9.5,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 50,
+        "fundamental": 50,
+        "chipflow": 54,
+        "regime": 50
+      },
+      "highlights": [
+        "外資連買4天"
+      ]
+    },
+    {
+      "symbol": "2002.TW",
+      "name": "中鋼",
+      "composite": 48.7,
+      "scores": {
+        "fundamental": 21.6,
+        "chipflow": 83.8,
+        "technical": 37.8,
+        "regime": 55.4,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 14.8,
+        "fundamental": 50,
+        "chipflow": 66,
+        "regime": 60
+      },
+      "highlights": [
+        "外資連買6天"
+      ]
+    },
+    {
+      "symbol": "2882.TW",
+      "name": "國泰金",
+      "composite": 48.2,
+      "scores": {
+        "fundamental": 58.1,
+        "chipflow": 54.1,
+        "technical": 50.0,
+        "regime": 9.5,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 22.2,
+        "fundamental": 71,
+        "chipflow": 55,
+        "regime": 50
+      },
+      "highlights": [
+        "投信連買6天",
+        "產業低本益比(擊敗75.0%同業)"
+      ]
+    },
+    {
+      "symbol": "2892.TW",
+      "name": "第一金",
+      "composite": 48.1,
+      "scores": {
+        "fundamental": 47.3,
+        "chipflow": 75.7,
+        "technical": 54.1,
+        "regime": 9.5,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 24.7,
+        "fundamental": 65,
+        "chipflow": 62,
+        "regime": 50
+      },
+      "highlights": [
+        "外資連買7天"
+      ]
+    },
+    {
+      "symbol": "2886.TW",
+      "name": "兆豐金",
+      "composite": 47.6,
+      "scores": {
+        "fundamental": 13.5,
+        "chipflow": 97.3,
+        "technical": 62.2,
+        "regime": 67.6,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 28.8,
+        "fundamental": 37,
+        "chipflow": 78,
+        "regime": 70
+      },
+      "highlights": [
+        "外資連買6天",
+        "投信連買6天",
+        "盤勢底部轉強"
+      ]
+    },
+    {
+      "symbol": "2884.TW",
+      "name": "玉山金",
+      "composite": 47.5,
+      "scores": {
+        "fundamental": 47.3,
+        "chipflow": 43.2,
+        "technical": 75.7,
+        "regime": 9.5,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 36.5,
+        "fundamental": 65,
+        "chipflow": 53,
+        "regime": 50
+      },
+      "highlights": []
+    },
+    {
+      "symbol": "2207.TW",
+      "name": "和泰車",
+      "composite": 47.2,
+      "scores": {
+        "fundamental": 58.1,
+        "chipflow": 62.2,
+        "technical": 25.7,
+        "regime": 0.0,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 11.6,
+        "fundamental": 71,
+        "chipflow": 58,
+        "regime": 15
+      },
+      "highlights": [
+        "產業低本益比(擊敗74.2%同業)"
+      ]
+    },
+    {
+      "symbol": "2301.TW",
+      "name": "光寶科",
+      "composite": 47.1,
+      "scores": {
+        "fundamental": 43.2,
+        "chipflow": 62.2,
+        "technical": 55.4,
+        "regime": 9.5,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 25.1,
+        "fundamental": 58,
+        "chipflow": 58,
+        "regime": 50
+      },
+      "highlights": [
+        "外資連買3天"
+      ]
+    },
+    {
+      "symbol": "2615.TW",
+      "name": "萬海",
+      "composite": 46.6,
+      "scores": {
+        "fundamental": 83.8,
+        "chipflow": 43.2,
+        "technical": 13.5,
+        "regime": 9.5,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 7.1,
+        "fundamental": 93,
+        "chipflow": 53,
+        "regime": 50
+      },
+      "highlights": [
+        "產業低本益比(擊敗95.8%同業)"
+      ]
+    },
+    {
+      "symbol": "3653.TW",
+      "name": "健策",
+      "composite": 45.0,
+      "scores": {
+        "fundamental": 0.0,
+        "chipflow": 28.4,
+        "technical": 73.0,
+        "regime": 75.7,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 35.5,
+        "fundamental": 9,
+        "chipflow": 47,
+        "regime": 75
+      },
+      "highlights": []
+    },
+    {
+      "symbol": "5274.TW",
+      "name": "信驊",
+      "composite": 44.4,
+      "scores": {
+        "fundamental": 21.6,
+        "chipflow": 39.2,
+        "technical": 90.5,
+        "regime": 9.5,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 50,
+        "fundamental": 50,
+        "chipflow": 51,
+        "regime": 50
+      },
+      "highlights": [
+        "投信連買9天"
+      ]
+    },
+    {
+      "symbol": "6446.TW",
+      "name": "藥華藥",
+      "composite": 43.8,
+      "scores": {
+        "fundamental": 73.0,
+        "chipflow": 43.2,
+        "technical": 39.2,
+        "regime": 9.5,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 16.1,
+        "fundamental": 82,
+        "chipflow": 53,
+        "regime": 50
       },
       "highlights": [
         "投信連買3天"
       ]
     },
     {
-      "symbol": "2887.TW",
-      "name": "台新金",
-      "composite": 36.9,
+      "symbol": "2049.TW",
+      "name": "上銀",
+      "composite": 43.2,
       "scores": {
-        "fundamental": 45,
-        "chipflow": 51,
-        "technical": 2.5,
-        "regime": 50,
+        "fundamental": 10.8,
+        "chipflow": 75.7,
+        "technical": 40.5,
+        "regime": 55.4,
         "sentiment": null
       },
-      "highlights": []
-    },
-    {
-      "symbol": "2474.TW",
-      "name": "可成",
-      "composite": 36.9,
-      "scores": {
-        "fundamental": 75,
-        "chipflow": 36,
-        "technical": 6.0,
-        "regime": 50,
-        "sentiment": null
+      "raw_scores": {
+        "technical": 17.9,
+        "fundamental": 32,
+        "chipflow": 62,
+        "regime": 60
       },
       "highlights": [
-        "產業低本益比(擊敗67.6%同業)"
+        "外資連買3天"
       ]
     },
     {
-      "symbol": "2353.TW",
-      "name": "宏碁",
-      "composite": 36.8,
+      "symbol": "3711.TW",
+      "name": "日月光投控",
+      "composite": 42.1,
       "scores": {
-        "fundamental": 70,
-        "chipflow": 40,
-        "technical": 3.0,
-        "regime": 50,
+        "fundamental": 4.1,
+        "chipflow": 36.5,
+        "technical": 48.6,
+        "regime": 75.7,
         "sentiment": null
       },
+      "raw_scores": {
+        "technical": 21.7,
+        "fundamental": 20,
+        "chipflow": 50,
+        "regime": 75
+      },
       "highlights": []
+    },
+    {
+      "symbol": "4743.TW",
+      "name": "合一",
+      "composite": 40.0,
+      "scores": {
+        "fundamental": 21.6,
+        "chipflow": 25.7,
+        "technical": 90.5,
+        "regime": 9.5,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 50,
+        "fundamental": 50,
+        "chipflow": 46,
+        "regime": 50
+      },
+      "highlights": []
+    },
+    {
+      "symbol": "6669.TW",
+      "name": "緯穎",
+      "composite": 39.3,
+      "scores": {
+        "fundamental": 89.2,
+        "chipflow": 28.4,
+        "technical": 4.1,
+        "regime": 67.6,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 3.0,
+        "fundamental": 100,
+        "chipflow": 47,
+        "regime": 70
+      },
+      "highlights": [
+        "產業低本益比(擊敗84.6%同業)",
+        "盤勢底部轉強"
+      ]
+    },
+    {
+      "symbol": "2618.TW",
+      "name": "長榮航",
+      "composite": 38.8,
+      "scores": {
+        "fundamental": 89.2,
+        "chipflow": 18.9,
+        "technical": 8.1,
+        "regime": 9.5,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 4.8,
+        "fundamental": 100,
+        "chipflow": 43,
+        "regime": 50
+      },
+      "highlights": [
+        "產業低本益比(擊敗91.7%同業)"
+      ]
+    },
+    {
+      "symbol": "1513.TW",
+      "name": "中興電",
+      "composite": 38.4,
+      "scores": {
+        "fundamental": 58.1,
+        "chipflow": 31.1,
+        "technical": 17.6,
+        "regime": 67.6,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 9.0,
+        "fundamental": 71,
+        "chipflow": 48,
+        "regime": 70
+      },
+      "highlights": [
+        "產業低本益比(擊敗75.7%同業)",
+        "盤勢底部轉強"
+      ]
+    },
+    {
+      "symbol": "2890.TW",
+      "name": "永豐金",
+      "composite": 37.6,
+      "scores": {
+        "fundamental": 8.1,
+        "chipflow": 75.7,
+        "technical": 40.5,
+        "regime": 75.7,
+        "sentiment": null
+      },
+      "raw_scores": {
+        "technical": 17.9,
+        "fundamental": 25,
+        "chipflow": 62,
+        "regime": 75
+      },
+      "highlights": [
+        "外資連買5天"
+      ]
     }
   ],
   "categories": [
@@ -748,198 +1064,288 @@
       "description": "綜合分數 = 籌碼×權重 + 技術×權重 + 基本面×權重 + 盤勢×權重 + 消息×權重。各產業權重不同，例：半導體/電子 籌碼35%，金融 基本面38% 為主。排名依綜合分數由高到低。",
       "stocks": [
         {
-          "symbol": "3045.TW",
-          "name": "台灣大",
-          "composite_score": 61.7,
-          "highlight": "綜合62分｜基本面80分最強",
-          "scores": {
-            "fundamental": 80,
-            "chipflow": 76,
-            "technical": 23.0,
-            "regime": 60,
-            "sentiment": null
-          }
-        },
-        {
-          "symbol": "2881.TW",
-          "name": "富邦金",
-          "composite_score": 61.2,
-          "highlight": "綜合61分｜基本面90分最強",
-          "scores": {
-            "fundamental": 90,
-            "chipflow": 49,
-            "technical": 10.0,
-            "regime": 70,
-            "sentiment": null
-          }
-        },
-        {
-          "symbol": "2618.TW",
-          "name": "長榮航",
-          "composite_score": 61.1,
-          "highlight": "綜合61分｜基本面100分最強",
-          "scores": {
-            "fundamental": 100,
-            "chipflow": 68,
-            "technical": 8.5,
-            "regime": 50,
-            "sentiment": null
-          }
-        },
-        {
           "symbol": "2379.TW",
           "name": "瑞昱",
-          "composite_score": 57.7,
-          "highlight": "綜合58分｜基本面100分最強",
+          "composite_score": 84.0,
+          "highlight": "綜合84分｜籌碼86分最強",
           "scores": {
+            "fundamental": 83.8,
+            "chipflow": 86.5,
+            "technical": 86.5,
+            "regime": 75.7,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 46.8,
+            "fundamental": 93,
+            "chipflow": 68,
+            "regime": 75
+          }
+        },
+        {
+          "symbol": "2382.TW",
+          "name": "廣達",
+          "composite_score": 79.3,
+          "highlight": "綜合79分｜籌碼93分最強",
+          "scores": {
+            "fundamental": 86.5,
+            "chipflow": 93.2,
+            "technical": 58.1,
+            "regime": 75.7,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 25.7,
+            "fundamental": 98,
+            "chipflow": 73,
+            "regime": 75
+          }
+        },
+        {
+          "symbol": "2885.TW",
+          "name": "元大金",
+          "composite_score": 78.1,
+          "highlight": "綜合78分｜籌碼93分最強",
+          "scores": {
+            "fundamental": 89.2,
+            "chipflow": 93.2,
+            "technical": 47.3,
+            "regime": 75.7,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 20.7,
             "fundamental": 100,
-            "chipflow": 68,
-            "technical": 23.3,
-            "regime": 50,
-            "sentiment": null
-          }
-        },
-        {
-          "symbol": "4743.TW",
-          "name": "合一",
-          "composite_score": 56.4,
-          "highlight": "綜合56分｜籌碼67分最強",
-          "scores": {
-            "fundamental": 50,
-            "chipflow": 67,
-            "technical": 50,
-            "regime": 50,
-            "sentiment": null
-          }
-        },
-        {
-          "symbol": "2891.TW",
-          "name": "中信金",
-          "composite_score": 55.8,
-          "highlight": "綜合56分｜盤勢75分最強",
-          "scores": {
-            "fundamental": 65,
-            "chipflow": 68,
-            "technical": 16.5,
-            "regime": 75,
-            "sentiment": null
-          }
-        },
-        {
-          "symbol": "2883.TW",
-          "name": "開發金",
-          "composite_score": 55.6,
-          "highlight": "綜合56分｜基本面90分最強",
-          "scores": {
-            "fundamental": 90,
-            "chipflow": 44,
-            "technical": 2.5,
-            "regime": 50,
-            "sentiment": null
-          }
-        },
-        {
-          "symbol": "1216.TW",
-          "name": "統一",
-          "composite_score": 54.9,
-          "highlight": "綜合55分｜基本面65分最強",
-          "scores": {
-            "fundamental": 65,
-            "chipflow": 53,
-            "technical": 46.0,
-            "regime": 50,
-            "sentiment": null
-          }
-        },
-        {
-          "symbol": "4938.TW",
-          "name": "和碩",
-          "composite_score": 54.7,
-          "highlight": "綜合55分｜基本面85分最強",
-          "scores": {
-            "fundamental": 85,
-            "chipflow": 55,
-            "technical": 57.5,
-            "regime": 25,
-            "sentiment": null
+            "chipflow": 73,
+            "regime": 75
           }
         },
         {
           "symbol": "8046.TW",
           "name": "南電",
-          "composite_score": 54.7,
-          "highlight": "綜合55分｜盤勢90分最強",
+          "composite_score": 75.4,
+          "highlight": "綜合75分｜盤勢96分最強",
           "scores": {
+            "fundamental": 4.1,
+            "chipflow": 86.5,
+            "technical": 87.8,
+            "regime": 95.9,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 47.5,
             "fundamental": 20,
-            "chipflow": 64,
-            "technical": 37.0,
-            "regime": 90,
-            "sentiment": null
+            "chipflow": 68,
+            "regime": 90
           }
         },
         {
-          "symbol": "2882.TW",
-          "name": "國泰金",
-          "composite_score": 54.3,
-          "highlight": "綜合54分｜基本面80分最強",
+          "symbol": "3045.TW",
+          "name": "台灣大",
+          "composite_score": 71.2,
+          "highlight": "綜合71分｜籌碼97分最強",
           "scores": {
-            "fundamental": 80,
-            "chipflow": 52,
-            "technical": 10.0,
-            "regime": 50,
+            "fundamental": 68.9,
+            "chipflow": 97.3,
+            "technical": 45.9,
+            "regime": 55.4,
             "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 19.6,
+            "fundamental": 77,
+            "chipflow": 78,
+            "regime": 60
           }
         },
         {
-          "symbol": "2615.TW",
-          "name": "萬海",
-          "composite_score": 53.5,
-          "highlight": "綜合54分｜基本面95分最強",
+          "symbol": "2376.TW",
+          "name": "技嘉",
+          "composite_score": 70.9,
+          "highlight": "綜合71分｜基本面86分最強",
           "scores": {
-            "fundamental": 95,
-            "chipflow": 50,
-            "technical": 8.5,
-            "regime": 50,
+            "fundamental": 86.5,
+            "chipflow": 86.5,
+            "technical": 83.8,
+            "regime": 9.5,
             "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 43.5,
+            "fundamental": 98,
+            "chipflow": 68,
+            "regime": 50
           }
         },
         {
-          "symbol": "2912.TW",
-          "name": "統一超",
-          "composite_score": 53.1,
-          "highlight": "綜合53分｜基本面65分最強",
+          "symbol": "2883.TW",
+          "name": "開發金",
+          "composite_score": 70.7,
+          "highlight": "綜合71分｜基本面82分最強",
           "scores": {
-            "fundamental": 65,
-            "chipflow": 58,
-            "technical": 31.5,
-            "regime": 60,
+            "fundamental": 82.4,
+            "chipflow": 71.6,
+            "technical": 44.6,
+            "regime": 75.7,
             "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 19.5,
+            "fundamental": 89,
+            "chipflow": 59,
+            "regime": 75
           }
         },
         {
           "symbol": "3034.TW",
           "name": "聯詠",
-          "composite_score": 52.5,
-          "highlight": "綜合52分｜基本面90分最強",
+          "composite_score": 69.6,
+          "highlight": "綜合70分｜基本面78分最強",
           "scores": {
-            "fundamental": 90,
-            "chipflow": 59,
-            "technical": 22.8,
-            "regime": 50,
+            "fundamental": 78.4,
+            "chipflow": 62.2,
+            "technical": 70.3,
+            "regime": 75.7,
             "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 34.6,
+            "fundamental": 86,
+            "chipflow": 58,
+            "regime": 75
           }
         },
         {
-          "symbol": "5274.TW",
-          "name": "信驊",
-          "composite_score": 49.6,
-          "highlight": "綜合50分｜基本面50分最強",
+          "symbol": "2887.TW",
+          "name": "台新金",
+          "composite_score": 69.0,
+          "highlight": "綜合69分｜基本面89分最強",
           "scores": {
-            "fundamental": 50,
-            "chipflow": 49,
-            "technical": 50,
-            "regime": 50,
+            "fundamental": 89.2,
+            "chipflow": 60.8,
+            "technical": 32.4,
+            "regime": 75.7,
             "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 13.8,
+            "fundamental": 100,
+            "chipflow": 57,
+            "regime": 75
+          }
+        },
+        {
+          "symbol": "4904.TW",
+          "name": "遠傳",
+          "composite_score": 68.7,
+          "highlight": "綜合69分｜籌碼93分最強",
+          "scores": {
+            "fundamental": 47.3,
+            "chipflow": 93.2,
+            "technical": 67.6,
+            "regime": 55.4,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 31.8,
+            "fundamental": 65,
+            "chipflow": 73,
+            "regime": 60
+          }
+        },
+        {
+          "symbol": "1301.TW",
+          "name": "台塑",
+          "composite_score": 66.0,
+          "highlight": "綜合66分｜技術99分最強",
+          "scores": {
+            "fundamental": 21.6,
+            "chipflow": 85.1,
+            "technical": 98.6,
+            "regime": 55.4,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 70.8,
+            "fundamental": 50,
+            "chipflow": 67,
+            "regime": 60
+          }
+        },
+        {
+          "symbol": "2308.TW",
+          "name": "台達電",
+          "composite_score": 62.5,
+          "highlight": "綜合62分｜盤勢96分最強",
+          "scores": {
+            "fundamental": 17.6,
+            "chipflow": 54.1,
+            "technical": 77.0,
+            "regime": 95.9,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 36.9,
+            "fundamental": 42,
+            "chipflow": 55,
+            "regime": 90
+          }
+        },
+        {
+          "symbol": "2912.TW",
+          "name": "統一超",
+          "composite_score": 62.1,
+          "highlight": "綜合62分｜技術81分最強",
+          "scores": {
+            "fundamental": 47.3,
+            "chipflow": 62.2,
+            "technical": 81.1,
+            "regime": 55.4,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 40.7,
+            "fundamental": 65,
+            "chipflow": 58,
+            "regime": 60
+          }
+        },
+        {
+          "symbol": "4938.TW",
+          "name": "和碩",
+          "composite_score": 61.4,
+          "highlight": "綜合61分｜盤勢76分最強",
+          "scores": {
+            "fundamental": 67.6,
+            "chipflow": 43.2,
+            "technical": 73.0,
+            "regime": 75.7,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 35.5,
+            "fundamental": 76,
+            "chipflow": 53,
+            "regime": 75
+          }
+        },
+        {
+          "symbol": "1326.TW",
+          "name": "台化",
+          "composite_score": 60.0,
+          "highlight": "綜合60分｜籌碼92分最強",
+          "scores": {
+            "fundamental": 21.6,
+            "chipflow": 91.9,
+            "technical": 68.9,
+            "regime": 55.4,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 34.0,
+            "fundamental": 50,
+            "chipflow": 71,
+            "regime": 60
           }
         }
       ]
@@ -951,107 +1357,193 @@
       "description": "篩選條件：外資連續買超 ≥ 3 天。外資為台股最大買方，連續買超代表中長線看好，搭配大量買超金額更具參考價值。",
       "stocks": [
         {
+          "symbol": "2382.TW",
+          "name": "廣達",
+          "composite_score": 79.3,
+          "highlight": "外資連買3天，累計4717.9萬張",
+          "scores": {
+            "fundamental": 86.5,
+            "chipflow": 93.2,
+            "technical": 58.1,
+            "regime": 75.7,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 25.7,
+            "fundamental": 98,
+            "chipflow": 73,
+            "regime": 75
+          }
+        },
+        {
+          "symbol": "2885.TW",
+          "name": "元大金",
+          "composite_score": 78.1,
+          "highlight": "外資連買3天，累計196.7萬張",
+          "scores": {
+            "fundamental": 89.2,
+            "chipflow": 93.2,
+            "technical": 47.3,
+            "regime": 75.7,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 20.7,
+            "fundamental": 100,
+            "chipflow": 73,
+            "regime": 75
+          }
+        },
+        {
           "symbol": "3045.TW",
           "name": "台灣大",
-          "composite_score": 61.7,
-          "highlight": "外資連買9天，累計1828.5萬張",
+          "composite_score": 71.2,
+          "highlight": "外資連買9天，累計1513.1萬張",
           "scores": {
-            "fundamental": 80,
-            "chipflow": 76,
-            "technical": 23.0,
-            "regime": 60,
+            "fundamental": 68.9,
+            "chipflow": 97.3,
+            "technical": 45.9,
+            "regime": 55.4,
             "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 19.6,
+            "fundamental": 77,
+            "chipflow": 78,
+            "regime": 60
           }
         },
         {
-          "symbol": "4743.TW",
-          "name": "合一",
-          "composite_score": 56.4,
-          "highlight": "外資連買5天，累計89.0萬張",
+          "symbol": "2883.TW",
+          "name": "開發金",
+          "composite_score": 70.7,
+          "highlight": "外資連買5天，累計6503.9萬張",
           "scores": {
+            "fundamental": 82.4,
+            "chipflow": 71.6,
+            "technical": 44.6,
+            "regime": 75.7,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 19.5,
+            "fundamental": 89,
+            "chipflow": 59,
+            "regime": 75
+          }
+        },
+        {
+          "symbol": "3034.TW",
+          "name": "聯詠",
+          "composite_score": 69.6,
+          "highlight": "外資連買3天，累計677.4萬張",
+          "scores": {
+            "fundamental": 78.4,
+            "chipflow": 62.2,
+            "technical": 70.3,
+            "regime": 75.7,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 34.6,
+            "fundamental": 86,
+            "chipflow": 58,
+            "regime": 75
+          }
+        },
+        {
+          "symbol": "4904.TW",
+          "name": "遠傳",
+          "composite_score": 68.7,
+          "highlight": "外資連買3天，累計770.6萬張",
+          "scores": {
+            "fundamental": 47.3,
+            "chipflow": 93.2,
+            "technical": 67.6,
+            "regime": 55.4,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 31.8,
+            "fundamental": 65,
+            "chipflow": 73,
+            "regime": 60
+          }
+        },
+        {
+          "symbol": "1301.TW",
+          "name": "台塑",
+          "composite_score": 66.0,
+          "highlight": "外資連買5天，累計1569.4萬張",
+          "scores": {
+            "fundamental": 21.6,
+            "chipflow": 85.1,
+            "technical": 98.6,
+            "regime": 55.4,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 70.8,
             "fundamental": 50,
             "chipflow": 67,
-            "technical": 50,
-            "regime": 50,
-            "sentiment": null
+            "regime": 60
           }
         },
         {
-          "symbol": "4938.TW",
-          "name": "和碩",
-          "composite_score": 54.7,
-          "highlight": "外資連買3天，累計1947.0萬張",
+          "symbol": "2308.TW",
+          "name": "台達電",
+          "composite_score": 62.5,
+          "highlight": "外資連買3天，累計120.6萬張",
           "scores": {
-            "fundamental": 85,
+            "fundamental": 17.6,
+            "chipflow": 54.1,
+            "technical": 77.0,
+            "regime": 95.9,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 36.9,
+            "fundamental": 42,
             "chipflow": 55,
-            "technical": 57.5,
-            "regime": 25,
-            "sentiment": null
+            "regime": 90
           }
         },
         {
-          "symbol": "2912.TW",
-          "name": "統一超",
-          "composite_score": 53.1,
-          "highlight": "外資連買3天，累計680.2萬張",
+          "symbol": "1326.TW",
+          "name": "台化",
+          "composite_score": 60.0,
+          "highlight": "外資連買3天，累計6733.3萬張",
           "scores": {
-            "fundamental": 65,
-            "chipflow": 58,
-            "technical": 31.5,
-            "regime": 60,
+            "fundamental": 21.6,
+            "chipflow": 91.9,
+            "technical": 68.9,
+            "regime": 55.4,
             "sentiment": null
-          }
-        },
-        {
-          "symbol": "2892.TW",
-          "name": "第一金",
-          "composite_score": 46.4,
-          "highlight": "外資連買4天，累計3271.0萬張",
-          "scores": {
-            "fundamental": 65,
-            "chipflow": 58,
-            "technical": 0.0,
-            "regime": 50,
-            "sentiment": null
-          }
-        },
-        {
-          "symbol": "2002.TW",
-          "name": "中鋼",
-          "composite_score": 43.4,
-          "highlight": "外資連買3天，累計5668.9萬張",
-          "scores": {
+          },
+          "raw_scores": {
+            "technical": 34.0,
             "fundamental": 50,
-            "chipflow": 67,
-            "technical": 6.0,
-            "regime": 50,
-            "sentiment": null
+            "chipflow": 71,
+            "regime": 60
           }
         },
         {
-          "symbol": "2886.TW",
-          "name": "兆豐金",
-          "composite_score": 43.3,
-          "highlight": "外資連買8天，累計6107.6萬張",
+          "symbol": "2327.TW",
+          "name": "國巨",
+          "composite_score": 58.8,
+          "highlight": "外資連買3天，累計3042.6萬張",
           "scores": {
-            "fundamental": 35,
-            "chipflow": 76,
-            "technical": 17.0,
-            "regime": 70,
+            "fundamental": 39.2,
+            "chipflow": 54.1,
+            "technical": 64.9,
+            "regime": 75.7,
             "sentiment": null
-          }
-        },
-        {
-          "symbol": "6505.TW",
-          "name": "台塑化",
-          "composite_score": 29.1,
-          "highlight": "外資連買3天，累計773.6萬張",
-          "scores": {
-            "fundamental": 15,
-            "chipflow": 62,
-            "technical": 2.5,
-            "regime": 50,
-            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 31.0,
+            "fundamental": 55,
+            "chipflow": 55,
+            "regime": 75
           }
         }
       ]
@@ -1063,133 +1555,193 @@
       "description": "篩選條件：投信連續買超 ≥ 3 天。投信選股嚴謹，連續買超往往代表有基本面研究支撐，是中期波段的領先指標。",
       "stocks": [
         {
-          "symbol": "3045.TW",
-          "name": "台灣大",
-          "composite_score": 61.7,
-          "highlight": "投信連買4天，累計7.9萬張",
-          "scores": {
-            "fundamental": 80,
-            "chipflow": 76,
-            "technical": 23.0,
-            "regime": 60,
-            "sentiment": null
-          }
-        },
-        {
-          "symbol": "2881.TW",
-          "name": "富邦金",
-          "composite_score": 61.2,
-          "highlight": "投信連買6天，累計1214.5萬張",
-          "scores": {
-            "fundamental": 90,
-            "chipflow": 49,
-            "technical": 10.0,
-            "regime": 70,
-            "sentiment": null
-          }
-        },
-        {
-          "symbol": "2618.TW",
-          "name": "長榮航",
-          "composite_score": 61.1,
-          "highlight": "投信連買5天，累計413.5萬張",
-          "scores": {
-            "fundamental": 100,
-            "chipflow": 68,
-            "technical": 8.5,
-            "regime": 50,
-            "sentiment": null
-          }
-        },
-        {
           "symbol": "2379.TW",
           "name": "瑞昱",
-          "composite_score": 57.7,
-          "highlight": "投信連買5天，累計40.8萬張",
+          "composite_score": 84.0,
+          "highlight": "投信連買6天，累計85.3萬張",
           "scores": {
-            "fundamental": 100,
-            "chipflow": 68,
-            "technical": 23.3,
-            "regime": 50,
+            "fundamental": 83.8,
+            "chipflow": 86.5,
+            "technical": 86.5,
+            "regime": 75.7,
             "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 46.8,
+            "fundamental": 93,
+            "chipflow": 68,
+            "regime": 75
           }
         },
         {
-          "symbol": "2891.TW",
-          "name": "中信金",
-          "composite_score": 55.8,
-          "highlight": "投信連買8天，累計3063.7萬張",
+          "symbol": "2382.TW",
+          "name": "廣達",
+          "composite_score": 79.3,
+          "highlight": "投信連買6天，累計349.5萬張",
           "scores": {
-            "fundamental": 65,
-            "chipflow": 68,
-            "technical": 16.5,
-            "regime": 75,
+            "fundamental": 86.5,
+            "chipflow": 93.2,
+            "technical": 58.1,
+            "regime": 75.7,
             "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 25.7,
+            "fundamental": 98,
+            "chipflow": 73,
+            "regime": 75
+          }
+        },
+        {
+          "symbol": "2885.TW",
+          "name": "元大金",
+          "composite_score": 78.1,
+          "highlight": "投信連買6天，累計1722.2萬張",
+          "scores": {
+            "fundamental": 89.2,
+            "chipflow": 93.2,
+            "technical": 47.3,
+            "regime": 75.7,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 20.7,
+            "fundamental": 100,
+            "chipflow": 73,
+            "regime": 75
           }
         },
         {
           "symbol": "8046.TW",
           "name": "南電",
-          "composite_score": 54.7,
-          "highlight": "投信連買9天，累計733.7萬張",
+          "composite_score": 75.4,
+          "highlight": "投信連買9天，累計961.7萬張",
           "scores": {
+            "fundamental": 4.1,
+            "chipflow": 86.5,
+            "technical": 87.8,
+            "regime": 95.9,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 47.5,
             "fundamental": 20,
-            "chipflow": 64,
-            "technical": 37.0,
-            "regime": 90,
-            "sentiment": null
+            "chipflow": 68,
+            "regime": 90
           }
         },
         {
-          "symbol": "2882.TW",
-          "name": "國泰金",
-          "composite_score": 54.3,
-          "highlight": "投信連買8天，累計1990.5萬張",
+          "symbol": "3045.TW",
+          "name": "台灣大",
+          "composite_score": 71.2,
+          "highlight": "投信連買7天，累計350.4萬張",
           "scores": {
-            "fundamental": 80,
-            "chipflow": 52,
-            "technical": 10.0,
-            "regime": 50,
+            "fundamental": 68.9,
+            "chipflow": 97.3,
+            "technical": 45.9,
+            "regime": 55.4,
             "sentiment": null
-          }
-        },
-        {
-          "symbol": "3034.TW",
-          "name": "聯詠",
-          "composite_score": 52.5,
-          "highlight": "投信連買4天，累計-7.4千張",
-          "scores": {
-            "fundamental": 90,
-            "chipflow": 59,
-            "technical": 22.8,
-            "regime": 50,
-            "sentiment": null
-          }
-        },
-        {
-          "symbol": "5274.TW",
-          "name": "信驊",
-          "composite_score": 49.6,
-          "highlight": "投信連買9天，累計22.9萬張",
-          "scores": {
-            "fundamental": 50,
-            "chipflow": 49,
-            "technical": 50,
-            "regime": 50,
-            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 19.6,
+            "fundamental": 77,
+            "chipflow": 78,
+            "regime": 60
           }
         },
         {
           "symbol": "2376.TW",
           "name": "技嘉",
-          "composite_score": 49.4,
-          "highlight": "投信連買5天，累計3.2萬張",
+          "composite_score": 70.9,
+          "highlight": "投信連買8天，累計82.3萬張",
           "scores": {
-            "fundamental": 100,
-            "chipflow": 61,
-            "technical": 2.5,
-            "regime": 50,
+            "fundamental": 86.5,
+            "chipflow": 86.5,
+            "technical": 83.8,
+            "regime": 9.5,
             "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 43.5,
+            "fundamental": 98,
+            "chipflow": 68,
+            "regime": 50
+          }
+        },
+        {
+          "symbol": "4904.TW",
+          "name": "遠傳",
+          "composite_score": 68.7,
+          "highlight": "投信連買7天，累計346.2萬張",
+          "scores": {
+            "fundamental": 47.3,
+            "chipflow": 93.2,
+            "technical": 67.6,
+            "regime": 55.4,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 31.8,
+            "fundamental": 65,
+            "chipflow": 73,
+            "regime": 60
+          }
+        },
+        {
+          "symbol": "2356.TW",
+          "name": "英業達",
+          "composite_score": 56.9,
+          "highlight": "投信連買5天，累計194.1萬張",
+          "scores": {
+            "fundamental": 44.6,
+            "chipflow": 86.5,
+            "technical": 56.8,
+            "regime": 9.5,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 25.2,
+            "fundamental": 60,
+            "chipflow": 68,
+            "regime": 50
+          }
+        },
+        {
+          "symbol": "2357.TW",
+          "name": "華碩",
+          "composite_score": 54.0,
+          "highlight": "投信連買6天，累計121.5萬張",
+          "scores": {
+            "fundamental": 77.0,
+            "chipflow": 54.1,
+            "technical": 24.3,
+            "regime": 75.7,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 11.4,
+            "fundamental": 85,
+            "chipflow": 55,
+            "regime": 75
+          }
+        },
+        {
+          "symbol": "2881.TW",
+          "name": "富邦金",
+          "composite_score": 51.5,
+          "highlight": "投信連買6天，累計971.7萬張",
+          "scores": {
+            "fundamental": 89.2,
+            "chipflow": 33.8,
+            "technical": 20.3,
+            "regime": 9.5,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 10.0,
+            "fundamental": 100,
+            "chipflow": 49,
+            "regime": 50
           }
         }
       ]
@@ -1201,120 +1753,155 @@
       "description": "篩選條件：融資餘額減少 > 500 張，且外資或投信同步買超。融資減少代表散戶離場、籌碼沉澱到法人手中，是股價醞釀上漲的前兆。",
       "stocks": [
         {
-          "symbol": "2881.TW",
-          "name": "富邦金",
-          "composite_score": 61.2,
-          "highlight": "融資減765張＋法人買超",
-          "scores": {
-            "fundamental": 90,
-            "chipflow": 49,
-            "technical": 10.0,
-            "regime": 70,
-            "sentiment": null
-          }
-        },
-        {
-          "symbol": "2618.TW",
-          "name": "長榮航",
-          "composite_score": 61.1,
-          "highlight": "融資減624張＋法人買超",
-          "scores": {
-            "fundamental": 100,
-            "chipflow": 68,
-            "technical": 8.5,
-            "regime": 50,
-            "sentiment": null
-          }
-        },
-        {
-          "symbol": "2615.TW",
-          "name": "萬海",
-          "composite_score": 53.5,
-          "highlight": "融資減702張＋法人買超",
-          "scores": {
-            "fundamental": 95,
-            "chipflow": 50,
-            "technical": 8.5,
-            "regime": 50,
-            "sentiment": null
-          }
-        },
-        {
           "symbol": "2382.TW",
           "name": "廣達",
-          "composite_score": 48.0,
-          "highlight": "融資減580張＋法人買超",
+          "composite_score": 79.3,
+          "highlight": "融資減690張＋法人買超",
           "scores": {
-            "fundamental": 95,
-            "chipflow": 61,
-            "technical": 0.0,
-            "regime": 50,
+            "fundamental": 86.5,
+            "chipflow": 93.2,
+            "technical": 58.1,
+            "regime": 75.7,
             "sentiment": null
-          }
-        },
-        {
-          "symbol": "3711.TW",
-          "name": "日月光投控",
-          "composite_score": 47.5,
-          "highlight": "融資減729張＋法人買超",
-          "scores": {
-            "fundamental": 60,
-            "chipflow": 54,
-            "technical": 11.2,
-            "regime": 75,
-            "sentiment": null
-          }
-        },
-        {
-          "symbol": "1326.TW",
-          "name": "台化",
-          "composite_score": 44.8,
-          "highlight": "融資減2723張＋法人買超",
-          "scores": {
-            "fundamental": 50,
-            "chipflow": 55,
-            "technical": 25.2,
-            "regime": 50,
-            "sentiment": null
-          }
-        },
-        {
-          "symbol": "2002.TW",
-          "name": "中鋼",
-          "composite_score": 43.4,
-          "highlight": "融資減1626張＋法人買超",
-          "scores": {
-            "fundamental": 50,
-            "chipflow": 67,
-            "technical": 6.0,
-            "regime": 50,
-            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 25.7,
+            "fundamental": 98,
+            "chipflow": 73,
+            "regime": 75
           }
         },
         {
           "symbol": "2887.TW",
           "name": "台新金",
-          "composite_score": 36.9,
-          "highlight": "融資減4364張＋法人買超",
+          "composite_score": 69.0,
+          "highlight": "融資減3209張＋法人買超",
           "scores": {
-            "fundamental": 45,
-            "chipflow": 51,
-            "technical": 2.5,
-            "regime": 50,
+            "fundamental": 89.2,
+            "chipflow": 60.8,
+            "technical": 32.4,
+            "regime": 75.7,
             "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 13.8,
+            "fundamental": 100,
+            "chipflow": 57,
+            "regime": 75
+          }
+        },
+        {
+          "symbol": "1326.TW",
+          "name": "台化",
+          "composite_score": 60.0,
+          "highlight": "融資減3051張＋法人買超",
+          "scores": {
+            "fundamental": 21.6,
+            "chipflow": 91.9,
+            "technical": 68.9,
+            "regime": 55.4,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 34.0,
+            "fundamental": 50,
+            "chipflow": 71,
+            "regime": 60
           }
         },
         {
           "symbol": "0050.TW",
           "name": "元大台灣50",
-          "composite_score": 32.7,
-          "highlight": "融資減1949張＋法人買超",
+          "composite_score": 56.5,
+          "highlight": "融資減1981張＋法人買超",
           "scores": {
-            "fundamental": 50,
-            "chipflow": 49,
-            "technical": 0.0,
-            "regime": 25,
+            "fundamental": 21.6,
+            "chipflow": 74.3,
+            "technical": 83.8,
+            "regime": 9.5,
             "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 43.5,
+            "fundamental": 50,
+            "chipflow": 60,
+            "regime": 50
+          }
+        },
+        {
+          "symbol": "2881.TW",
+          "name": "富邦金",
+          "composite_score": 51.5,
+          "highlight": "融資減615張＋法人買超",
+          "scores": {
+            "fundamental": 89.2,
+            "chipflow": 33.8,
+            "technical": 20.3,
+            "regime": 9.5,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 10.0,
+            "fundamental": 100,
+            "chipflow": 49,
+            "regime": 50
+          }
+        },
+        {
+          "symbol": "2002.TW",
+          "name": "中鋼",
+          "composite_score": 48.7,
+          "highlight": "融資減1397張＋法人買超",
+          "scores": {
+            "fundamental": 21.6,
+            "chipflow": 83.8,
+            "technical": 37.8,
+            "regime": 55.4,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 14.8,
+            "fundamental": 50,
+            "chipflow": 66,
+            "regime": 60
+          }
+        },
+        {
+          "symbol": "2615.TW",
+          "name": "萬海",
+          "composite_score": 46.6,
+          "highlight": "融資減616張＋法人買超",
+          "scores": {
+            "fundamental": 83.8,
+            "chipflow": 43.2,
+            "technical": 13.5,
+            "regime": 9.5,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 7.1,
+            "fundamental": 93,
+            "chipflow": 53,
+            "regime": 50
+          }
+        },
+        {
+          "symbol": "3711.TW",
+          "name": "日月光投控",
+          "composite_score": 42.1,
+          "highlight": "融資減609張＋法人買超",
+          "scores": {
+            "fundamental": 4.1,
+            "chipflow": 36.5,
+            "technical": 48.6,
+            "regime": 75.7,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 21.7,
+            "fundamental": 20,
+            "chipflow": 50,
+            "regime": 75
           }
         }
       ]
@@ -1323,136 +1910,395 @@
       "id": "value_underpriced",
       "name": "價值低估股",
       "icon": "💎",
-      "description": "篩選條件：本益比 < 12 或產業估值前 30% 低估，且基本面分數 ≥ 70。基本面分數綜合本益比、殖利率、營收年增率計算。",
+      "description": "篩選條件：價值股軌道 + 本益比 < 12 或產業估值前 30% 低估，且基本面分數 ≥ 70。適合穩健型投資人。",
       "stocks": [
-        {
-          "symbol": "2881.TW",
-          "name": "富邦金",
-          "composite_score": 61.2,
-          "highlight": "產業低估前28.1%，基本面90分",
-          "scores": {
-            "fundamental": 90,
-            "chipflow": 49,
-            "technical": 10.0,
-            "regime": 70,
-            "sentiment": null
-          }
-        },
-        {
-          "symbol": "2618.TW",
-          "name": "長榮航",
-          "composite_score": 61.1,
-          "highlight": "產業低估前8.3%，基本面100分",
-          "scores": {
-            "fundamental": 100,
-            "chipflow": 68,
-            "technical": 8.5,
-            "regime": 50,
-            "sentiment": null
-          }
-        },
         {
           "symbol": "2379.TW",
           "name": "瑞昱",
-          "composite_score": 57.7,
-          "highlight": "產業低估前19.7%，基本面100分",
+          "composite_score": 84.0,
+          "highlight": "產業低估前18.4%，基本面83.8分",
           "scores": {
-            "fundamental": 100,
+            "fundamental": 83.8,
+            "chipflow": 86.5,
+            "technical": 86.5,
+            "regime": 75.7,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 46.8,
+            "fundamental": 93,
             "chipflow": 68,
-            "technical": 23.3,
-            "regime": 50,
-            "sentiment": null
-          }
-        },
-        {
-          "symbol": "2882.TW",
-          "name": "國泰金",
-          "composite_score": 54.3,
-          "highlight": "產業低估前25.0%，基本面80分",
-          "scores": {
-            "fundamental": 80,
-            "chipflow": 52,
-            "technical": 10.0,
-            "regime": 50,
-            "sentiment": null
-          }
-        },
-        {
-          "symbol": "2615.TW",
-          "name": "萬海",
-          "composite_score": 53.5,
-          "highlight": "產業低估前4.2%，基本面95分",
-          "scores": {
-            "fundamental": 95,
-            "chipflow": 50,
-            "technical": 8.5,
-            "regime": 50,
-            "sentiment": null
+            "regime": 75
           }
         },
         {
           "symbol": "3034.TW",
           "name": "聯詠",
-          "composite_score": 52.5,
-          "highlight": "產業低估前10.5%，基本面90分",
+          "composite_score": 69.6,
+          "highlight": "產業低估前10.5%，基本面78.4分",
           "scores": {
-            "fundamental": 90,
-            "chipflow": 59,
-            "technical": 22.8,
-            "regime": 50,
+            "fundamental": 78.4,
+            "chipflow": 62.2,
+            "technical": 70.3,
+            "regime": 75.7,
             "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 34.6,
+            "fundamental": 86,
+            "chipflow": 58,
+            "regime": 75
+          }
+        },
+        {
+          "symbol": "4938.TW",
+          "name": "和碩",
+          "composite_score": 61.4,
+          "highlight": "產業低估前26.9%，基本面67.6分",
+          "scores": {
+            "fundamental": 67.6,
+            "chipflow": 43.2,
+            "technical": 73.0,
+            "regime": 75.7,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 35.5,
+            "fundamental": 76,
+            "chipflow": 53,
+            "regime": 75
+          }
+        },
+        {
+          "symbol": "3008.TW",
+          "name": "大立光",
+          "composite_score": 52.4,
+          "highlight": "產業低估前22.9%，基本面68.9分",
+          "scores": {
+            "fundamental": 68.9,
+            "chipflow": 62.2,
+            "technical": 59.5,
+            "regime": 9.5,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 27.6,
+            "fundamental": 77,
+            "chipflow": 58,
+            "regime": 50
+          }
+        },
+        {
+          "symbol": "2303.TW",
+          "name": "聯電",
+          "composite_score": 50.0,
+          "highlight": "產業低估前21.1%，基本面73.0分",
+          "scores": {
+            "fundamental": 73.0,
+            "chipflow": 71.6,
+            "technical": 35.1,
+            "regime": 9.5,
+            "sentiment": 50.0
+          },
+          "raw_scores": {
+            "technical": 14.4,
+            "fundamental": 82,
+            "chipflow": 59,
+            "regime": 50,
+            "sentiment": 65.0
+          }
+        },
+        {
+          "symbol": "2882.TW",
+          "name": "國泰金",
+          "composite_score": 48.2,
+          "highlight": "產業低估前25.0%，基本面58.1分",
+          "scores": {
+            "fundamental": 58.1,
+            "chipflow": 54.1,
+            "technical": 50.0,
+            "regime": 9.5,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 22.2,
+            "fundamental": 71,
+            "chipflow": 55,
+            "regime": 50
+          }
+        },
+        {
+          "symbol": "2207.TW",
+          "name": "和泰車",
+          "composite_score": 47.2,
+          "highlight": "產業低估前25.8%，基本面58.1分",
+          "scores": {
+            "fundamental": 58.1,
+            "chipflow": 62.2,
+            "technical": 25.7,
+            "regime": 0.0,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 11.6,
+            "fundamental": 71,
+            "chipflow": 58,
+            "regime": 15
+          }
+        },
+        {
+          "symbol": "2615.TW",
+          "name": "萬海",
+          "composite_score": 46.6,
+          "highlight": "產業低估前4.2%，基本面83.8分",
+          "scores": {
+            "fundamental": 83.8,
+            "chipflow": 43.2,
+            "technical": 13.5,
+            "regime": 9.5,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 7.1,
+            "fundamental": 93,
+            "chipflow": 53,
+            "regime": 50
+          }
+        },
+        {
+          "symbol": "2618.TW",
+          "name": "長榮航",
+          "composite_score": 38.8,
+          "highlight": "產業低估前8.3%，基本面89.2分",
+          "scores": {
+            "fundamental": 89.2,
+            "chipflow": 18.9,
+            "technical": 8.1,
+            "regime": 9.5,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 4.8,
+            "fundamental": 100,
+            "chipflow": 43,
+            "regime": 50
+          }
+        },
+        {
+          "symbol": "1513.TW",
+          "name": "中興電",
+          "composite_score": 38.4,
+          "highlight": "產業低估前24.3%，基本面58.1分",
+          "scores": {
+            "fundamental": 58.1,
+            "chipflow": 31.1,
+            "technical": 17.6,
+            "regime": 67.6,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 9.0,
+            "fundamental": 71,
+            "chipflow": 48,
+            "regime": 70
+          }
+        }
+      ]
+    },
+    {
+      "id": "growth_momentum",
+      "name": "成長動能股",
+      "icon": "📈",
+      "description": "篩選條件：營收 YoY > 15% 且 PEG < 1.5（P/E ÷ 營收成長率）。高成長但估值合理的股票，適合積極型投資人。PEG < 1 表示成長遠超估值。",
+      "stocks": [
+        {
+          "symbol": "2887.TW",
+          "name": "台新金",
+          "composite_score": 69.0,
+          "highlight": "PEG=0.09，營收YoY+187%，基本面21.6分",
+          "scores": {
+            "fundamental": 89.2,
+            "chipflow": 60.8,
+            "technical": 32.4,
+            "regime": 75.7,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 13.8,
+            "fundamental": 100,
+            "chipflow": 57,
+            "regime": 75
+          }
+        },
+        {
+          "symbol": "3231.TW",
+          "name": "緯創",
+          "composite_score": 52.1,
+          "highlight": "PEG=0.09，營收YoY+177%，基本面21.6分",
+          "scores": {
+            "fundamental": 89.2,
+            "chipflow": 43.2,
+            "technical": 31.1,
+            "regime": 67.6,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 13.7,
+            "fundamental": 100,
+            "chipflow": 53,
+            "regime": 70
+          }
+        },
+        {
+          "symbol": "6669.TW",
+          "name": "緯穎",
+          "composite_score": 39.3,
+          "highlight": "PEG=0.13，營收YoY+103%，基本面21.6分",
+          "scores": {
+            "fundamental": 89.2,
+            "chipflow": 28.4,
+            "technical": 4.1,
+            "regime": 67.6,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 3.0,
+            "fundamental": 100,
+            "chipflow": 47,
+            "regime": 70
+          }
+        },
+        {
+          "symbol": "2408.TW",
+          "name": "南亞科",
+          "composite_score": 21.0,
+          "highlight": "PEG=0.16，營收YoY+587%，基本面21.6分",
+          "scores": {
+            "fundamental": 89.2,
+            "chipflow": 6.8,
+            "technical": 14.9,
+            "regime": 0.0,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 8.0,
+            "fundamental": 100,
+            "chipflow": 34,
+            "regime": 15
+          }
+        },
+        {
+          "symbol": "2881.TW",
+          "name": "富邦金",
+          "composite_score": 51.5,
+          "highlight": "PEG=0.17，營收YoY+69%，基本面21.6分",
+          "scores": {
+            "fundamental": 89.2,
+            "chipflow": 33.8,
+            "technical": 20.3,
+            "regime": 9.5,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 10.0,
+            "fundamental": 100,
+            "chipflow": 49,
+            "regime": 50
           }
         },
         {
           "symbol": "2376.TW",
           "name": "技嘉",
-          "composite_score": 49.4,
-          "highlight": "產業低估前17.3%，基本面100分",
+          "composite_score": 70.9,
+          "highlight": "PEG=0.29，營收YoY+47%，基本面21.6分",
           "scores": {
-            "fundamental": 100,
-            "chipflow": 61,
-            "technical": 2.5,
-            "regime": 50,
+            "fundamental": 86.5,
+            "chipflow": 86.5,
+            "technical": 83.8,
+            "regime": 9.5,
             "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 43.5,
+            "fundamental": 98,
+            "chipflow": 68,
+            "regime": 50
           }
         },
         {
-          "symbol": "2609.TW",
-          "name": "陽明",
-          "composite_score": 49.4,
-          "highlight": "P/E 10.6，基本面80分",
+          "symbol": "2885.TW",
+          "name": "元大金",
+          "composite_score": 78.1,
+          "highlight": "PEG=0.34，營收YoY+52%，基本面21.6分",
           "scores": {
-            "fundamental": 80,
-            "chipflow": 49,
-            "technical": 12.9,
-            "regime": 50,
+            "fundamental": 89.2,
+            "chipflow": 93.2,
+            "technical": 47.3,
+            "regime": 75.7,
             "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 20.7,
+            "fundamental": 100,
+            "chipflow": 73,
+            "regime": 75
+          }
+        },
+        {
+          "symbol": "2382.TW",
+          "name": "廣達",
+          "composite_score": 79.3,
+          "highlight": "PEG=0.37，營收YoY+43%，基本面21.6分",
+          "scores": {
+            "fundamental": 86.5,
+            "chipflow": 93.2,
+            "technical": 58.1,
+            "regime": 75.7,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 25.7,
+            "fundamental": 98,
+            "chipflow": 73,
+            "regime": 75
+          }
+        },
+        {
+          "symbol": "2345.TW",
+          "name": "智邦",
+          "composite_score": 54.6,
+          "highlight": "PEG=0.43，營收YoY+83%，基本面21.6分",
+          "scores": {
+            "fundamental": 89.2,
+            "chipflow": 12.2,
+            "technical": 63.5,
+            "regime": 95.9,
+            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 30.9,
+            "fundamental": 100,
+            "chipflow": 38,
+            "regime": 90
           }
         },
         {
           "symbol": "2357.TW",
           "name": "華碩",
-          "composite_score": 46.1,
-          "highlight": "產業低估前1.9%，基本面100分",
+          "composite_score": 54.0,
+          "highlight": "PEG=0.5，營收YoY+19%，基本面21.6分",
           "scores": {
-            "fundamental": 100,
-            "chipflow": 49,
-            "technical": 6.9,
-            "regime": 50,
+            "fundamental": 77.0,
+            "chipflow": 54.1,
+            "technical": 24.3,
+            "regime": 75.7,
             "sentiment": null
-          }
-        },
-        {
-          "symbol": "2603.TW",
-          "name": "長榮",
-          "composite_score": 46.1,
-          "highlight": "P/E 6.4，基本面90分",
-          "scores": {
-            "fundamental": 90,
-            "chipflow": 40,
-            "technical": 0.0,
-            "regime": 50,
-            "sentiment": null
+          },
+          "raw_scores": {
+            "technical": 11.4,
+            "fundamental": 85,
+            "chipflow": 55,
+            "regime": 75
           }
         }
       ]
@@ -1461,11 +2307,11 @@
       "id": "tech_breakout",
       "name": "技術突破股",
       "icon": "🚀",
-      "description": "篩選條件：盤勢狀態為「強勢多頭」或「底部轉強」，且技術面分數 ≥ 70。技術分數綜合 EMA 趨勢、ADX 動能、MACD、RSI 等指標，各產業權重不同。",
+      "description": "篩選條件：盤勢狀態為「強勢多頭」或「底部轉強」，且原始技術分數 ≥ 55（非百分位）。技術分數綜合 10 個指標：EMA 趨勢、ADX 動能、MACD、RSI、Stoch RSI（拉回超賣）、Volume Reversal（爆量反轉）、Pullback Support（均線拉回）等，各產業權重依回測歸因分析調整。",
       "stocks": []
     }
   ],
-  "updated_at": "2026-04-03 20:44",
+  "updated_at": "2026-04-10 09:13",
   "total": 74,
-  "time": 1775220255.428024
+  "time": 1775783607.354959
 }

@@ -253,6 +253,7 @@ SCREENER_UNIVERSE = {**_BUILTIN_UNIVERSE, **load_custom_stocks()}
 _screener_cache: Dict = {}  # {"results": [...], "categories": [...], "updated_at": str}
 SCREENER_CACHE_TTL = 3600 * 6  # 6 小時
 CACHE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "screener_cache.json")
+RANK_HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "screener_rank_history.json")
 
 
 def _fetch_signal_data_for_screener(symbol: str) -> Optional[pd.DataFrame]:
@@ -523,6 +524,15 @@ def categorize_picks(results: List[dict]) -> List[dict]:
     每類最多 5 檔，依綜合分數排序
     """
     categories = []
+    rank_history = _load_rank_history()
+
+    def _annotate_days(picks_list: List[dict], cat_id: str) -> List[dict]:
+        """為每支股票標記入榜天數"""
+        symbols = [p["symbol"] for p in picks_list]
+        days_map = _update_rank_history_for_category(rank_history, cat_id, symbols)
+        for p in picks_list:
+            p["_days_in_rank"] = days_map.get(p["symbol"], 1)
+        return picks_list
 
     # ── 0. 綜合排行榜（依總分排序前 15 名）──
     top_ranked = results[:15]  # results 已按 composite 降序排列
@@ -534,6 +544,7 @@ def categorize_picks(results: List[dict]) -> List[dict]:
         best_name = dim_names.get(best_dim, best_dim)
         best_val = round(scores.get(best_dim, 0))
         r["_highlight"] = f"綜合{round(r['composite'])}分｜{best_name}{best_val}分最強"
+    _annotate_days(top_ranked, "top_ranked")
     categories.append({
         "id": "top_ranked",
         "name": "綜合排行榜",
@@ -551,6 +562,7 @@ def categorize_picks(results: List[dict]) -> List[dict]:
             r["_highlight"] = f"外資連買{fc}天，累計{_format_shares(ft)}"
             foreign_picks.append(r)
     foreign_picks.sort(key=lambda x: x["composite"], reverse=True)
+    _annotate_days(foreign_picks[:10], "foreign_buy")
     categories.append({
         "id": "foreign_buy",
         "name": "外資狂買股",
@@ -568,6 +580,7 @@ def categorize_picks(results: List[dict]) -> List[dict]:
             r["_highlight"] = f"投信連買{tc}天，累計{_format_shares(tt)}"
             trust_picks.append(r)
     trust_picks.sort(key=lambda x: x["composite"], reverse=True)
+    _annotate_days(trust_picks[:10], "trust_buy")
     categories.append({
         "id": "trust_buy",
         "name": "投信認養股",
@@ -588,6 +601,7 @@ def categorize_picks(results: List[dict]) -> List[dict]:
             r["_highlight"] = f"融資減{abs(mc)}張＋法人買超"
             chip_concentrated.append(r)
     chip_concentrated.sort(key=lambda x: x["composite"], reverse=True)
+    _annotate_days(chip_concentrated[:10], "chip_concentrated")
     categories.append({
         "id": "chip_concentrated",
         "name": "籌碼集中股",
@@ -614,6 +628,7 @@ def categorize_picks(results: List[dict]) -> List[dict]:
                 r["_highlight"] = f"P/E {pe:.1f}，基本面{fund_score}分"
             value_picks.append(r)
     value_picks.sort(key=lambda x: x["composite"], reverse=True)
+    _annotate_days(value_picks[:10], "value_underpriced")
     categories.append({
         "id": "value_underpriced",
         "name": "價值低估股",
@@ -638,6 +653,7 @@ def categorize_picks(results: List[dict]) -> List[dict]:
             r["_highlight"] = "，".join(parts)
             growth_picks.append(r)
     growth_picks.sort(key=lambda x: x.get("details", {}).get("peg", 99))
+    _annotate_days(growth_picks[:10], "growth_momentum")
     categories.append({
         "id": "growth_momentum",
         "name": "成長動能股",
@@ -655,6 +671,7 @@ def categorize_picks(results: List[dict]) -> List[dict]:
             r["_highlight"] = f"盤勢{regime}＋技術{raw_tech}分"
             tech_picks.append(r)
     tech_picks.sort(key=lambda x: x["composite"], reverse=True)
+    _annotate_days(tech_picks[:10], "tech_breakout")
     categories.append({
         "id": "tech_breakout",
         "name": "技術突破股",
@@ -663,6 +680,7 @@ def categorize_picks(results: List[dict]) -> List[dict]:
         "stocks": _format_picks(tech_picks[:10]),
     })
 
+    _save_rank_history(rank_history)
     return categories
 
 
@@ -687,8 +705,65 @@ def _format_picks(picks: List[dict]) -> List[dict]:
             "highlight": p.get("_highlight", ""),
             "scores": p["scores"],
             "raw_scores": p.get("raw_scores", {}),
+            "days_in_rank": p.get("_days_in_rank", 1),
         })
     return formatted
+
+
+def _load_rank_history() -> dict:
+    """載入入榜歷史記錄 {category_id: {symbol: first_seen_date}}"""
+    if os.path.exists(RANK_HISTORY_FILE):
+        try:
+            with open(RANK_HISTORY_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+def _save_rank_history(history: dict):
+    """儲存入榜歷史記錄"""
+    try:
+        os.makedirs(os.path.dirname(RANK_HISTORY_FILE), exist_ok=True)
+        with open(RANK_HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.warning(f"入榜歷史記錄存檔失敗: {e}")
+
+
+def _update_rank_history_for_category(history: dict, cat_id: str, symbols: List[str]) -> dict:
+    """
+    更新某類別的入榜歷史，並計算每支股票的入榜天數
+    Returns: {symbol: days_in_rank}
+    """
+    today = datetime.now().strftime("%Y-%m-%d")
+    if cat_id not in history:
+        history[cat_id] = {}
+
+    cat_hist = history[cat_id]
+    current_set = set(symbols)
+
+    # 移除已不在榜的股票
+    for sym in list(cat_hist.keys()):
+        if sym not in current_set:
+            del cat_hist[sym]
+
+    # 新入榜的股票記錄首次入榜日期
+    for sym in symbols:
+        if sym not in cat_hist:
+            cat_hist[sym] = today
+
+    # 計算每支股票的入榜天數
+    days_map = {}
+    for sym in symbols:
+        first_seen = cat_hist.get(sym, today)
+        try:
+            delta = (datetime.strptime(today, "%Y-%m-%d") - datetime.strptime(first_seen, "%Y-%m-%d")).days + 1
+        except Exception:
+            delta = 1
+        days_map[sym] = max(1, delta)
+
+    return days_map
 
 
 def clear_cache():

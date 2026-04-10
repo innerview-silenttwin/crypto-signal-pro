@@ -2294,6 +2294,17 @@ a.event-item:hover {
     text-overflow: ellipsis;
     max-width: 140px;
 }
+.screener-days-badge {
+    font-size: 10px;
+    font-weight: 700;
+    color: #a78bfa;
+    background: rgba(167,139,250,0.12);
+    border: 1px solid rgba(167,139,250,0.3);
+    border-radius: 10px;
+    padding: 1px 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
 .screener-empty {
     font-size: 11px;
     color: var(--text-muted);

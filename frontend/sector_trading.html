@@ -529,6 +529,13 @@
             '底部轉強': { color: '#60a5fa', icon: '💎', bg: 'rgba(96,165,250,0.08)' },
         };
 
+        window.goToStock = function(symbol) {
+            const sym = symbol.includes('.') ? symbol : symbol + '.TW';
+            localStorage.setItem('csp-pending-symbol', sym);
+            localStorage.setItem('csp-pending-market', 'stock');
+            window.location.href = 'index.html';
+        };
+
         function renderRegime(data) {
             const el = document.getElementById('regime-list');
             if (!data || !data.stocks) {
@@ -549,7 +556,7 @@
                 const ma = details.ma_alignment ? `均線:${details.ma_alignment.score}/6` : '';
                 return `<div style="padding:6px 8px; margin-bottom:4px; border-radius:8px; background:${style.bg}; display:flex; justify-content:space-between; align-items:center">
                     <div>
-                        <span style="font-weight:700; color:var(--text-main); font-size:12px">${s.name || sym}</span>
+                        <span style="font-weight:700; color:var(--text-main); font-size:12px; cursor:pointer; text-decoration:underline dotted" onclick="window.goToStock('${sym}')" title="前往主頁">${s.name || sym}</span>
                         <span style="font-size:10px; color:var(--text-muted); margin-left:4px">${pos} ${ma}</span>
                     </div>
                     <div style="display:flex; align-items:center; gap:4px">
@@ -602,7 +609,7 @@
                 const median = s.sector_median_pe != null ? `(類股中位:${s.sector_median_pe})` : '';
                 return `<div style="padding:6px 8px; margin-bottom:4px; border-radius:8px; background:${style.bg}; display:flex; justify-content:space-between; align-items:center">
                     <div>
-                        <span style="font-weight:700; color:var(--text-main); font-size:12px">${s.name || sym}</span>
+                        <span style="font-weight:700; color:var(--text-main); font-size:12px; cursor:pointer; text-decoration:underline dotted" onclick="window.goToStock('${sym}')" title="前往主頁">${s.name || sym}</span>
                         <span style="font-size:10px; color:var(--text-muted); margin-left:4px">${pe} ${median}</span>
                     </div>
                     <div style="display:flex; align-items:center; gap:4px">
@@ -752,7 +759,7 @@
                     const pctText = noPrice ? '' : ` <span style="font-size:10px">(${plPct >= 0 ? '+' : ''}${plPct}%)</span>`;
                     return `<div class="holding-item">
                         <div>
-                            <div class="holding-name">${h.name || sym}</div>
+                            <div class="holding-name" style="cursor:pointer;text-decoration:underline dotted" onclick="window.goToStock('${sym}')" title="前往主頁查看 ${h.name || sym}">${h.name || sym}</div>
                             <div class="holding-detail">${h.qty.toLocaleString()} 股 @ ${h.avg_price}</div>
                         </div>
                         <div style="text-align:right">
@@ -804,7 +811,7 @@
                     }
                     return `<tr class="${isBuy ? 'buy-row' : 'sell-row'}">
                         <td>${h.time}</td>
-                        <td>${h.name || h.symbol}</td>
+                        <td style="cursor:pointer;text-decoration:underline dotted" onclick="window.goToStock('${h.symbol}')" title="前往主頁查看">${h.name || h.symbol}</td>
                         <td>${isBuy ? '買進' : '賣出'}</td>
                         <td>${h.price.toLocaleString()}</td>
                         <td>${h.qty.toLocaleString()}</td>

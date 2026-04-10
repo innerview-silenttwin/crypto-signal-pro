@@ -1248,10 +1248,13 @@ function renderScreenerCards(categories) {
                 const scoreCls = s.composite_score >= 70 ? 'score-high' : s.composite_score >= 45 ? 'score-mid' : 'score-low';
                 const hiddenCls = (isRanking && idx >= DEFAULT_SHOW) ? ' screener-hidden' : '';
                 const rankBadge = isRanking ? `<span class="screener-rank">${idx + 1}</span>` : '';
+                const days = s.days_in_rank || 1;
+                const daysBadge = days >= 2 ? `<span class="screener-days-badge" title="連續入榜${days}天">第${days}天</span>` : '';
                 return `<div class="screener-stock-row${hiddenCls}" data-symbol="${s.symbol}" data-market="stock">
                     ${rankBadge}
                     <span class="screener-stock-sym">${s.symbol.replace('.TW','')}</span>
                     <span class="screener-stock-name">${s.name}</span>
+                    ${daysBadge}
                     <span class="screener-stock-score ${scoreCls}">${Math.round(s.composite_score)}</span>
                     <span class="screener-stock-hl">${s.highlight}</span>
                 </div>`;
@@ -2147,6 +2150,15 @@ document.addEventListener('DOMContentLoaded', () => {
     startHeartbeat();
     initTickerData(); // 載入時一次拉取所有 ticker（含台股）
     initScreener();   // 載入超級選股系統
+
+    // 從台股交易中心跳轉過來時，帶入指定股票
+    const pendingSymbol = localStorage.getItem('csp-pending-symbol');
+    if (pendingSymbol) {
+        localStorage.removeItem('csp-pending-symbol');
+        const pendingMarket = localStorage.getItem('csp-pending-market') || 'stock';
+        localStorage.removeItem('csp-pending-market');
+        setTimeout(() => window.changeSymbol(pendingSymbol, pendingMarket), 300);
+    }
 
     // --- 跑馬燈點擊 → 切換到該標的 ---
     const tickerStrip = document.getElementById('ticker-content');
