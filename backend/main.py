@@ -1594,6 +1594,13 @@ async def clear_screener_cache():
     return {"status": "ok", "message": "快取已清除"}
 
 
+@app.get("/api/active-etf-ranking")
+async def get_active_etf_ranking():
+    """取得主動式 ETF 持股排行（被領先大盤 ETF 重倉的台股）"""
+    from layers.active_etf import get_active_etf_ranking as _get_ranking
+    return _get_ranking()
+
+
 @app.get("/api/custom-stocks")
 async def list_custom_stocks():
     """取得使用者自選股清單"""

@@ -33,6 +33,7 @@ from layers.fundamental import fetch_twse_pe_all, _strip_tw
 from layers.chipflow import fetch_chip_summary, compute_chip_score
 from layers.regime import RegimeLayer
 from layers.sentiment import get_stock_sentiment, get_market_sentiment, fetch_rss_articles
+from layers.active_etf import get_active_etf_score
 
 logger = logging.getLogger(__name__)
 
@@ -88,23 +89,29 @@ SECTOR_COMPOSITE_WEIGHTS = {
     "semiconductor": {  # 法人主導、趨勢明確、regime 回測夏普+0.89
         "chipflow": 0.35, "technical": 0.25, "fundamental": 0.15,
         "regime": 0.18, "sentiment": 0.07,
+        "active_etf": 0.07,
     },
     "electronics": {  # 同半導體，regime 回測效果最強（夏普+0.94）
         "chipflow": 0.35, "technical": 0.25, "fundamental": 0.15,
         "regime": 0.18, "sentiment": 0.07,
+        "active_etf": 0.07,
     },
     "finance": {  # 殖利率重要、波動小；籌碼回測有害(夏普-0.19)，降權
         "chipflow": 0.15, "technical": 0.20, "fundamental": 0.38,
         "regime": 0.13, "sentiment": 0.14,
+        "active_etf": 0.03,  # 金融股少被主動ETF持有，權重低
     },
     "traditional": {  # regime 回測有害（夏普-0.36），基本面對景氣循環股重要
         "chipflow": 0.30, "technical": 0.25, "fundamental": 0.30,
         "regime": 0.05, "sentiment": 0.10,
+        "active_etf": 0.03,
     },
     "default": {  # 通用
         "chipflow": 0.35, "fundamental": 0.20, "technical": 0.25,
         "regime": 0.13, "sentiment": 0.07,
+        "active_etf": 0.05,
     },
+    # active_etf: 被持有才計入，未持有時該維度自動排除並重分配其他維度權重
 }
 
 # ── 股票代碼 → 產業分類 ──
@@ -377,7 +384,11 @@ def scan_single_stock(symbol: str, name: str, all_pe: dict, articles: list) -> O
         scores["regime"] = regime_score
         details["sector_type"] = symbol_sector
 
-        # ── 4. 消息面（無相關新聞時設為 None，不列入綜合評分）──
+        # ── 4. 主動式 ETF 評分（未被持有時設為 None，不列入綜合評分）──
+        active_etf_score = get_active_etf_score(symbol)
+        scores["active_etf"] = active_etf_score
+
+        # ── 5. 消息面（無相關新聞時設為 None，不列入綜合評分）──
         sent_score = None
         try:
             stock_name = name or (pe_info.get("name", "") if pe_info else "")
@@ -389,7 +400,7 @@ def scan_single_stock(symbol: str, name: str, all_pe: dict, articles: list) -> O
             pass
         scores["sentiment"] = sent_score
 
-        # ── 5. 綜合分數（按產業使用不同五維權重）──
+        # ── 6. 綜合分數（按產業使用不同維度權重）──
         weights = SECTOR_COMPOSITE_WEIGHTS.get(symbol_sector, SECTOR_COMPOSITE_WEIGHTS["default"])
         # 跳過缺失的維度，重新分配權重（與 stock-analysis 邏輯一致）
         valid = [(scores.get(k, 50), w) for k, w in weights.items() if scores.get(k) is not None]
@@ -414,6 +425,8 @@ def scan_single_stock(symbol: str, name: str, all_pe: dict, articles: list) -> O
             highlights.append(f"低本益比{details['pe']:.1f}")
         if regime_state in ("強勢多頭", "底部轉強"):
             highlights.append(f"盤勢{regime_state}")
+        if active_etf_score is not None and active_etf_score >= 70:
+            highlights.append("主動ETF重倉")
 
         return {
             "symbol": symbol,
@@ -525,11 +538,12 @@ def categorize_picks(results: List[dict]) -> List[dict]:
     """
     categories = []
     rank_history = _load_rank_history()
+    today = datetime.now().strftime("%Y-%m-%d")
 
     def _annotate_days(picks_list: List[dict], cat_id: str) -> List[dict]:
         """為每支股票標記入榜天數"""
         symbols = [p["symbol"] for p in picks_list]
-        days_map = _update_rank_history_for_category(rank_history, cat_id, symbols)
+        days_map = _update_rank_history_for_category(rank_history, cat_id, symbols, today)
         for p in picks_list:
             p["_days_in_rank"] = days_map.get(p["symbol"], 1)
         return picks_list
@@ -712,13 +726,11 @@ def _format_picks(picks: List[dict]) -> List[dict]:
 
 def _load_rank_history() -> dict:
     """載入入榜歷史記錄 {category_id: {symbol: first_seen_date}}"""
-    if os.path.exists(RANK_HISTORY_FILE):
-        try:
-            with open(RANK_HISTORY_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {}
+    try:
+        with open(RANK_HISTORY_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
 
 
 def _save_rank_history(history: dict):
@@ -731,34 +743,33 @@ def _save_rank_history(history: dict):
         logger.warning(f"入榜歷史記錄存檔失敗: {e}")
 
 
-def _update_rank_history_for_category(history: dict, cat_id: str, symbols: List[str]) -> dict:
+def _update_rank_history_for_category(history: dict, cat_id: str, symbols: List[str],
+                                       today: str) -> dict:
     """
     更新某類別的入榜歷史，並計算每支股票的入榜天數
     Returns: {symbol: days_in_rank}
+    today: 預先計算好的日期字串 (YYYY-MM-DD)，避免 7 次呼叫重複計算
     """
-    today = datetime.now().strftime("%Y-%m-%d")
     if cat_id not in history:
         history[cat_id] = {}
 
     cat_hist = history[cat_id]
     current_set = set(symbols)
 
-    # 移除已不在榜的股票
     for sym in list(cat_hist.keys()):
         if sym not in current_set:
             del cat_hist[sym]
 
-    # 新入榜的股票記錄首次入榜日期
     for sym in symbols:
         if sym not in cat_hist:
             cat_hist[sym] = today
 
-    # 計算每支股票的入榜天數
+    today_date = datetime.strptime(today, "%Y-%m-%d")
     days_map = {}
     for sym in symbols:
         first_seen = cat_hist.get(sym, today)
         try:
-            delta = (datetime.strptime(today, "%Y-%m-%d") - datetime.strptime(first_seen, "%Y-%m-%d")).days + 1
+            delta = (today_date - datetime.strptime(first_seen, "%Y-%m-%d")).days + 1
         except Exception:
             delta = 1
         days_map[sym] = max(1, delta)

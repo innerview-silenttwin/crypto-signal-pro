@@ -2185,6 +2185,61 @@ a.event-item:hover {
     font-size: 10px;
     color: var(--text-muted);
 }
+/* 超選 Tab 切換 */
+.screener-tabs {
+    display: flex;
+    gap: 4px;
+}
+.screener-tab {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+.screener-tab.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+    font-weight: 700;
+}
+/* 主動 ETF 排行 */
+.aetf-header-note {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+    line-height: 1.6;
+}
+.aetf-etf-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+.aetf-etf-chip {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: var(--glass-bg, rgba(255,255,255,0.05));
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 3px 8px;
+    font-size: 11px;
+}
+.aetf-etf-code {
+    font-weight: 700;
+    color: var(--text-main);
+}
+.aetf-etf-name {
+    color: var(--text-muted);
+}
+.aetf-etf-alpha {
+    color: var(--bull-color, #26a69a);
+    font-weight: 700;
+}
 .screener-refresh-btn {
     margin-left: auto;
     background: transparent;

@@ -1314,15 +1314,41 @@ function initScreener() {
     // 載入選股資料
     fetchScreenerPicks();
 
+    // Tab 切換
+    const tabContainer = document.querySelector('.screener-tabs');
+    if (tabContainer) {
+        tabContainer.addEventListener('click', e => {
+            const btn = e.target.closest('.screener-tab');
+            if (!btn) return;
+            tabContainer.querySelectorAll('.screener-tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const tab = btn.dataset.tab;
+            const picksEl = document.getElementById('screener-categories');
+            const etfEl = document.getElementById('screener-active-etf');
+            if (tab === 'picks') {
+                if (picksEl) picksEl.style.display = '';
+                if (etfEl) etfEl.style.display = 'none';
+            } else {
+                if (picksEl) picksEl.style.display = 'none';
+                if (etfEl) etfEl.style.display = '';
+                fetchActiveEtfRanking();
+            }
+        });
+    }
+
     // 重新整理按鈕
     const refreshBtn = document.getElementById('screener-refresh-btn');
     if (refreshBtn) {
         refreshBtn.addEventListener('click', async () => {
+            const activeTab = document.querySelector('.screener-tab.active');
+            if (activeTab && activeTab.dataset.tab === 'active-etf') {
+                fetchActiveEtfRanking(true);
+                return;
+            }
             refreshBtn.disabled = true;
             refreshBtn.textContent = '⏳';
             try {
                 await fetch('/api/screener/refresh', { method: 'POST' });
-                // 等 3 秒後重新載入
                 setTimeout(() => {
                     fetchScreenerPicks();
                     refreshBtn.disabled = false;
@@ -1337,6 +1363,114 @@ function initScreener() {
 
     // 每 30 分鐘自動刷新
     setInterval(fetchScreenerPicks, 30 * 60 * 1000);
+}
+
+// ── 主動 ETF 選股排行 ──
+
+let _activeEtfLoaded = false;
+
+async function fetchActiveEtfRanking(forceReload = false) {
+    const container = document.getElementById('screener-active-etf');
+    if (!container) return;
+    if (_activeEtfLoaded && !forceReload) return;
+
+    container.innerHTML = '<div class="screener-loading">載入主動 ETF 持股資料中...</div>';
+
+    try {
+        const res = await fetch('/api/active-etf-ranking');
+        const data = await res.json();
+
+        if (!data.stocks || data.stocks.length === 0) {
+            container.innerHTML = `<div class="screener-loading">${data.message || '資料載入中，請稍後再試'}</div>`;
+            return;
+        }
+
+        renderActiveEtfRanking(data);
+        _activeEtfLoaded = true;
+    } catch (e) {
+        container.innerHTML = '<div class="screener-loading">載入失敗，請稍後再試</div>';
+        console.warn('主動 ETF 排行載入失敗:', e);
+    }
+}
+
+function renderActiveEtfRanking(data) {
+    const container = document.getElementById('screener-active-etf');
+    if (!container) return;
+
+    const DEFAULT_SHOW = 15;
+    const stocks = data.stocks || [];
+    const etfs = data.etfs || [];
+
+    // ETF 概覽卡
+    const etfSummaryHtml = etfs.map(e => `
+        <div class="aetf-etf-chip">
+            <span class="aetf-etf-code">${e.code}</span>
+            <span class="aetf-etf-name">${e.name.replace('主動', '')}</span>
+            <span class="aetf-etf-alpha">+${e.alpha}%</span>
+        </div>`).join('');
+
+    // 股票排行列
+    const stockRows = stocks.map((s, idx) => {
+        const scoreCls = s.score >= 75 ? 'score-high' : s.score >= 40 ? 'score-mid' : 'score-low';
+        const hiddenCls = idx >= DEFAULT_SHOW ? ' screener-hidden' : '';
+        return `<div class="screener-stock-row${hiddenCls}" data-symbol="${s.symbol}.TW" data-market="stock">
+            <span class="screener-rank">${idx + 1}</span>
+            <span class="screener-stock-sym">${s.symbol}</span>
+            <span class="screener-stock-name">${s.name}</span>
+            <span class="screener-stock-score ${scoreCls}">${Math.round(s.score)}</span>
+            <span class="screener-stock-hl">ETF重倉</span>
+        </div>`;
+    }).join('');
+
+    const hasMore = stocks.length > DEFAULT_SHOW;
+    const expandBtn = hasMore
+        ? `<button class="screener-expand-btn" id="aetf-expand-btn">顯示更多 (${stocks.length}檔) ▼</button>`
+        : '';
+
+    container.innerHTML = `
+        <div class="aetf-header-note">
+            以下為績效領先大盤的 <strong>${etfs.length} 支主動式 ETF</strong> 共同持有的台股，
+            依「ETF排名權重 × 持股比例」綜合評分排列。更新：${data.updated_at || '今日'}
+        </div>
+        <div class="aetf-etf-summary">${etfSummaryHtml}</div>
+        <div class="screener-cat-card glass-panel screener-ranking-card">
+            <div class="screener-cat-header">
+                <span class="screener-cat-icon">🏆</span>
+                <span class="screener-cat-name">被寵幸的台股排行</span>
+                <span class="screener-cat-count">${stocks.length}檔</span>
+            </div>
+            <div class="screener-cat-stocks" id="aetf-stock-list">${stockRows}</div>
+            ${expandBtn}
+        </div>`;
+
+    // 點擊個股
+    container.querySelectorAll('.screener-stock-row').forEach(row => {
+        row.addEventListener('click', () => {
+            const symbol = row.dataset.symbol;
+            if (window.changeSymbol) window.changeSymbol(symbol, 'stock');
+        });
+    });
+
+    // 展開 / 收起
+    const expandBtnEl = document.getElementById('aetf-expand-btn');
+    if (expandBtnEl) {
+        expandBtnEl.addEventListener('click', () => {
+            const list = document.getElementById('aetf-stock-list');
+            const hidden = list.querySelectorAll('.screener-hidden');
+            const isExpanded = expandBtnEl.dataset.expanded === '1';
+            if (isExpanded) {
+                list.querySelectorAll('.screener-stock-row').forEach((r, i) => {
+                    if (i >= DEFAULT_SHOW) r.classList.add('screener-hidden');
+                });
+                expandBtnEl.dataset.expanded = '0';
+                expandBtnEl.textContent = `顯示更多 (${stocks.length}檔) ▼`;
+            } else {
+                hidden.forEach(el => el.classList.remove('screener-hidden'));
+                expandBtnEl.dataset.expanded = '1';
+                expandBtnEl.textContent = '收起 ▲';
+            }
+        });
+    }
 }
 
 function initExpandLogic() {
