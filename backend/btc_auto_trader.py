@@ -134,17 +134,19 @@ class BTCAccount:
         self.state["is_active"] = active
         self._save()
 
-    def get_holding(self) -> Optional[dict]:
-        return self.state["holdings"].get(SYMBOL)
+    def get_holding_for_strat(self, strat_id: str) -> Optional[dict]:
+        return self.state["holdings"].get(f"{SYMBOL}_{strat_id}")
 
-    def buy(self, price: float, signal_desc: str, ratio: float = 0.95) -> Optional[dict]:
-        """買入 BTC"""
-        if self.state["balance"] < 100:
+    def buy_strat(self, price: float, signal_desc: str, strat_id: str, spend_amount: float) -> Optional[dict]:
+        """按策略獨立買入 BTC"""
+        if self.state["balance"] < spend_amount:
+            spend_amount = self.state["balance"] * 0.95
+            
+        if spend_amount < 100:
             return None
 
-        spend = self.state["balance"] * ratio
-        fee = spend * TRADE_FEE_PCT / 100
-        qty = (spend - fee) / price
+        fee = spend_amount * TRADE_FEE_PCT / 100
+        qty = (spend_amount - fee) / price
 
         if qty <= 0:
             return None
@@ -152,27 +154,30 @@ class BTCAccount:
         actual_cost = qty * price + fee
         self.state["balance"] -= actual_cost
 
-        # 更新持倉（支持加倉）
-        hold = self.state["holdings"].get(SYMBOL)
+        # 更新策略獨立持倉
+        hold_key = f"{SYMBOL}_{strat_id}"
+        hold = self.state["holdings"].get(hold_key)
         if hold and hold["qty"] > 0:
             new_qty = hold["qty"] + qty
             new_avg = (hold["qty"] * hold["avg_price"] + qty * price) / new_qty
-            self.state["holdings"][SYMBOL] = {
+            self.state["holdings"][hold_key] = {
                 "qty": round(new_qty, 8),
                 "avg_price": round(new_avg, 2),
                 "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "strat_id": strat_id,
             }
         else:
-            self.state["holdings"][SYMBOL] = {
+            self.state["holdings"][hold_key] = {
                 "qty": round(qty, 8),
                 "avg_price": round(price, 2),
                 "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "strat_id": strat_id,
             }
 
         entry = {
             "id": int(time.time()),
             "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "symbol": SYMBOL,
+            "symbol": f"{SYMBOL} ({strat_id})",
             "type": "BUY",
             "price": round(price, 2),
             "qty": round(qty, 8),
@@ -180,14 +185,16 @@ class BTCAccount:
             "fee": round(fee, 2),
             "signal": signal_desc,
             "balance_after": round(self.state["balance"], 2),
+            "strat_id": strat_id
         }
         self.state["history"].insert(0, entry)
         self._save()
         return entry
 
-    def sell(self, price: float, signal_desc: str) -> Optional[dict]:
-        """賣出全部 BTC"""
-        hold = self.get_holding()
+    def sell_strat(self, price: float, signal_desc: str, strat_id: str) -> Optional[dict]:
+        """賣出指定策略的全部持倉"""
+        hold_key = f"{SYMBOL}_{strat_id}"
+        hold = self.state["holdings"].get(hold_key)
         if not hold or hold["qty"] <= 0:
             return None
 
@@ -198,12 +205,12 @@ class BTCAccount:
         profit = net - (qty * hold["avg_price"])
 
         self.state["balance"] += net
-        del self.state["holdings"][SYMBOL]
+        del self.state["holdings"][hold_key]
 
         entry = {
             "id": int(time.time()),
             "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "symbol": SYMBOL,
+            "symbol": f"{SYMBOL} ({strat_id})",
             "type": "SELL",
             "price": round(price, 2),
             "qty": round(qty, 8),
@@ -212,19 +219,21 @@ class BTCAccount:
             "profit": round(profit, 2),
             "signal": signal_desc,
             "balance_after": round(self.state["balance"], 2),
+            "strat_id": strat_id
         }
         self.state["history"].insert(0, entry)
         self._save()
         return entry
 
     def get_summary(self, current_price: float = None) -> dict:
-        hold = self.get_holding()
         equity = self.state["balance"]
         unrealized = 0.0
-        if hold and hold["qty"] > 0 and current_price:
-            market_value = hold["qty"] * current_price
-            equity += market_value
-            unrealized = market_value - hold["qty"] * hold["avg_price"]
+        
+        for key, hold in self.state["holdings"].items():
+            if hold["qty"] > 0 and current_price:
+                market_value = hold["qty"] * current_price
+                equity += market_value
+                unrealized += market_value - hold["qty"] * hold["avg_price"]
 
         return {
             "is_active": self.is_active,
@@ -350,112 +359,73 @@ def update_flow_data():
 # 交易邏輯
 # ═══════════════════════════════════════════════
 
-def check_and_trade(account: BTCAccount):
-    """核心：四策略並行檢查信號並執行交易"""
+    # 4. 獨立策略檢查
+    # 各策略配置本金的 25% 作為單一操作的動用金上限
+    initial_alloc = account.state.get("initial_balance", 100000) * 0.25
 
-    # 1. 取得最新日線
-    df = fetch_btc_daily(250)
-    if df is None or len(df) < 200:
-        logger.warning("無法取得足夠 K 線資料")
-        return
+    for strat in STRATEGIES:
+        holding = account.get_holding_for_strat(strat["id"])
+        sig = signal_with_flow if strat["use_flow"] else signal_pure_tech
 
-    current_price = df["close"].iloc[-1]
-
-    # 2. 更新 Flow 資料
-    update_flow_data()
-
-    # 3. 計算兩種信號（有/無 CryptoFlow）
-    aggregator = SignalAggregator()
-    crypto_flow = CryptoFlowLayer(data_dir=DATA_DIR)
-
-    signal_with_flow = aggregator.analyze(df.copy(), SYMBOL, TIMEFRAME, layers=[crypto_flow])
-    signal_pure_tech = SignalAggregator().analyze(df.copy(), SYMBOL, TIMEFRAME, layers=None)
-
-    logger.info(
-        f"[BTC] ${current_price:,.0f} | "
-        f"純技術: {signal_pure_tech.direction} {signal_pure_tech.confidence:.1f} | "
-        f"+Flow: {signal_with_flow.direction} {signal_with_flow.confidence:.1f}"
-    )
-
-    holding = account.get_holding()
-
-    # 4. 四策略並行判斷
-    if holding is None or holding["qty"] <= 0:
-        # === 無持倉 → 檢查買入 ===
-        triggered = _check_buy_strategies(signal_pure_tech, signal_with_flow)
-
-        if triggered:
-            # 取信號分數最高的作為主要描述
-            best = max(triggered, key=lambda t: t["score"])
-            desc = f"[{best['id']}] {best['name']} {best['score']:.0f}分"
-            entry = account.buy(current_price, desc)
-            if entry:
-                logger.info(f"🟢 買入 BTC @ ${current_price:,.0f} ({len(triggered)}策略觸發)")
-                _notify_btc_trade("BUY", entry, triggered, signal_with_flow)
-    else:
-        # === 有持倉 → 檢查賣出 ===
-        avg_price = holding["avg_price"]
-        change_pct = (current_price - avg_price) / avg_price * 100
-
-        should_sell = False
-        sell_reason = ""
-        sell_triggered = []
-
-        # 停損/停利（優先，不分策略）
-        if change_pct <= -STOP_LOSS_PCT:
-            should_sell = True
-            sell_reason = f"觸發停損 ({change_pct:+.1f}%)"
-        elif change_pct >= TAKE_PROFIT_PCT:
-            should_sell = True
-            sell_reason = f"觸發停利 ({change_pct:+.1f}%)"
+        if holding is None or holding["qty"] <= 0:
+            # === 無持倉 → 檢查買入 ===
+            if sig.direction == "BUY" and sig.confidence >= strat["buy_threshold"]:
+                desc = (f"買入信號 (買{sig.buy_score:.0f}/賣{sig.sell_score:.0f}, "
+                        f"{sig.signal_level}) [{strat['id']}]")
+                entry = account.buy_strat(current_price, desc, strat["id"], initial_alloc)
+                if entry:
+                    entry["buy_score"] = round(sig.buy_score, 1)
+                    entry["sell_score"] = round(sig.sell_score, 1)
+                    entry["signal_level"] = sig.signal_level
+                    entry["triggered_strategies"] = strat["id"]
+                    account._save()
+                    
+                    mock_triggered = [{
+                        "id": strat["id"], "name": strat["name"],
+                        "score": sig.confidence, "backtest": strat["backtest"],
+                        "use_flow": strat["use_flow"]
+                    }]
+                    logger.info(f"🟢 買入 BTC ({strat['id']}) @ ${current_price:,.0f}")
+                    _notify_btc_trade("BUY", entry, mock_triggered, signal_with_flow)
         else:
-            # 四策略各自檢查賣出信號
-            sell_triggered = _check_sell_strategies(signal_pure_tech, signal_with_flow)
-            if sell_triggered:
-                should_sell = True
-                best = max(sell_triggered, key=lambda t: t["score"])
-                sell_reason = f"[{best['id']}] {best['name']} 賣出 {best['score']:.0f}分"
+            # === 有持倉 → 檢查賣出 ===
+            avg_price = holding["avg_price"]
+            change_pct = (current_price - avg_price) / avg_price * 100
 
-        if should_sell:
-            entry = account.sell(current_price, sell_reason)
-            if entry:
-                logger.info(f"🔴 賣出 BTC @ ${current_price:,.0f} ({sell_reason})")
-                _notify_btc_trade("SELL", entry, sell_triggered, signal_with_flow)
+            should_sell = False
+            sell_reason = ""
+
+            if change_pct <= -STOP_LOSS_PCT:
+                should_sell = True
+                sell_reason = f"觸發停損 ({change_pct:+.1f}%)"
+            elif change_pct >= TAKE_PROFIT_PCT:
+                should_sell = True
+                sell_reason = f"觸發停利 ({change_pct:+.1f}%)"
+            elif sig.direction == "SELL" and sig.confidence >= strat["sell_threshold"]:
+                should_sell = True
+                sell_reason = (f"賣出信號 (買{sig.buy_score:.0f}/賣{sig.sell_score:.0f}, "
+                               f"{sig.signal_level}) [{strat['id']}]")
+
+            if should_sell:
+                entry = account.sell_strat(current_price, sell_reason, strat["id"])
+                if entry:
+                    entry["buy_score"] = round(sig.buy_score, 1)
+                    entry["sell_score"] = round(sig.sell_score, 1)
+                    entry["signal_level"] = sig.signal_level
+                    entry["triggered_strategies"] = strat["id"]
+                    entry["change_pct"] = round(change_pct, 2)
+                    account._save()
+                    
+                    mock_triggered = [{
+                        "id": strat["id"], "name": strat["name"],
+                        "score": sig.confidence, "backtest": strat["backtest"],
+                        "use_flow": strat["use_flow"]
+                    }]
+                    logger.info(f"🔴 賣出 BTC ({strat['id']}) @ ${current_price:,.0f} ({sell_reason})")
+                    _notify_btc_trade("SELL", entry, mock_triggered, signal_with_flow)
 
     # 5. 記錄權益
     account.record_equity(current_price)
-
-
-def _check_buy_strategies(sig_pure, sig_flow) -> list:
-    """檢查四策略的買入條件，回傳所有觸發的策略"""
-    triggered = []
-    for s in STRATEGIES:
-        sig = sig_flow if s["use_flow"] else sig_pure
-        if sig.direction == "BUY" and sig.confidence >= s["buy_threshold"]:
-            triggered.append({
-                "id": s["id"],
-                "name": s["name"],
-                "score": sig.confidence,
-                "backtest": s["backtest"],
-                "use_flow": s["use_flow"],
-            })
-    return triggered
-
-
-def _check_sell_strategies(sig_pure, sig_flow) -> list:
-    """檢查四策略的賣出條件，回傳所有觸發的策略"""
-    triggered = []
-    for s in STRATEGIES:
-        sig = sig_flow if s["use_flow"] else sig_pure
-        if sig.direction == "SELL" and sig.confidence >= s["sell_threshold"]:
-            triggered.append({
-                "id": s["id"],
-                "name": s["name"],
-                "score": sig.confidence,
-                "backtest": s["backtest"],
-                "use_flow": s["use_flow"],
-            })
-    return triggered
 
 
 def _notify_btc_trade(trade_type: str, entry: dict, triggered: list, signal):
@@ -557,6 +527,7 @@ class BTCAutoTrader:
     def get_status(self) -> dict:
         price = fetch_btc_price()
         summary = self.account.get_summary(price)
+
         return {
             "is_running": self._running,
             "is_active": self.account.is_active,
@@ -564,7 +535,9 @@ class BTCAutoTrader:
             "last_run_time": self.last_run_time,
             "btc_price": price,
             "strategies": [
-                {"id": s["id"], "name": s["name"], "threshold": s["buy_threshold"],
+                {"id": s["id"], "name": s["name"],
+                 "buy_threshold": s["buy_threshold"],
+                 "sell_threshold": s["sell_threshold"],
                  "use_flow": s["use_flow"], "backtest": s["backtest"]}
                 for s in STRATEGIES
             ],

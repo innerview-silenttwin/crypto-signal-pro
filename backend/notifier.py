@@ -82,7 +82,6 @@ def notify_trade(sector_name: str, symbol: str, stock_name: str,
     action = "買入" if trade_type == "BUY" else "賣出"
     amount = round(price * qty)
 
-    # 產生股票查詢連結（台灣 Yahoo Finance）
     code = symbol.replace(".TW", "").replace(".TWO", "")
     stock_url = f"https://tw.stock.yahoo.com/quote/{code}.TW"
 

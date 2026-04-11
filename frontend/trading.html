@@ -172,14 +172,23 @@
             <div class="trading-layout">
                 <div class="trading-main-area">
                     <!-- 狀態控制 -->
-                    <div class="trading-controls-hero" id="status-hero">
-                        <h2 class="hero-title">BTC 四策略智能交易 <span class="info-tooltip" data-tip="四組經 7 年歷史回測驗證的策略同時監控 BTC/USDT 日線信號。每小時自動檢查一次，任一策略達到買入/賣出門檻即觸發交易。交易通知會標明是哪些策略觸發，以及該策略的歷史回測績效（勝率、累積報酬等）。多策略同時觸發代表信號越可靠。所有交易為虛擬交易（紙上交易），不涉及真實資金。"><i>i</i></span></h2>
-                        <p style="color:var(--text-muted); margin-bottom:16px; font-size:13px">
-                            四組回測驗證策略並行監控，任一觸發即交易<br>
-                            通知標明觸發策略與該策略的歷史回測績效
-                        </p>
-                        <button id="btn-toggle-trading-hero" class="btn-start btn-hero">開啟自動交易</button>
-                        <button id="btn-run-once" style="margin-left:12px; padding:14px 28px; border-radius:16px; font-size:16px; background:rgba(167,139,250,0.1); color:var(--primary); border:1.5px solid rgba(167,139,250,0.3); cursor:pointer; font-weight:700; font-family:'Nunito',sans-serif">手動檢查一次</button>
+                    <div class="global-control-bar glass-panel" id="status-hero" style="margin: 0 0 24px 0; display:flex; justify-content:space-between; align-items:center; padding:12px 20px; border-radius:16px; border:1.5px solid rgba(52, 211, 153, 0.2); background:rgba(52, 211, 153, 0.06)">
+                        <div style="display:flex; align-items:center; gap:12px">
+                            <h2 style="font-size:16px; margin:0; color:var(--text-main)">BTC 四策略獨立交易</h2>
+                            <button id="btn-toggle-trading-hero" class="btn-start" style="padding:8px 20px; border-radius:12px; font-size:13px; font-weight:700; border:none; cursor:pointer; font-family:'Nunito',sans-serif">開啟自動交易</button>
+                            <button id="btn-run-once" class="btn-global" style="padding:8px 16px; border-radius:12px; font-size:13px; font-weight:700; border:1.5px solid var(--border-color); background:rgba(255,255,255,0.6); color:var(--text-main); cursor:pointer; font-family:'Nunito',sans-serif">手動檢查一次</button>
+                        </div>
+                        <div style="font-size:12px; color:var(--text-muted)">
+                            <span class="info-tooltip" data-tip="四組回測驗證的策略分別監控日線信號。各策略完全獨立運作，擁有專屬的持倉與動用金（上限為本金 25%）。任一策略達買入門檻即觸發該策略買入；達賣出門檻只賣出該策略的倉位。完全杜絕策略間衝突造成的過度交易。"><i>i</i> 系統說明</span>
+                        </div>
+                    </div>
+                    
+                    <!-- 各策略損益長條圖 -->
+                    <div class="glass-panel" style="margin-bottom: 24px; padding: 16px 20px">
+                        <div style="font-size:12px; color:var(--text-muted); margin-bottom:8px; font-weight:700">各策略損益比較</div>
+                        <div style="height:150px; position:relative">
+                            <canvas id="strategy-bar-chart"></canvas>
+                        </div>
                     </div>
 
                     <!-- 帳戶數據 -->
@@ -197,7 +206,7 @@
                             <div id="trade-equity" class="stat-value small">--</div>
                         </div>
                         <div class="stat-card glass-panel" id="pl-card">
-                            <div class="stat-label">總報酬率 <span class="info-tooltip" data-tip="總報酬率 = (當前淨值 / 初始本金 - 1) × 100%。包含已實現損益（已賣出部位）和未實現損益（持倉中部位）。所有交易已扣除 0.1% 手續費（模擬 Binance 現貨費率）。"><i>i</i></span></div>
+                            <div class="stat-label">總損益 <span class="info-tooltip" data-tip="總損益 = 當前淨值 - 初始本金。含已實現（已賣出）和未實現（持倉中）損益。金額及百分比同時顯示，格式對齊台股交易中心。所有交易已扣除 0.1% 手續費。"><i>i</i></span></div>
                             <div id="trade-pl" class="stat-value small">--</div>
                         </div>
                     </div>
@@ -205,7 +214,7 @@
                     <!-- 交易歷史 -->
                     <div class="history-section card glass-panel">
                         <div class="card-header">
-                            <h2>交易歷史 <span class="info-tooltip" data-tip="記錄所有已執行的虛擬交易。買入：四策略任一達到買入門檻時觸發，投入帳戶餘額的 95%。賣出觸發條件（滿足任一即賣出）：(1) 停損：持倉虧損達 -12%。(2) 停利：持倉獲利達 +25%。(3) 賣出信號：四策略任一達到賣出門檻。損益已扣除買賣雙邊各 0.1% 手續費。"><i>i</i></span></h2>
+                            <h2>交易歷史 <span class="info-tooltip" data-tip="記錄所有已執行的虛擬交易。系統將交易拆分到個別策略。買入：單一策略買入上限為初始本金 25%。賣出：策略賣出僅平倉該策略擁有的部位。損益格式對齊台股：買入行顯示未實現損益，賣出行顯示已實現損益+報酬率。"><i>i</i></span></h2>
                             <span id="trade-count" style="font-size:12px; color:var(--text-muted); font-weight:600">0 筆交易</span>
                         </div>
                         <div class="history-table-container" style="max-height:500px; min-height:200px;">
@@ -214,11 +223,11 @@
                                     <tr>
                                         <th>日期時間</th>
                                         <th>操作</th>
-                                        <th>價格 <span class="info-tooltip" data-tip="成交價格（USDT）。來源：Binance 現貨 API 取得的日線收盤價。"><i>i</i></span></th>
+                                        <th>價格</th>
                                         <th>數量 (BTC)</th>
-                                        <th>金額 (USDT) <span class="info-tooltip" data-tip="買入：投入金額（含手續費）。賣出：實際收入（已扣手續費）。手續費率 0.1%（模擬 Binance 現貨 Maker/Taker 費率）。"><i>i</i></span></th>
-                                        <th>損益 <span class="info-tooltip" data-tip="賣出時顯示已實現損益 = 賣出淨收入 - 持倉成本。正數為獲利，負數為虧損。已扣除買賣雙邊手續費。"><i>i</i></span></th>
-                                        <th>觸發策略 <span class="info-tooltip" data-tip="顯示觸發本次交易的策略代號。S1=日線35+CryptoFlow、S2=日線40純技術、S3=日線40+CryptoFlow、S4=日線35純技術。若停損/停利觸發則不顯示策略代號。"><i>i</i></span></th>
+                                        <th>金額 (USDT)</th>
+                                        <th>損益 <span class="info-tooltip" data-tip="買進：若仍持有顯示未實現損益（依 BTC 即時價計算）。賣出：顯示已實現損益＋報酬率(%)＋持倉天數。格式對齊台股交易中心。"><i>i</i></span></th>
+                                        <th>信號 <span class="info-tooltip" data-tip="記錄交易當下的分數與觸發的策略。各策略獨立交易，互不干涉。"><i>i</i></span></th>
                                     </tr>
                                 </thead>
                                 <tbody id="trade-history-body">
@@ -232,7 +241,7 @@
                 <div class="trading-side-area">
                     <!-- 持倉資訊 -->
                     <div class="card glass-panel" style="padding:20px; margin-bottom:16px">
-                        <h3 style="margin-bottom:15px; font-size:16px; color:var(--text-main)">當前持倉 <span class="info-tooltip" data-tip="顯示目前持有的 BTC 部位。數量：持有的 BTC 數量（精確到小數 6 位）。均價：加權平均買入價格（若多次加倉會自動計算）。市值 = 數量 × BTC 即時價格。未實現損益 = 市值 - (數量 × 均價)，尚未賣出的浮動盈虧。"><i>i</i></span></h3>
+                        <h3 style="margin-bottom:15px; font-size:16px; color:var(--text-main)">當前持倉 <span class="info-tooltip" data-tip="顯示目前各策略獨立持有的 BTC 部位。由於各策略條件不同，可能出現 S1 持倉而 S2 空手的情況。"><i>i</i></span></h3>
                         <div id="holdings-display">
                             <div style="text-align:center; padding:20px; color:var(--text-muted); font-size:13px; font-weight:600">無持倉</div>
                         </div>
@@ -261,7 +270,7 @@
 
                     <!-- 四策略監控 -->
                     <div class="card glass-panel" style="padding:20px; margin-bottom:16px">
-                        <h3 style="margin-bottom:12px; font-size:16px; color:var(--text-main)">四策略監控 <span class="info-tooltip" data-tip="四策略差異在於「買賣門檻」和「是否加入 CryptoFlowLayer」的組合。技術面信號：7 項指標（RSI 20%、MACD 20%、EMA交叉 15%、成交量 15%、布林帶 10%、MFI 10%、ADX 10%）各自產出買/賣分數，加權合計為 0-100 的信號分。CryptoFlowLayer：根據恐懼貪婪指數和資金費率，對信號分做乘數修正（恐懼時加碼買入分、貪婪時加碼賣出分）。門檻 35 vs 40：門檻越低交易越頻繁但勝率可能較低，門檻越高交易次數少但勝率較高。回測績效基於 2019-03-08 ~ 2026-04-05 的 BTC/USDT 日線歷史資料（來源：Binance 現貨 API via CCXT）。"><i>i</i></span></h3>
+                        <h3 style="margin-bottom:12px; font-size:16px; color:var(--text-main)">四策略監控 <span class="info-tooltip" data-tip="各策略買賣完全獨立，自己看多買入，自己看空賣出，不受其他策略影響。這消除了策略之間搶奪部位導致的過度交易。"><i>i</i></span></h3>
                         <div id="strategies-list">
                             <!-- JS 動態生成 -->
                         </div>
@@ -269,7 +278,7 @@
 
                     <!-- 風控參數 -->
                     <div class="card glass-panel" style="padding:20px">
-                        <h3 style="margin-bottom:12px; font-size:16px; color:var(--text-main)">風控參數 <span class="info-tooltip" data-tip="所有參數經 7 年回測（2019~2026）驗證。時間框架=日線：每根 K 棒代表一天的開高低收量，適合中長期波段操作。停損 -12%：持倉虧損超過 12% 強制賣出，防止重大虧損。停利 +25%：持倉獲利超過 25% 強制賣出，鎖定利潤。手續費 0.1%：模擬 Binance 現貨 Maker/Taker 費率，買賣各扣一次。檢查頻率=每小時：背景每 3600 秒從 Binance API 取得最新 250 根日線重新計算信號。K 線資料來源：Binance 公開 REST API（api.binance.com/api/v3/klines），無需 API Key。"><i>i</i></span></h3>
+                        <h3 style="margin-bottom:12px; font-size:16px; color:var(--text-main)">風控參數 <span class="info-tooltip" data-tip="停損停利針對單一策略部位計算。"><i>i</i></span></h3>
                         <div class="hold-detail">
                             <span class="hold-label">時間框架</span>
                             <span class="hold-value">日線 (1D)</span>
@@ -290,12 +299,17 @@
                             <span class="hold-label">檢查頻率</span>
                             <span class="hold-value">每小時</span>
                         </div>
+                        <div class="hold-detail">
+                            <span class="hold-label">獨立資金</span>
+                            <span class="hold-value" style="color:#f59e0b">25% 上限 / 策略</span>
+                        </div>
                     </div>
                 </div>
             </div>
         </main>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="tooltip.js"></script>
     <script src="trading_app.js"></script>
     <script>

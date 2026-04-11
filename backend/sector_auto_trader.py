@@ -480,7 +480,7 @@ def process_sector(manager: SectorTradingManager):
                           f"但綜合分數不足({composite:.0f}<50)，跳過買入")
                     continue
                 desc = f"買入信號 (技術{sig['confidence']:.0f},{comp_tag}, {sig['signal_level']}){regime_tag}"
-                ratio = 0.20
+                ratio = strategy.get("buy_ratio", 0.20)
                 manager.execute_trade(symbol, "BUY", price, desc, ratio=ratio)
 
     # 5. 記錄權益 + 持久化最新價格（帶實際交易日期，避免舊價覆蓋新價）

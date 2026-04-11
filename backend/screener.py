@@ -743,6 +743,42 @@ def _save_rank_history(history: dict):
         logger.warning(f"入榜歷史記錄存檔失敗: {e}")
 
 
+_twii_trading_days_cache = []
+
+def _get_trading_days_count(start_date: str, end_date: str) -> int:
+    """計算台股實際開市工作天數（過濾假日與未開市日）"""
+    global _twii_trading_days_cache
+    try:
+        from datetime import datetime, timedelta
+        import pandas as pd
+        
+        if not _twii_trading_days_cache:
+            import yfinance as yf
+            end_dt = datetime.now()
+            # 抓取過去一年的加權指數來判斷交易日
+            start_dt = end_dt - timedelta(days=365)
+            twii = yf.Ticker("^TWII")
+            hist = twii.history(start=start_dt.strftime("%Y-%m-%d"), end=(end_dt + timedelta(days=1)).strftime("%Y-%m-%d"))
+            if not hist.empty:
+                _twii_trading_days_cache = [d.strftime("%Y-%m-%d") for d in hist.index]
+
+        if _twii_trading_days_cache:
+            count = sum(1 for d in _twii_trading_days_cache if start_date <= d <= end_date)
+            # 若今日還沒收盤，yfinance 可能沒今天的 index，且若今天是平日，則自動補上 1 天
+            if end_date not in _twii_trading_days_cache and start_date <= end_date and pd.to_datetime(end_date).weekday() < 5:
+                 count += 1
+            return max(1, count)
+    except Exception:
+        pass
+
+    # Fallback: 單純使用 Pandas 計算扣除六日的工作天
+    try:
+        import pandas as pd
+        return max(1, len(pd.bdate_range(start=start_date, end=end_date)))
+    except Exception:
+        return 1
+
+
 def _update_rank_history_for_category(history: dict, cat_id: str, symbols: List[str],
                                        today: str) -> dict:
     """
@@ -764,12 +800,11 @@ def _update_rank_history_for_category(history: dict, cat_id: str, symbols: List[
         if sym not in cat_hist:
             cat_hist[sym] = today
 
-    today_date = datetime.strptime(today, "%Y-%m-%d")
     days_map = {}
     for sym in symbols:
         first_seen = cat_hist.get(sym, today)
         try:
-            delta = (today_date - datetime.strptime(first_seen, "%Y-%m-%d")).days + 1
+            delta = _get_trading_days_count(first_seen, today)
         except Exception:
             delta = 1
         days_map[sym] = max(1, delta)
