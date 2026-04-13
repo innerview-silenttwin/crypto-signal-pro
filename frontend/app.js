@@ -1063,6 +1063,28 @@ function renderThreeLayerAnalysis(data) {
             const marginCls = mc < 0 ? 'bullish' : mc > 0 ? 'bearish' : 'neutral';
             const marginText = mc < 0 ? `減少${Math.abs(mc).toLocaleString()}張` : mc > 0 ? `增加${mc.toLocaleString()}張` : '持平';
 
+            // 30天累計
+            const formatNet30 = (val) => {
+                if (val == null) return '-';
+                const absVal = Math.abs(val);
+                if (absVal === 0) return '0張';
+                const sign = val > 0 ? '+' : '';
+                if (absVal >= 10000) return `${sign}${(val/10000).toFixed(1).replace('.0', '')}萬張`;
+                if (absVal >= 1000) return `${sign}${(val/1000).toFixed(1).replace('.0', '')}千張`;
+                return `${sign}${val}張`;
+            };
+            const f30 = c.foreign_30d_net;
+            const t30 = c.trust_30d_net;
+            const d30 = c.dealer_30d_net;
+            const mc30 = c.margin_30d_change;
+            const sc30 = c.short_30d_change;
+            const has30d = f30 != null || t30 != null;
+            const f30Cls = (f30 || 0) > 0 ? 'news-pos' : (f30 || 0) < 0 ? 'news-neg' : 'news-neu';
+            const t30Cls = (t30 || 0) > 0 ? 'news-pos' : (t30 || 0) < 0 ? 'news-neg' : 'news-neu';
+            const d30Cls = (d30 || 0) > 0 ? 'news-pos' : (d30 || 0) < 0 ? 'news-neg' : 'news-neu';
+            const mc30Cls = (mc30 || 0) < 0 ? 'news-pos' : (mc30 || 0) > 0 ? 'news-neg' : 'news-neu';
+            const sc30Cls = (sc30 || 0) < 0 ? 'news-pos' : (sc30 || 0) > 0 ? 'news-neg' : 'news-neu';
+
             // 每日明細（最近3個有效交易日，略過全零的非交易日）
             let dailyHtml = '';
             const validDays = (c.daily_data || []).filter(d =>
@@ -1113,6 +1135,28 @@ function renderThreeLayerAnalysis(data) {
                     <span class="tla-row-label">融券餘額</span>
                     <span class="tla-row-value">${(c.short_balance_latest || 0).toLocaleString()}張</span>
                 </div>
+                ${has30d ? `
+                <div class="tla-divider-label">近30日累計</div>
+                <div class="tla-row">
+                    <span class="tla-row-label">外資30日</span>
+                    <span class="${f30Cls}">${formatNet30(f30)}</span>
+                </div>
+                <div class="tla-row">
+                    <span class="tla-row-label">投信30日</span>
+                    <span class="${t30Cls}">${formatNet30(t30)}</span>
+                </div>
+                <div class="tla-row">
+                    <span class="tla-row-label">自營30日</span>
+                    <span class="${d30Cls}">${formatNet30(d30)}</span>
+                </div>
+                <div class="tla-row">
+                    <span class="tla-row-label">融資30日</span>
+                    <span class="${mc30Cls}">${mc30 != null ? (mc30 < 0 ? `減${Math.abs(mc30).toLocaleString()}張` : mc30 > 0 ? `增${mc30.toLocaleString()}張` : '持平') : '-'}</span>
+                </div>
+                <div class="tla-row">
+                    <span class="tla-row-label">融券30日</span>
+                    <span class="${sc30Cls}">${sc30 != null ? (sc30 > 0 ? `增${sc30.toLocaleString()}張` : sc30 < 0 ? `減${Math.abs(sc30).toLocaleString()}張` : '持平') : '-'}</span>
+                </div>` : ''}
                 ${dailyHtml}
                 ${c.advice ? `<div class="tla-advice">${c.advice}</div>` : ''}`;
         } else {

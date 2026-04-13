@@ -259,7 +259,7 @@ def _ensure_margin_openapi():
         # 存入持久快取
         history = _load_history_file(_MARGIN_HISTORY_FILE)
         history[api_date] = result
-        sorted_dates = sorted(history.keys(), reverse=True)[:15]
+        sorted_dates = sorted(history.keys(), reverse=True)[:35]
         history = {d: history[d] for d in sorted_dates}
         _save_history_file(_MARGIN_HISTORY_FILE, history)
 
@@ -303,6 +303,11 @@ def fetch_chip_summary(symbol: str, days: int = 5) -> Optional[dict]:
             "margin_change_sum": int,   # 融資近 N 日累計增減
             "short_balance_latest": int,# 最新融券餘額
             "short_change_sum": int,    # 融券近 N 日增減
+            "foreign_30d_net": int,     # 外資近 30 日累計買賣超
+            "trust_30d_net": int,       # 投信近 30 日累計買賣超
+            "dealer_30d_net": int,      # 自營商近 30 日累計買賣超
+            "margin_30d_change": int,   # 融資近 30 日累計增減
+            "short_30d_change": int,    # 融券近 30 日增減（最新－30日前）
             "daily_data": list,         # 每日明細
         }
     """
@@ -314,21 +319,22 @@ def fetch_chip_summary(symbol: str, days: int = 5) -> Optional[dict]:
 
     code = _strip_tw(symbol)
 
-    # 三大法人：從 FinMind 一次抓整段日期範圍
-    inst_by_date = fetch_institutional_for_stock(symbol, days)
+    # 三大法人：一次抓 30 天（取 max，確保 30d 欄位有資料）
+    inst_by_date = fetch_institutional_for_stock(symbol, max(days, 30))
 
     # 以 FinMind 回傳的日期為準（FinMind 只回傳實際交易日，自動略過假日與週末）
-    trading_dates = sorted(inst_by_date.keys(), reverse=True)[:days]
+    all_dates = sorted(inst_by_date.keys(), reverse=True)[:30]
+    trading_dates = all_dates[:days]  # 主分析用的 N 天
 
-    # 融資融券：OpenAPI 只有最新一天，歷史從本地快取讀取
+    # 融資融券：OpenAPI 只有最新一天，歷史從本地快取讀取（最多 35 天）
     _ensure_margin_openapi()
 
-    daily_data = []
-    for date_str in trading_dates:
+    # 建立 30 天完整資料（inst + margin）
+    all_daily_data = []
+    for date_str in all_dates:
         inst_row = inst_by_date.get(date_str, {})
         margin_row = fetch_twse_margin(date_str).get(code, {})
-
-        daily_data.append({
+        all_daily_data.append({
             "date": date_str,
             "foreign_net": inst_row.get("foreign_net", 0) or 0,
             "trust_net": inst_row.get("trust_net", 0) or 0,
@@ -338,6 +344,8 @@ def fetch_chip_summary(symbol: str, days: int = 5) -> Optional[dict]:
             "margin_balance": margin_row.get("margin_balance", 0) or 0,
             "short_balance": margin_row.get("short_balance", 0) or 0,
         })
+
+    daily_data = all_daily_data[:days]  # 主分析用的 N 天
 
     if not daily_data:
         return None
@@ -371,6 +379,12 @@ def fetch_chip_summary(symbol: str, days: int = 5) -> Optional[dict]:
     foreign_consec = _consec_days(analysis_data, "foreign_net")
     trust_consec = _consec_days(analysis_data, "trust_net")
 
+    # 30 天統計（inst 只算有實際資料的交易日）
+    inst_30d = [
+        d for d in all_daily_data
+        if d["foreign_net"] != 0 or d["trust_net"] != 0 or d["dealer_net"] != 0
+    ]
+
     summary = {
         "foreign_consec_buy": foreign_consec,
         "foreign_total_net": sum(d["foreign_net"] for d in analysis_data),
@@ -383,8 +397,18 @@ def fetch_chip_summary(symbol: str, days: int = 5) -> Optional[dict]:
             daily_data[0]["short_balance"] - daily_data[-1]["short_balance"]
             if len(daily_data) > 1 else 0
         ),
+        # 近 30 天統計
+        "foreign_30d_net": sum(d["foreign_net"] for d in inst_30d),
+        "trust_30d_net": sum(d["trust_net"] for d in inst_30d),
+        "dealer_30d_net": sum(d["dealer_net"] for d in inst_30d),
+        "margin_30d_change": sum(d["margin_change"] for d in all_daily_data),
+        "short_30d_change": (
+            all_daily_data[0]["short_balance"] - all_daily_data[-1]["short_balance"]
+            if len(all_daily_data) > 1 else 0
+        ),
         "latest_date": daily_data[0]["date"] if daily_data else "",
         "days_analyzed": len(daily_data),
+        "days_30d_analyzed": len(all_daily_data),
         "daily_data": daily_data[:5],  # 只回傳最近 5 天明細給前端
     }
 
@@ -531,17 +555,22 @@ def compute_chip_score(summary: dict) -> dict:
         "sub_scores": {
             "foreign": {"score": foreign_score, "weight": 0.30,
                         "consec_days": summary.get("foreign_consec_buy", 0),
-                        "total_net": summary.get("foreign_total_net", 0)},
+                        "total_net": summary.get("foreign_total_net", 0),
+                        "net_30d": summary.get("foreign_30d_net", 0)},
             "trust": {"score": trust_score, "weight": 0.25,
                       "consec_days": summary.get("trust_consec_buy", 0),
-                      "total_net": summary.get("trust_total_net", 0)},
+                      "total_net": summary.get("trust_total_net", 0),
+                      "net_30d": summary.get("trust_30d_net", 0)},
             "dealer": {"score": dealer_score, "weight": 0.10,
-                       "total_net": summary.get("dealer_total_net", 0)},
+                       "total_net": summary.get("dealer_total_net", 0),
+                       "net_30d": summary.get("dealer_30d_net", 0)},
             "margin": {"score": margin_score, "weight": 0.20,
-                       "change_sum": summary.get("margin_change_sum", 0)},
+                       "change_sum": summary.get("margin_change_sum", 0),
+                       "change_30d": summary.get("margin_30d_change", 0)},
             "short": {"score": short_score, "weight": 0.15,
                       "balance": summary.get("short_balance_latest", 0),
-                      "change_sum": summary.get("short_change_sum", 0)},
+                      "change_sum": summary.get("short_change_sum", 0),
+                      "change_30d": summary.get("short_30d_change", 0)},
         },
     }
 
@@ -584,6 +613,12 @@ class ChipFlowLayer(BaseLayer):
             "short_balance_latest": summary.get("short_balance_latest", 0),
             "latest_date": summary.get("latest_date", ""),
             "days_analyzed": summary.get("days_analyzed", 0),
+            "days_30d_analyzed": summary.get("days_30d_analyzed", 0),
+            "foreign_30d_net": summary.get("foreign_30d_net", 0),
+            "trust_30d_net": summary.get("trust_30d_net", 0),
+            "dealer_30d_net": summary.get("dealer_30d_net", 0),
+            "margin_30d_change": summary.get("margin_30d_change", 0),
+            "short_30d_change": summary.get("short_30d_change", 0),
             "daily_data": summary.get("daily_data", []),
         }
 

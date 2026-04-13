@@ -1409,6 +1409,13 @@ async def get_stock_analysis(symbol: str):
                 "sub_scores": chip["sub_scores"],
                 "latest_date": chip_summary.get("latest_date", ""),
                 "days_analyzed": chip_summary.get("days_analyzed", 0),
+                # 近 30 日累計
+                "foreign_30d_net": chip_summary.get("foreign_30d_net", 0),
+                "trust_30d_net": chip_summary.get("trust_30d_net", 0),
+                "dealer_30d_net": chip_summary.get("dealer_30d_net", 0),
+                "margin_30d_change": chip_summary.get("margin_30d_change", 0),
+                "short_30d_change": chip_summary.get("short_30d_change", 0),
+                "days_30d_analyzed": chip_summary.get("days_30d_analyzed", 0),
                 "daily_data": chip_summary.get("daily_data", []),
             }
     except Exception as e:
