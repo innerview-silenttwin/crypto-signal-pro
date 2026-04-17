@@ -228,14 +228,24 @@ function renderHoldings(holdings, btcPrice) {
 function renderStrategies(strategies) {
     if (!ui.strategiesList || !strategies) return;
     ui.strategiesList.innerHTML = strategies.map(s => {
+        const buyColor = (s.current_buy_score >= s.buy_threshold && s.current_buy_score > 0) ? 'color:var(--buy-color)' : 'color:var(--text-main)';
+        const sellColor = (s.current_sell_score >= s.sell_threshold && s.current_sell_score > 0) ? 'color:var(--sell-color)' : 'color:var(--text-main)';
+        
         return `
             <div class="strategy-card">
-                <div>
-                    <span class="strategy-id">${s.id}</span>
-                    <span class="strategy-name">${s.name}</span>
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <span class="strategy-id">${s.id}</span>
+                        <span class="strategy-name">${s.name}</span>
+                    </div>
+                    <div style="text-align:right; font-size:12px; font-weight:700;">
+                        <span style="font-size:10px; color:var(--text-muted); font-weight:600; margin-right:4px">現分</span>
+                        買 <span style="${buyColor}">${s.current_buy_score != null ? s.current_buy_score.toFixed(1) : '--'}</span> / 
+                        賣 <span style="${sellColor}">${s.current_sell_score != null ? s.current_sell_score.toFixed(1) : '--'}</span>
+                    </div>
                 </div>
                 <div class="strategy-meta">
-                    買入 ≥ ${s.buy_threshold}分 | 賣出 ≥ ${s.sell_threshold}分 | Flow: ${s.use_flow ? '是' : '否'}
+                    門檻：買 ${s.buy_threshold}分 | 賣 ${s.sell_threshold}分 | Flow: ${s.use_flow ? '是' : '否'}
                 </div>
                 <div class="strategy-backtest">
                     回測: ${s.backtest}

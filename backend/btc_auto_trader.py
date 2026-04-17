@@ -359,6 +359,39 @@ def update_flow_data():
 # 交易邏輯
 # ═══════════════════════════════════════════════
 
+latest_strategy_scores = {
+    "flow": {"buy": 0.0, "sell": 0.0},
+    "pure": {"buy": 0.0, "sell": 0.0}
+}
+
+def check_and_trade(account: BTCAccount):
+    """核心：四策略並行檢查信號並執行獨立買賣交易"""
+    global latest_strategy_scores
+
+    # 1. 取得最新日線
+    df = fetch_btc_daily(250)
+    if df is None or len(df) < 200:
+        logger.warning("無法取得足夠 K 線資料")
+        return
+
+    current_price = df["close"].iloc[-1]
+
+    # 2. 更新 Flow 資料
+    update_flow_data()
+
+    # 3. 計算兩種信號（有/無 CryptoFlow）
+    aggregator = SignalAggregator()
+    crypto_flow = CryptoFlowLayer(data_dir=DATA_DIR)
+
+    signal_with_flow = aggregator.analyze(df.copy(), SYMBOL, TIMEFRAME, layers=[crypto_flow])
+    signal_pure_tech = SignalAggregator().analyze(df.copy(), SYMBOL, TIMEFRAME, layers=None)
+    
+    # 紀錄最新分數供前端顯示
+    latest_strategy_scores["flow"]["buy"] = round(signal_with_flow.buy_score, 1)
+    latest_strategy_scores["flow"]["sell"] = round(signal_with_flow.sell_score, 1)
+    latest_strategy_scores["pure"]["buy"] = round(signal_pure_tech.buy_score, 1)
+    latest_strategy_scores["pure"]["sell"] = round(signal_pure_tech.sell_score, 1)
+
     # 4. 獨立策略檢查
     # 各策略配置本金的 25% 作為單一操作的動用金上限
     initial_alloc = account.state.get("initial_balance", 100000) * 0.25
@@ -528,19 +561,27 @@ class BTCAutoTrader:
         price = fetch_btc_price()
         summary = self.account.get_summary(price)
 
+        strat_list = []
+        for s in STRATEGIES:
+            t = "flow" if s["use_flow"] else "pure"
+            strat_list.append({
+                "id": s["id"], 
+                "name": s["name"],
+                "buy_threshold": s["buy_threshold"],
+                "sell_threshold": s["sell_threshold"],
+                "use_flow": s["use_flow"], 
+                "backtest": s["backtest"],
+                "current_buy_score": latest_strategy_scores[t]["buy"],
+                "current_sell_score": latest_strategy_scores[t]["sell"]
+            })
+
         return {
             "is_running": self._running,
             "is_active": self.account.is_active,
             "interval_seconds": self.interval,
             "last_run_time": self.last_run_time,
             "btc_price": price,
-            "strategies": [
-                {"id": s["id"], "name": s["name"],
-                 "buy_threshold": s["buy_threshold"],
-                 "sell_threshold": s["sell_threshold"],
-                 "use_flow": s["use_flow"], "backtest": s["backtest"]}
-                for s in STRATEGIES
-            ],
+            "strategies": strat_list,
             "stop_loss_pct": STOP_LOSS_PCT,
             "take_profit_pct": TAKE_PROFIT_PCT,
             **summary,

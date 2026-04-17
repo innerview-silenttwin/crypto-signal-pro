@@ -40,6 +40,7 @@
                 <a href="index.html" class="nav-item active">分析儀表板</a>
                 <a href="trading.html" class="nav-item">幣圈交易中心</a>
                 <a href="sector_trading.html" class="nav-item">台股交易中心</a>
+                <a href="signal_performance.html" class="nav-item">信號績效統計</a>
                 <a href="#" class="nav-item" onclick="alert('📈 多圖表版將於 Phase 3 開放！'); return false;">📈 多圖表版</a>
                 <a href="#" class="nav-item" onclick="alert('🏆 會員中心將於 Phase 3 開放！'); return false;">🏆 會員中心</a>
                 <a href="#" class="nav-item" onclick="alert('⚙️ 策略參數將於 Phase 3 開放！'); return false;">⚙️ 策略參數</a>
@@ -395,12 +396,38 @@
                     <div class="screener-tabs">
                         <button class="screener-tab active" data-tab="picks">五大精選</button>
                         <button class="screener-tab" data-tab="active-etf">主動ETF選股</button>
+                        <button class="screener-tab" data-tab="consultation">投資諮詢</button>
                     </div>
                     <span id="screener-updated" class="screener-updated"></span>
                     <button id="screener-refresh-btn" class="screener-refresh-btn" title="重新掃描">↻</button>
                 </div>
                 <div id="screener-categories" class="screener-categories"></div>
                 <div id="screener-active-etf" class="screener-active-etf" style="display:none;"></div>
+
+                <!-- 投資諮詢面板 -->
+                <div id="screener-consultation" style="display:none;">
+                    <div class="consultation-form glass-panel">
+                        <div class="consultation-form-title">持倉分析諮詢</div>
+                        <p class="consultation-desc">輸入你的持倉資訊，系統將比對歷史類似的籌碼、技術、盤勢情況，推算操作建議。</p>
+                        <div class="consultation-inputs">
+                            <div class="consultation-field">
+                                <label>股票代碼</label>
+                                <input id="consult-symbol" type="text" placeholder="如 2317 或 鴻海" maxlength="10" />
+                            </div>
+                            <div class="consultation-field">
+                                <label>買入均價（元）</label>
+                                <input id="consult-price" type="number" placeholder="如 240" min="1" step="0.1" />
+                            </div>
+                            <div class="consultation-field">
+                                <label>持有張數</label>
+                                <input id="consult-qty" type="number" placeholder="如 2" min="1" step="1" />
+                            </div>
+                            <button id="consult-submit-btn" class="btn-primary consultation-btn">分析持倉</button>
+                        </div>
+                        <div id="consult-symbol-hint" class="consultation-hint" style="display:none;"></div>
+                    </div>
+                    <div id="consultation-result" style="display:none;"></div>
+                </div>
             </div>
 
             <!-- 其他幣種微縮卡片 -->
@@ -474,35 +501,321 @@
 
     <!-- 教學 Modal -->
     <div class="modal-overlay" id="tutorial-modal">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 820px; max-height: 85vh;">
             <div class="modal-header">
-                <h2>如何使用 CryptoSignal Pro？</h2>
+                <h2>📖 CryptoSignal Pro 快速上手教學</h2>
                 <div class="close-btn" id="close-tutorial">&times;</div>
             </div>
 
-            <div class="tutorial-body">
-                <div class="tutorial-step">
-                    <h4>📊 動能分數怎麼讀？</h4>
+            <div class="tutorial-body" style="overflow-y: auto; max-height: calc(85vh - 80px); padding-right: 8px;">
+
+                <!-- ===== 目錄 ===== -->
+                <div class="tutorial-step" style="background: rgba(100,108,255,0.08); border-radius: 8px; padding: 12px 16px;">
+                    <h4>📋 目錄</h4>
+                    <p style="line-height: 2;">
+                        <a href="#tut-score" style="color: var(--accent);">1. 動能分數怎麼讀</a><br>
+                        <a href="#tut-resonance" style="color: var(--accent);">2. 核心獲利術：多時框共振</a><br>
+                        <a href="#tut-update" style="color: var(--accent);">3. 台股資料何時更新</a><br>
+                        <a href="#tut-composite" style="color: var(--accent);">4. 綜合分數與五維權重</a><br>
+                        <a href="#tut-tech" style="color: var(--accent);">5. 技術面分析</a><br>
+                        <a href="#tut-fund" style="color: var(--accent);">6. 基本面分析</a><br>
+                        <a href="#tut-chip" style="color: var(--accent);">7. 籌碼面分析</a><br>
+                        <a href="#tut-regime" style="color: var(--accent);">8. 盤勢偵測</a><br>
+                        <a href="#tut-senti" style="color: var(--accent);">9. 消息面分析</a><br>
+                        <a href="#tut-etf" style="color: var(--accent);">10. 主動ETF評分</a><br>
+                        <a href="#tut-screener" style="color: var(--accent);">11. 超選 11 大類別</a><br>
+                        <a href="#tut-btc" style="color: var(--accent);">12. BTC 自動交易策略</a><br>
+                        <a href="#tut-pros-cons" style="color: var(--accent);">13. 各系統優缺點</a>
+                    </p>
+                </div>
+
+                <!-- ===== 1. 動能分數 ===== -->
+                <div class="tutorial-step" id="tut-score">
+                    <h4>📊 1. 動能分數怎麼讀？</h4>
                     <p>圓形圖中的數字是 <span class="tutorial-highlight">動能分數 (0-100)</span>。<br>
                         ● <span class="tutorial-highlight">≥70 強勢信號</span>：多個指標共振，值得積極操作。<br>
                         ● <span class="tutorial-highlight">50-69 中等傾向</span>：有一定方向，但可等更好時機。<br>
                         ● <span class="tutorial-highlight">30-49 弱勢觀望</span>：方向偏弱，不建議進場。<br>
-                        ● <span class="tutorial-highlight">&lt;30 多空不明</span>：噪音區，保持空倉。
+                        ● <span class="tutorial-highlight">&lt;30 多空不明</span>：噪音區，保持空倉。<br><br>
+                        ● <span class="tutorial-highlight">綠色 = 做多趨勢</span>：多方動能勝出。<br>
+                        ● <span class="tutorial-highlight">紅色 = 做空趨勢</span>：空方壓力大，應規避做多。<br>
+                        ● <span class="tutorial-highlight">灰色 = 無方向</span>：分數太低，任何操作都像賭博。
                     </p>
                 </div>
 
-                <div class="tutorial-step">
-                    <h4>🟢🔴 顏色代表什麼？</h4>
-                    <p>● <span class="tutorial-highlight">綠色 = 做多趨勢</span>：多方動能勝出。<br>
-                        ● <span class="tutorial-highlight">紅色 = 做空趨勢</span>：空方壓力大，應規避做多。<br>
-                        ● <span class="tutorial-highlight">灰色 = 無方向</span>：分數太低，任何操作都像賭博。</p>
-                </div>
-
-                <div class="tutorial-step">
-                    <h4>🎯 核心獲利術：多時框共振</h4>
-                    <p>當 <span class="tutorial-highlight">1D</span> 與 <span class="tutorial-highlight">4H</span>
+                <!-- ===== 2. 共振 ===== -->
+                <div class="tutorial-step" id="tut-resonance">
+                    <h4>🎯 2. 核心獲利術：多時框共振</h4>
+                    <p>當 <span class="tutorial-highlight">1D（日線）</span> 與 <span class="tutorial-highlight">4H（四小時線）</span>
                         方向完全一致且分數 ≥50 時，稱為「共振」，是進場的高勝率時機！</p>
                 </div>
+
+                <!-- ===== 3. 台股資料更新時間 ===== -->
+                <div class="tutorial-step" id="tut-update">
+                    <h4>🕐 3. 收盤後台股資料何時更新？</h4>
+                    <p>台股每日 13:30 收盤後，各資料來源的更新時程如下：</p>
+                    <table class="tutorial-table">
+                        <thead><tr><th>資料類型</th><th>來源</th><th>約可用時間</th><th>快取策略</th></tr></thead>
+                        <tbody>
+                            <tr><td>日K線 (OHLCV)</td><td>TWSE 官方 API</td><td>~14:30</td><td>盤中每 60 秒刷新，盤後用快取</td></tr>
+                            <tr><td>法人買賣超</td><td>FinMind API</td><td>~15:00</td><td>4 小時快取</td></tr>
+                            <tr><td>融資融券餘額</td><td>TWSE 信用交易 API</td><td>~14:30</td><td>4 小時快取 + 本地 35 日歷史</td></tr>
+                            <tr><td>本益比/殖利率</td><td>TWSE OpenAPI</td><td>~14:30</td><td>4 小時快取</td></tr>
+                            <tr><td>營收 YoY/MoM</td><td>TWSE 營收 API</td><td>每月 10 日後</td><td>24 小時快取</td></tr>
+                            <tr><td>主動 ETF 持股</td><td>CMoney</td><td>~15:00</td><td>每日一次快取</td></tr>
+                            <tr><td>新聞消息面</td><td>鉅亨網 / Yahoo RSS</td><td>即時</td><td>30 分鐘快取</td></tr>
+                            <tr><td>超選掃描</td><td>系統自算</td><td>上述資料到位後</td><td>前端手動觸發 / 自動排程</td></tr>
+                        </tbody>
+                    </table>
+                    <p style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">
+                        ※ 收盤後約 <span class="tutorial-highlight">60~90 分鐘</span>（約 14:30~15:00）所有數據會陸續到位。
+                        加密貨幣資料（BTC/ETH/SOL）由 Binance API 提供，<span class="tutorial-highlight">每 10 秒</span>自動更新。
+                    </p>
+                </div>
+
+                <!-- ===== 4. 綜合分數與權重 ===== -->
+                <div class="tutorial-step" id="tut-composite">
+                    <h4>⚖️ 4. 綜合分數與五維權重</h4>
+                    <p>每支股票的綜合分數由五大面向加權計算，<span class="tutorial-highlight">不同產業權重不同</span>：</p>
+                    <table class="tutorial-table">
+                        <thead><tr><th>面向</th><th>半導體/電子</th><th>金融</th><th>傳產</th><th>預設</th></tr></thead>
+                        <tbody>
+                            <tr><td>籌碼面</td><td>35%</td><td>15%</td><td>30%</td><td>35%</td></tr>
+                            <tr><td>技術面</td><td>25%</td><td>20%</td><td>25%</td><td>25%</td></tr>
+                            <tr><td>基本面</td><td>15%</td><td>38%</td><td>30%</td><td>20%</td></tr>
+                            <tr><td>盤勢</td><td>18%</td><td>13%</td><td>5%</td><td>13%</td></tr>
+                            <tr><td>消息面</td><td>7%</td><td>14%</td><td>10%</td><td>7%</td></tr>
+                        </tbody>
+                    </table>
+                    <p style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">
+                        ※ 主動 ETF 評分額外佔 3~7%，若該股未被任何 ETF 持有，權重自動分配給其他面向。<br>
+                        ※ 所有原始分數先做<span class="tutorial-highlight">百分位正規化</span>（Percentile Normalization），確保各面向分布公平後才加權。
+                    </p>
+                </div>
+
+                <!-- ===== 5. 技術面 ===== -->
+                <div class="tutorial-step" id="tut-tech">
+                    <h4>📈 5. 技術面分析</h4>
+                    <p><b>計算方式：</b>綜合 10 個技術指標，依產業回測歸因分析調整權重。</p>
+                    <table class="tutorial-table">
+                        <thead><tr><th>指標</th><th>用途</th><th>看多判斷</th></tr></thead>
+                        <tbody>
+                            <tr><td>EMA 均線排列</td><td>趨勢方向（權重最高）</td><td>5 > 10 > 20 > 60 日均線多頭排列</td></tr>
+                            <tr><td>ADX</td><td>趨勢強度</td><td>ADX ≥ 25 且 +DI > -DI</td></tr>
+                            <tr><td>MACD</td><td>動能方向</td><td>MACD 線上穿信號線 + 柱狀圖翻正</td></tr>
+                            <tr><td>RSI (14日)</td><td>超買超賣</td><td>RSI &lt; 30 超賣（偏多）；> 70 超買（偏空）</td></tr>
+                            <tr><td>Stoch RSI</td><td>拉回超賣偵測</td><td>Stoch RSI 在上升趨勢中觸底反彈</td></tr>
+                            <tr><td>成交量</td><td>量價配合</td><td>量增 ≥ 1.5 倍 + 紅K棒</td></tr>
+                            <tr><td>爆量反轉</td><td>主力換手</td><td>量 ≥ 2 倍 + 漲幅 ≥ 2%（底部）</td></tr>
+                            <tr><td>拉回支撐</td><td>均線拉回進場</td><td>回測到均線附近止跌</td></tr>
+                            <tr><td>布林通道</td><td>波動率（低權重）</td><td>觸及下軌反彈</td></tr>
+                            <tr><td>MFI</td><td>資金流（低權重）</td><td>MFI &lt; 20 資金超賣</td></tr>
+                        </tbody>
+                    </table>
+                    <p style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">
+                        ※ 四大柱面：<span class="tutorial-highlight">趨勢面</span>（EMA+ADX）、
+                        <span class="tutorial-highlight">動能面</span>（MACD+RSI+StochRSI）、
+                        <span class="tutorial-highlight">量能面</span>（成交量+爆量反轉）、
+                        <span class="tutorial-highlight">支撐面</span>（拉回支撐+布林+MFI）。<br>
+                        ※ 布林與 MFI 回測表現不佳，已降權至 2 分（滿分 100 中佔比極低）。
+                    </p>
+                </div>
+
+                <!-- ===== 6. 基本面 ===== -->
+                <div class="tutorial-step" id="tut-fund">
+                    <h4>💰 6. 基本面分析</h4>
+                    <p><b>計算方式：</b>採「<span class="tutorial-highlight">雙軌制</span>」——自動區分成長股 vs 價值股。</p>
+                    <p><b>成長股軌道</b>（營收 YoY > 15%）：<br>
+                        ● 主要看 <span class="tutorial-highlight">PEG（本益成長比）= P/E ÷ YoY 成長率</span><br>
+                        ● PEG &lt; 0.5 → 92 分（成長遠超估值）<br>
+                        ● PEG 0.5~1.0 → 72~82 分（合理區間）<br>
+                        ● PEG > 1.5 → 35 分以下（過度追捧）<br>
+                        ● 營收月增率 > 10% 額外 +8 分，殖利率 ≥ 3% +3 分
+                    </p>
+                    <p><b>價值股軌道</b>（營收 YoY ≤ 15%）：<br>
+                        ● 主要看 <span class="tutorial-highlight">本益比（P/E）</span>或<span class="tutorial-highlight">產業估值百分位</span><br>
+                        ● P/E &lt; 8 → 90 分（深度低估）<br>
+                        ● P/E 12~20 → 55 分（合理）<br>
+                        ● P/E > 30 → 15 分（嚴重高估）<br>
+                        ● 殖利率 ≥ 6% +12 分，≥ 5% +10 分，≥ 3% +5 分<br>
+                        ● 營收衰退 YoY &lt; -20% 會扣 12 分
+                    </p>
+                    <p style="font-size: 12px; color: var(--text-muted);">
+                        資料來源：TWSE OpenAPI（本益比/殖利率），TWSE 營收公告（YoY/MoM）。
+                    </p>
+                </div>
+
+                <!-- ===== 7. 籌碼面 ===== -->
+                <div class="tutorial-step" id="tut-chip">
+                    <h4>🏦 7. 籌碼面分析</h4>
+                    <p><b>計算方式：</b>五大子信號加權。</p>
+                    <table class="tutorial-table">
+                        <thead><tr><th>子信號</th><th>權重</th><th>看多判斷</th></tr></thead>
+                        <tbody>
+                            <tr><td>外資連買天數</td><td>30%</td><td>連買 ≥ 5 天 → 90 分；淨買超 > 5 萬股額外加分</td></tr>
+                            <tr><td>投信連買天數</td><td>25%</td><td>連買 ≥ 5 天 → 92 分（投信選股精準）</td></tr>
+                            <tr><td>融資餘額增減</td><td>20%</td><td>融資減少 → 高分（散戶離場=籌碼沉澱）；反向指標</td></tr>
+                            <tr><td>融券餘額</td><td>15%</td><td>融券高 + 外資買 → 軋空潛力 85 分</td></tr>
+                            <tr><td>自營商</td><td>10%</td><td>淨買超 > 1 萬股 → 70 分</td></tr>
+                        </tbody>
+                    </table>
+                    <p style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">
+                        ● 總分 ≥ 80：<span class="tutorial-highlight">強力多方籌碼</span>（法人明顯積極買進）<br>
+                        ● 總分 50~65：中性（法人意圖不明確）<br>
+                        ● 總分 &lt; 35：嚴重偏空（不建議介入）<br>
+                        資料來源：FinMind API（法人買賣超），TWSE 信用交易 API（融資融券）。近 30 日追蹤。
+                    </p>
+                </div>
+
+                <!-- ===== 8. 盤勢偵測 ===== -->
+                <div class="tutorial-step" id="tut-regime">
+                    <h4>🔥 8. 盤勢偵測系統</h4>
+                    <p><b>計算方式：</b>綜合六大子信號的總分，映射為五種盤勢狀態。</p>
+                    <table class="tutorial-table">
+                        <thead><tr><th>盤勢狀態</th><th>觸發條件</th><th>對做多的影響</th></tr></thead>
+                        <tbody>
+                            <tr><td>🟢 強勢多頭</td><td>總分 ≥ 7</td><td>買進信號 ×1.3 倍加成</td></tr>
+                            <tr><td>🟢 多頭</td><td>總分 3~7</td><td>買進信號 ×1.15 倍</td></tr>
+                            <tr><td>🟡 盤整</td><td>總分 -2~+2</td><td>所有信號 ×0.6 倍（避免追高殺低）</td></tr>
+                            <tr><td>🌱 底部轉強</td><td>低檔區 + ≥3 反轉信號</td><td>買進 ×1.4 倍 + 額外 +10 分</td></tr>
+                            <tr><td>⚠️ 高檔轉折</td><td>高檔區 + ≥3 警示信號</td><td>買進 ×0.2 倍（幾乎封鎖）</td></tr>
+                            <tr><td>🔴 空頭</td><td>總分 ≤ -5</td><td>直接封鎖買進信號</td></tr>
+                        </tbody>
+                    </table>
+                    <p style="margin-top: 8px;"><b>六大子信號：</b><br>
+                        ● <b>趨勢偵測：</b>波段高低點是否持續墊高（Higher High + Higher Low）<br>
+                        ● <b>均線排列：</b>5/10/20/60 日 MA 是否多頭排列（0~6 分）<br>
+                        ● <b>價格位置：</b>目前股價在 120 日區間中的百分位（低檔 &lt;15% / 高檔 ≥85%）<br>
+                        ● <b>K棒型態：</b>長紅/長黑、長上影/長下影、吞噬、十字線<br>
+                        ● <b>量能型態：</b>底部爆量、頭部爆量不漲、量縮等<br>
+                        ● <b>ADX 強度：</b>ADX > 25 趨勢成立，> 40 強趨勢
+                    </p>
+                </div>
+
+                <!-- ===== 9. 消息面 ===== -->
+                <div class="tutorial-step" id="tut-senti">
+                    <h4>📰 9. 消息面分析</h4>
+                    <p><b>計算方式：</b>從鉅亨網與 Yahoo 股市 RSS 即時抓取新聞，用<span class="tutorial-highlight">關鍵字情緒辭典</span>計分。</p>
+                    <p>● 每則新聞標題權重 0.3（防標題殺人）、內文權重 1.0<br>
+                        ● 正面關鍵字（創新高/漲停/法人買超/營收創高…）+1 ~ +3 分<br>
+                        ● 負面關鍵字（崩盤/跌停/裁員/砍單/營收衰退…）-1 ~ -3 分<br>
+                        ● 最終分數正規化至 -100 ~ +100<br>
+                        ● 相關新聞 0 篇時：退化為整體大盤情緒 ±5%<br>
+                        ● 相關新聞 ≥ 4 篇：信號增強
+                    </p>
+                    <p style="font-size: 12px; color: var(--text-muted);">
+                        ● 分數 ≥ 20「偏多」→ 買進加成 1.1 倍<br>
+                        ● 分數 ≤ -20「偏空」→ 買進打折 0.85 倍並封鎖<br>
+                        資料來源：鉅亨網台股 RSS、鉅亨網產業 RSS、Yahoo 股市 RSS（30 分鐘快取）。
+                    </p>
+                </div>
+
+                <!-- ===== 10. 主動ETF ===== -->
+                <div class="tutorial-step" id="tut-etf">
+                    <h4>🏆 10. 主動式 ETF 評分</h4>
+                    <p><b>計算方式：</b>追蹤 8 支績效超越 0050 的台股主動式 ETF，統計它們共同重倉哪些股票。</p>
+                    <p>● 每支 ETF 依超額報酬排名，第 1 名權重最高（22.2%），第 8 名最低（2.8%）<br>
+                        ● 公式：<span class="tutorial-highlight">原始分 = Σ（ETF排名權重 × 該股持股比例%）</span><br>
+                        ● 再做百分位正規化至 0~100 分<br>
+                        ● 被越多高績效 ETF 重倉、且持股比例越高的股票，分數越高
+                    </p>
+                    <p style="font-size: 12px; color: var(--text-muted);">
+                        資料來源：CMoney 公開 API（每日更新一次）。<br>
+                        若該股未被任何主動 ETF 持有，此維度不計入綜合分數。
+                    </p>
+                </div>
+
+                <!-- ===== 11. 超選類別 ===== -->
+                <div class="tutorial-step" id="tut-screener">
+                    <h4>🔍 11. 超選 11 大精選類別</h4>
+                    <table class="tutorial-table">
+                        <thead><tr><th>類別</th><th>篩選條件</th><th>排序方式</th></tr></thead>
+                        <tbody>
+                            <tr><td>👑 綜合排行榜</td><td>全體前 15 名</td><td>綜合分數 高→低</td></tr>
+                            <tr><td>🏦 外資狂買股</td><td>外資連買 ≥ 3 天</td><td>籌碼分數 高→低</td></tr>
+                            <tr><td>🎯 投信認養股</td><td>投信連買 ≥ 3 天</td><td>籌碼分數 高→低</td></tr>
+                            <tr><td>🔒 籌碼集中股</td><td>融資減 > 500 張 + 法人買超</td><td>籌碼分數 高→低</td></tr>
+                            <tr><td>💎 價值低估股</td><td>P/E &lt; 12 或估值前 30% 低估 + 基本面 ≥ 70</td><td>基本面分數 高→低</td></tr>
+                            <tr><td>📈 成長動能股</td><td>YoY > 15% + PEG &lt; 1.5 + 基本面 ≥ 65</td><td>PEG 低→高（顯示基本面分數）</td></tr>
+                            <tr><td>🚀 技術突破股</td><td>盤勢（強勢多頭/底部轉強）+ 技術 ≥ 55</td><td>技術分數 高→低</td></tr>
+                            <tr><td>📐 趨勢強攻股</td><td>趨勢柱面 ≥ 60 + 非空頭</td><td>趨勢分數 高→低</td></tr>
+                            <tr><td>💥 量能異動股</td><td>量能柱面 ≥ 65 + 非空頭</td><td>量能分數 高→低</td></tr>
+                            <tr><td>🔥 盤勢強攻股</td><td>盤勢為強勢多頭或多頭</td><td>盤勢分數 高→低</td></tr>
+                            <tr><td>🌱 底部轉強股</td><td>盤勢為底部轉強</td><td>盤勢分數 高→低</td></tr>
+                            <tr><td>⚠️ 高檔示警股</td><td>盤勢為高檔轉折或空頭</td><td>盤勢分數 低→高（越危險越前面）</td></tr>
+                        </tbody>
+                    </table>
+                    <p style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">
+                        每個類別最多 10 檔（綜合排行榜 15 檔），並標示「入榜天數」供觀察。
+                    </p>
+                </div>
+
+                <!-- ===== 12. BTC 自動交易 ===== -->
+                <div class="tutorial-step" id="tut-btc">
+                    <h4>🤖 12. BTC 自動交易策略</h4>
+                    <p>系統同時執行 4 組策略，各自獨立持倉與風控：</p>
+                    <table class="tutorial-table">
+                        <thead><tr><th>策略</th><th>買進門檻</th><th>含 CryptoFlow</th><th>回測績效</th></tr></thead>
+                        <tbody>
+                            <tr><td>S1 日線35+Flow</td><td>≥ 35</td><td>✓</td><td>+131.8%｜勝率 52.9%</td></tr>
+                            <tr><td>S2 日線40純技術</td><td>≥ 40</td><td>✗</td><td>+120.0%｜勝率 75.0%</td></tr>
+                            <tr><td>S3 日線40+Flow</td><td>≥ 40</td><td>✓</td><td>+119.7%｜勝率 54.5%</td></tr>
+                            <tr><td>S4 日線35純技術</td><td>≥ 35</td><td>✗</td><td>+116.1%｜勝率 46.7%</td></tr>
+                        </tbody>
+                    </table>
+                    <p style="margin-top: 8px;">
+                        ● <b>CryptoFlow</b> = 恐懼貪婪指數 + Binance 資金費率<br>
+                        ● 停損 12%、停利 25%、手續費 0.1%<br>
+                        ● 每組策略各分配 25% 資金，每小時檢查一次<br>
+                        ● 觸發交易時會推送 Telegram 通知
+                    </p>
+                </div>
+
+                <!-- ===== 13. 優缺點 ===== -->
+                <div class="tutorial-step" id="tut-pros-cons">
+                    <h4>⚖️ 13. 各分析系統優缺點</h4>
+                    <table class="tutorial-table">
+                        <thead><tr><th>系統</th><th>優點</th><th>缺點 / 限制</th></tr></thead>
+                        <tbody>
+                            <tr>
+                                <td><b>技術面</b></td>
+                                <td>10 指標交叉驗證、產業權重回測調校、四大柱面分層判讀</td>
+                                <td>純量化；布林與 MFI 表現不佳已降權；盤整時指標容易打架</td>
+                            </tr>
+                            <tr>
+                                <td><b>基本面</b></td>
+                                <td>雙軌制避免成長股與價值股混淆；PEG + 殖利率多維判斷</td>
+                                <td>營收數據月更一次有延遲；P/E 無法反映一次性損益</td>
+                            </tr>
+                            <tr>
+                                <td><b>籌碼面</b></td>
+                                <td>外資 / 投信連續買賣超是台股最強領先指標；融資反向指標抓散戶</td>
+                                <td>法人數據 T+1 延遲；外資含避險部位易誤判；小型股法人不進場</td>
+                            </tr>
+                            <tr>
+                                <td><b>盤勢偵測</b></td>
+                                <td>自動判斷多空階段 + 底部/頭部反轉偵測；能過濾盤整雜訊</td>
+                                <td>反轉偵測偶有假信號（尤其 V 型急跌急漲）；參數基於歷史回測</td>
+                            </tr>
+                            <tr>
+                                <td><b>消息面</b></td>
+                                <td>即時抓取多源新聞；關鍵字辭典涵蓋廣；降低標題黨干擾</td>
+                                <td>無法理解上下文語意；重大突發事件可能不在辭典中；非個股專屬新聞會污染</td>
+                            </tr>
+                            <tr>
+                                <td><b>主動ETF</b></td>
+                                <td>追蹤真實績效領先大盤的基金經理人持倉，「站在巨人肩膀上」</td>
+                                <td>ETF 持倉公告有延遲（約 1~2 天）；只涵蓋台股 ETF，不含外資券商</td>
+                            </tr>
+                            <tr>
+                                <td><b>BTC策略</b></td>
+                                <td>四策略並行分散風險；S2 勝率高達 75%；含恐懼貪婪反向指標</td>
+                                <td>回測績效不等於未來表現；1 小時級別可能錯過急漲急跌；固定停損停利較死板</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
             </div>
         </div>
     </div>

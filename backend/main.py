@@ -11,6 +11,7 @@ import sys
 import os
 import asyncio
 import json
+import logging
 from typing import List
 from datetime import datetime
 import time
@@ -1239,6 +1240,42 @@ async def get_sector_regime(sector_id: str):
     return {"sector_id": sector_id, "stocks": results}
 
 
+@app.get("/api/stock-lookup")
+async def stock_lookup(q: str):
+    """用中文名稱或代碼模糊搜尋台股，回傳匹配的 symbol 清單（最多 10 筆）"""
+    from layers.fundamental import fetch_twse_pe_all
+    from sector_trader import SECTOR_STOCKS
+    q = q.strip()
+    if not q:
+        return []
+
+    results = []
+    # 1. 先查交易中心追蹤清單（精確優先）
+    for sector, stocks in SECTOR_STOCKS.items():
+        for sym, name in stocks.items():
+            code = sym.replace(".TW", "").replace(".TWO", "")
+            if q == name or q == code or q == sym:
+                return [{"symbol": sym, "name": name, "sector": sector}]
+            if q in name or q in code:
+                results.append({"symbol": sym, "name": name, "sector": sector})
+
+    # 2. 再查全市場 TWSE 資料
+    if len(results) < 10:
+        all_pe = fetch_twse_pe_all()
+        for code, info in all_pe.items():
+            name = info.get("name", "")
+            sym = code + ".TW"
+            if any(r["symbol"] == sym for r in results):
+                continue
+            if q == name or q == code:
+                results.insert(0, {"symbol": sym, "name": name, "sector": None})
+            elif q in name or q in code:
+                results.append({"symbol": sym, "name": name, "sector": None})
+            if len(results) >= 10:
+                break
+    return results[:10]
+
+
 @app.get("/api/stock-analysis")
 async def get_stock_analysis(symbol: str):
     """
@@ -1516,6 +1553,185 @@ async def get_stock_analysis(symbol: str):
             "action_class": "neutral",
         }
 
+    # ── 7. 交易信號判定（對照交易中心策略門檻）──
+    from sector_trader import DEFAULT_STRATEGIES, SECTOR_STOCKS
+    from screener import get_symbol_sector as _get_sector
+
+    # 找出該股票所屬的類股名稱
+    sector_name = None
+    for sname, stocks in SECTOR_STOCKS.items():
+        if symbol in stocks or symbol.upper() in stocks:
+            sector_name = sname
+            break
+
+    if sector_name and sector_name in DEFAULT_STRATEGIES:
+        strat = DEFAULT_STRATEGIES[sector_name]
+        tech = result.get("technical") or {}
+        t_buy = tech.get("buy_score")
+        t_sell = tech.get("sell_score")
+
+        buy_threshold = strat["buy_threshold"]
+        sell_threshold = strat["sell_threshold"]
+        composite_threshold = 50  # 綜合分需 ≥ 50 才允許買入
+
+        # ── 用引擎路徑計算五維綜合分數（與 auto_trader 一致）──
+        from sector_auto_trader import fetch_signal_data, compute_signal, build_layers, compute_composite_score
+        engine_composite = None
+        engine_dims = []     # 五維拆解
+        engine_layers = []   # layer 修正明細
+        engine_direction = None
+        engine_raw_buy = None
+        engine_raw_sell = None
+        try:
+            _df = fetch_signal_data(symbol)
+            if _df is not None:
+                _layers = build_layers(strat)
+                from sector_trader import SECTOR_IDS
+                _sector_id_for_sig = SECTOR_IDS.get(sector_name, "")
+                _sig = compute_signal(_df, strat["weights"], symbol,
+                                      layers=_layers, sector_id=_sector_id_for_sig)
+                if _sig:
+                    engine_composite = compute_composite_score(symbol, _sig)
+                    engine_direction = _sig.get("direction")
+                    engine_raw_buy = _sig.get("raw_buy_score")
+                    engine_raw_sell = _sig.get("raw_sell_score")
+
+                    # 五維分數拆解
+                    from screener import SECTOR_COMPOSITE_WEIGHTS
+                    _sector_id = _get_sector(symbol)
+                    _weights = SECTOR_COMPOSITE_WEIGHTS.get(_sector_id, SECTOR_COMPOSITE_WEIGHTS["default"])
+                    _dim_scores = {}
+                    _dim_scores["technical"] = _sig.get("raw_buy_score", _sig.get("buy_score", 50))
+
+                    regime_scores_map = {
+                        "強勢多頭": 90, "多頭": 75, "底部轉強": 70,
+                        "盤整": 50, "高檔轉折": 25, "空頭": 15,
+                    }
+                    _dim_labels = {
+                        "chipflow": "籌碼面", "technical": "技術面",
+                        "fundamental": "基本面", "regime": "盤勢",
+                        "sentiment": "消息面", "active_etf": "主動ETF",
+                    }
+                    for mod in _sig.get("layer_modifiers", []):
+                        ln = mod.layer_name
+                        if ln == "regime":
+                            _dim_scores["regime"] = regime_scores_map.get(mod.regime, 50)
+                        elif ln == "chipflow":
+                            _dim_scores["chipflow"] = mod.details.get("buy_score", 50)
+                        elif ln == "fundamental":
+                            _dim_scores["fundamental"] = mod.details.get("buy_score", 50)
+                        elif ln == "sentiment":
+                            _dim_scores["sentiment"] = (
+                                mod.details.get("buy_score")
+                                if mod.details.get("buy_score") is not None else None
+                            )
+
+                        # Layer 修正明細
+                        engine_layers.append({
+                            "name": ln,
+                            "label": _dim_labels.get(ln, ln),
+                            "buy_mult": round(mod.buy_multiplier, 2),
+                            "sell_mult": round(mod.sell_multiplier, 2),
+                            "buy_offset": round(mod.buy_offset, 1),
+                            "sell_offset": round(mod.sell_offset, 1),
+                            "veto_buy": mod.veto_buy,
+                            "reason": mod.reason or "",
+                        })
+
+                    for dim_key, dim_w in _weights.items():
+                        s = _dim_scores.get(dim_key)
+                        engine_dims.append({
+                            "key": dim_key,
+                            "label": _dim_labels.get(dim_key, dim_key),
+                            "score": round(s, 1) if s is not None else None,
+                            "weight": dim_w,
+                        })
+        except Exception as e:
+            print(f"⚠️ 引擎信號計算失敗 {symbol}: {e}")
+
+        comp = engine_composite if engine_composite is not None else (
+            (result.get("recommendation") or {}).get("composite_score"))
+
+        # 判定信號（與引擎邏輯一致：direction + confidence + composite）
+        direction_ok = engine_direction == "BUY" if engine_direction else (
+            tech.get("direction") == "BUY")
+        buy_met = (t_buy is not None and t_buy >= buy_threshold
+                   and direction_ok
+                   and comp is not None and comp >= composite_threshold)
+        sell_met = (t_sell is not None and t_sell >= sell_threshold)
+
+        if buy_met:
+            verdict = "符合買入條件"
+            verdict_class = "buy"
+        elif sell_met and (engine_direction == "SELL" if engine_direction else tech.get("direction") == "SELL"):
+            verdict = "符合賣出條件"
+            verdict_class = "sell"
+        else:
+            # 細分未達標原因
+            reasons = []
+            if t_buy is not None and t_buy >= buy_threshold and comp is not None and comp < composite_threshold:
+                reasons.append(f"綜合分不足({comp:.0f}<{composite_threshold})")
+            elif t_buy is not None and t_buy < buy_threshold:
+                reasons.append(f"技術買分不足({t_buy:.0f}<{buy_threshold})")
+            if not direction_ok and engine_direction:
+                reasons.append(f"方向非BUY({engine_direction})")
+            verdict = "未達交易門檻：" + "、".join(reasons) if reasons else "未達交易門檻，觀望"
+            verdict_class = "neutral"
+
+        result["trading_signal"] = {
+            "sector_name": sector_name,
+            "strategy_name": strat["name"],
+            "buy_threshold": buy_threshold,
+            "sell_threshold": sell_threshold,
+            "composite_threshold": composite_threshold,
+            "stop_loss_pct": strat["stop_loss_pct"],
+            "take_profit_pct": strat["take_profit_pct"],
+            "tech_buy_score": t_buy,
+            "tech_sell_score": t_sell,
+            "raw_buy_score": round(engine_raw_buy, 1) if engine_raw_buy is not None else t_buy,
+            "raw_sell_score": round(engine_raw_sell, 1) if engine_raw_sell is not None else t_sell,
+            "composite_score": comp,
+            "direction": engine_direction or tech.get("direction"),
+            "verdict": verdict,
+            "verdict_class": verdict_class,
+            "dimensions": engine_dims,
+            "layer_modifiers": engine_layers,
+        }
+    else:
+        result["trading_signal"] = None
+
+    # ── 8. 超選入榜查詢 ──
+    from screener import get_screener_results
+    screener_data = get_screener_results()
+    screener_cats = screener_data.get("categories", [])
+    screener_ranks = []
+    for cat in screener_cats:
+        stocks = cat.get("stocks", [])
+        score_field = cat.get("score_field", "composite")
+        for rank_idx, st in enumerate(stocks):
+            if st.get("symbol") == symbol:
+                # 解析 score_field dot-path 取得對應分數
+                if score_field == "composite":
+                    display_score = st.get("composite_score")
+                else:
+                    parts = score_field.split(".")
+                    val = st
+                    for p in parts:
+                        val = val.get(p) if isinstance(val, dict) else None
+                    display_score = val if isinstance(val, (int, float)) else st.get("composite_score")
+                screener_ranks.append({
+                    "id": cat["id"],
+                    "name": cat["name"],
+                    "icon": cat.get("icon", ""),
+                    "rank": rank_idx + 1,
+                    "total": len(stocks),
+                    "score_label": cat.get("score_label", "綜合"),
+                    "display_score": round(display_score, 1) if display_score is not None else None,
+                    "composite_score": round(st.get("composite_score", 0)),
+                })
+                break
+    result["screener_ranks"] = screener_ranks
+
     return result
 
 
@@ -1667,6 +1883,78 @@ async def get_sector_fundamental(sector_id: str):
             stats[sym]["name"] = mgr.stocks.get(sym, sym)
 
     return {"sector_id": sector_id, "stocks": _sanitize(stats)}
+
+
+# ── 信號績效統計 API ──
+
+@app.get("/api/signal-performance")
+async def get_signal_performance():
+    """取得信號績效統計結果（從快取讀取）"""
+    from signal_performance import get_performance_results, trigger_background_run, is_running
+
+    data = get_performance_results()
+
+    if data.get("status") == "no_cache":
+        if not is_running():
+            trigger_background_run()
+        return {
+            "status": "computing",
+            "message": "首次計算中，約需 3-5 分鐘...",
+            "computing": True,
+        }
+
+    data["computing"] = is_running()
+    return data
+
+
+@app.post("/api/signal-performance/refresh")
+async def refresh_signal_performance():
+    """手動觸發重新計算信號績效"""
+    from signal_performance import trigger_background_run, is_running
+
+    if is_running():
+        return {"status": "already_running", "message": "計算已在執行中"}
+
+    started = trigger_background_run()
+    return {
+        "status": "started" if started else "failed",
+        "message": "背景計算已啟動，約需 3-5 分鐘" if started else "啟動失敗",
+    }
+
+
+# ── 投資諮詢 API ──
+
+from pydantic import BaseModel
+
+class ConsultationRequest(BaseModel):
+    symbol: str           # 股票代碼（如 "2317" 或 "2317.TW"）
+    buy_price: float      # 買入均價（元）
+    quantity: int         # 持有張數
+
+@app.post("/api/consultation")
+async def get_consultation(req: ConsultationRequest):
+    """
+    投資諮詢：根據持倉條件比對歷史類似盤勢/技術/籌碼情況，
+    推算加碼 / 持有 / 減碼 / 出清建議
+    """
+    from consultation import consult_position
+    try:
+        result = consult_position(
+            symbol=req.symbol,
+            buy_price=req.buy_price,
+            quantity=req.quantity,
+        )
+        return _sanitize(result)
+    except Exception as e:
+        logging.error(f"諮詢系統錯誤 {req.symbol}: {e}", exc_info=True)
+        return {"error": str(e)}
+
+
+@app.get("/api/screener/universe")
+async def get_screener_universe():
+    """回傳選股宇宙（供諮詢系統的股票搜尋）"""
+    from screener import SCREENER_UNIVERSE
+    return [{"symbol": k, "name": v} for k, v in SCREENER_UNIVERSE.items()]
 
 
 if __name__ == "__main__":

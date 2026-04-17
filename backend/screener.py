@@ -83,6 +83,72 @@ SECTOR_WEIGHTS = {
     },
 }
 
+# ── 技術面四大柱面指標分組 ──
+# 用於拆解技術分數為趨勢/動能/量能/支撐四個細項
+TECH_PILLARS = {
+    "trend":    ["ema_cross", "adx"],             # 趨勢面：EMA均線排列 + ADX趨勢強度
+    "momentum": ["macd", "rsi", "stoch_rsi"],     # 動能面：MACD + RSI + 隨機RSI
+    "volume":   ["volume", "volume_reversal"],    # 量能面：成交量 + 爆量反轉
+    "support":  ["pullback_support", "bollinger", "mfi"],  # 支撐面：均線拉回 + 布林 + MFI
+}
+
+# 指標 display name (self.name) → 權重字典 key
+INDICATOR_NAME_TO_KEY = {
+    'EMA Cross':       'ema_cross',
+    'ADX':             'adx',
+    'MACD':            'macd',
+    'RSI':             'rsi',
+    'Stoch RSI':       'stoch_rsi',
+    'Volume':          'volume',
+    'Volume Reversal': 'volume_reversal',
+    'Pullback Support':'pullback_support',
+    'Bollinger Bands': 'bollinger',
+    'MFI':             'mfi',
+}
+
+
+def compute_tech_pillar_scores(signal, sector_weights: dict) -> dict:
+    """
+    從 AggregatedSignal 中提取四大技術柱面分數 (0-100)
+
+    計算邏輯：
+    - BUY 信號：score / max_score * 100（越買越高）
+    - SELL 信號：此指標得 0 分
+    - NEUTRAL 信號：此指標得 50 分
+    各柱面取所含指標的加權平均（以各指標的 sector_weights 為權重）
+    """
+    ind_scores: dict = {}
+
+    for sig in signal.buy_signals:
+        key = INDICATOR_NAME_TO_KEY.get(sig.indicator_name)
+        if not key:
+            continue
+        max_s = sector_weights.get(key, 10.0)
+        ind_scores[key] = min(100.0, sig.score / max_s * 100) if max_s > 0 else 100.0
+
+    for sig in signal.sell_signals:
+        key = INDICATOR_NAME_TO_KEY.get(sig.indicator_name)
+        if key and key not in ind_scores:
+            ind_scores[key] = 0.0  # 賣出信號 → 多頭貢獻為 0
+
+    for sig in signal.neutral_signals:
+        key = INDICATOR_NAME_TO_KEY.get(sig.indicator_name)
+        if key and key not in ind_scores:
+            ind_scores[key] = 50.0  # 中性 → 50
+
+    pillar_scores: dict = {}
+    for pillar, keys in TECH_PILLARS.items():
+        weights_in_pillar = {k: sector_weights.get(k, 10.0) for k in keys}
+        total_w = sum(weights_in_pillar.values())
+        if total_w == 0:
+            pillar_scores[pillar] = 50.0
+            continue
+        score = sum(ind_scores.get(k, 50.0) * weights_in_pillar[k] for k in keys) / total_w
+        pillar_scores[pillar] = round(score, 1)
+
+    return pillar_scores
+
+
 # ── 各產業綜合分數五維權重 ──
 # 依據：Regime 回測結果 + 產業特性推理
 SECTOR_COMPOSITE_WEIGHTS = {
@@ -364,6 +430,10 @@ def scan_single_stock(symbol: str, name: str, all_pe: dict, articles: list) -> O
             signal = agg.analyze(df.copy(), symbol, "1d")
             tech_score = round(float(signal.buy_score), 1)
 
+            # 技術面四柱面細項分數
+            tech_pillars = compute_tech_pillar_scores(signal, sector_w)
+            details["tech_pillars"] = tech_pillars
+
             # 盤勢
             regime_layer = RegimeLayer(enabled=True)
             modifier = regime_layer.compute_modifier(symbol, df)
@@ -564,6 +634,8 @@ def categorize_picks(results: List[dict]) -> List[dict]:
         "name": "綜合排行榜",
         "icon": "👑",
         "description": "綜合分數 = 籌碼×權重 + 技術×權重 + 基本面×權重 + 盤勢×權重 + 消息×權重。各產業權重不同，例：半導體/電子 籌碼35%，金融 基本面38% 為主。排名依綜合分數由高到低。",
+        "score_field": "composite",
+        "score_label": "綜合",
         "stocks": _format_picks(top_ranked),
     })
 
@@ -575,13 +647,15 @@ def categorize_picks(results: List[dict]) -> List[dict]:
         if fc >= 3:
             r["_highlight"] = f"外資連買{fc}天，累計{_format_shares(ft)}"
             foreign_picks.append(r)
-    foreign_picks.sort(key=lambda x: x["composite"], reverse=True)
+    foreign_picks.sort(key=lambda x: x.get("scores", {}).get("chipflow", 0), reverse=True)
     _annotate_days(foreign_picks[:10], "foreign_buy")
     categories.append({
         "id": "foreign_buy",
         "name": "外資狂買股",
         "icon": "🏦",
         "description": "篩選條件：外資連續買超 ≥ 3 天。外資為台股最大買方，連續買超代表中長線看好，搭配大量買超金額更具參考價值。",
+        "score_field": "scores.chipflow",
+        "score_label": "籌碼",
         "stocks": _format_picks(foreign_picks[:10]),
     })
 
@@ -593,13 +667,15 @@ def categorize_picks(results: List[dict]) -> List[dict]:
         if tc >= 3:
             r["_highlight"] = f"投信連買{tc}天，累計{_format_shares(tt)}"
             trust_picks.append(r)
-    trust_picks.sort(key=lambda x: x["composite"], reverse=True)
+    trust_picks.sort(key=lambda x: x.get("scores", {}).get("chipflow", 0), reverse=True)
     _annotate_days(trust_picks[:10], "trust_buy")
     categories.append({
         "id": "trust_buy",
         "name": "投信認養股",
         "icon": "🎯",
         "description": "篩選條件：投信連續買超 ≥ 3 天。投信選股嚴謹，連續買超往往代表有基本面研究支撐，是中期波段的領先指標。",
+        "score_field": "scores.chipflow",
+        "score_label": "籌碼",
         "stocks": _format_picks(trust_picks[:10]),
     })
 
@@ -614,13 +690,15 @@ def categorize_picks(results: List[dict]) -> List[dict]:
         if mc < -500 and (fc > 0 or tc > 0):
             r["_highlight"] = f"融資減{abs(mc)}張＋法人買超"
             chip_concentrated.append(r)
-    chip_concentrated.sort(key=lambda x: x["composite"], reverse=True)
+    chip_concentrated.sort(key=lambda x: x.get("scores", {}).get("chipflow", 0), reverse=True)
     _annotate_days(chip_concentrated[:10], "chip_concentrated")
     categories.append({
         "id": "chip_concentrated",
         "name": "籌碼集中股",
         "icon": "🔒",
         "description": "篩選條件：融資餘額減少 > 500 張，且外資或投信同步買超。融資減少代表散戶離場、籌碼沉澱到法人手中，是股價醞釀上漲的前兆。",
+        "score_field": "scores.chipflow",
+        "score_label": "籌碼",
         "stocks": _format_picks(chip_concentrated[:10]),
     })
 
@@ -641,13 +719,15 @@ def categorize_picks(results: List[dict]) -> List[dict]:
             else:
                 r["_highlight"] = f"P/E {pe:.1f}，基本面{fund_score}分"
             value_picks.append(r)
-    value_picks.sort(key=lambda x: x["composite"], reverse=True)
+    value_picks.sort(key=lambda x: x.get("scores", {}).get("fundamental", 0), reverse=True)
     _annotate_days(value_picks[:10], "value_underpriced")
     categories.append({
         "id": "value_underpriced",
         "name": "價值低估股",
         "icon": "💎",
         "description": "篩選條件：價值股軌道 + 本益比 < 12 或產業估值前 30% 低估，且基本面分數 ≥ 70。適合穩健型投資人。",
+        "score_field": "scores.fundamental",
+        "score_label": "基本面",
         "stocks": _format_picks(value_picks[:10]),
     })
 
@@ -673,6 +753,8 @@ def categorize_picks(results: List[dict]) -> List[dict]:
         "name": "成長動能股",
         "icon": "📈",
         "description": "篩選條件：營收 YoY > 15% 且 PEG < 1.5（P/E ÷ 營收成長率）。高成長但估值合理的股票，適合積極型投資人。PEG < 1 表示成長遠超估值。",
+        "score_field": "scores.fundamental",
+        "score_label": "基本面",
         "stocks": _format_picks(growth_picks[:10]),
     })
 
@@ -684,14 +766,117 @@ def categorize_picks(results: List[dict]) -> List[dict]:
         if regime in ("強勢多頭", "底部轉強") and raw_tech >= 55:
             r["_highlight"] = f"盤勢{regime}＋技術{raw_tech}分"
             tech_picks.append(r)
-    tech_picks.sort(key=lambda x: x["composite"], reverse=True)
+    tech_picks.sort(key=lambda x: x.get("scores", {}).get("technical", 0), reverse=True)
     _annotate_days(tech_picks[:10], "tech_breakout")
     categories.append({
         "id": "tech_breakout",
         "name": "技術突破股",
         "icon": "🚀",
         "description": "篩選條件：盤勢狀態為「強勢多頭」或「底部轉強」，且原始技術分數 ≥ 55（非百分位）。技術分數綜合 10 個指標：EMA 趨勢、ADX 動能、MACD、RSI、Stoch RSI（拉回超賣）、Volume Reversal（爆量反轉）、Pullback Support（均線拉回）等，各產業權重依回測歸因分析調整。",
+        "score_field": "scores.technical",
+        "score_label": "技術",
         "stocks": _format_picks(tech_picks[:10]),
+    })
+
+    # ── 7. 趨勢強攻股（技術細項：EMA+ADX 趨勢柱面）──
+    trend_picks = []
+    for r in results:
+        trend_score = r.get("details", {}).get("tech_pillars", {}).get("trend", 0)
+        regime = r.get("details", {}).get("regime_state", "")
+        if trend_score >= 60 and regime not in ("空頭", "高檔轉折"):
+            r["_highlight"] = f"趨勢面{trend_score:.0f}分（EMA+ADX）｜{regime}"
+            trend_picks.append(r)
+    trend_picks.sort(key=lambda x: x.get("details", {}).get("tech_pillars", {}).get("trend", 0), reverse=True)
+    _annotate_days(trend_picks[:10], "trend_follow")
+    categories.append({
+        "id": "trend_follow",
+        "name": "趨勢強攻股",
+        "icon": "📐",
+        "description": "技術細項排行：EMA 均線多頭排列 + ADX 趨勢強度雙雙高分（趨勢柱面 ≥ 60）。均線多排代表中長線方向確立，ADX 確認趨勢而非震盪，是追多趨勢的最佳信號組合。",
+        "score_field": "tech_pillars.trend",
+        "score_label": "趨勢",
+        "stocks": _format_picks(trend_picks[:10]),
+    })
+
+    # ── 8. 量能異動股（技術細項：Volume+VolumeReversal 量能柱面）──
+    volume_picks = []
+    for r in results:
+        vol_score = r.get("details", {}).get("tech_pillars", {}).get("volume", 0)
+        regime = r.get("details", {}).get("regime_state", "")
+        if vol_score >= 65 and regime not in ("空頭",):
+            r["_highlight"] = f"量能面{vol_score:.0f}分（成交量+爆量反轉）｜{regime}"
+            volume_picks.append(r)
+    volume_picks.sort(key=lambda x: x.get("details", {}).get("tech_pillars", {}).get("volume", 0), reverse=True)
+    _annotate_days(volume_picks[:10], "volume_surge")
+    categories.append({
+        "id": "volume_surge",
+        "name": "量能異動股",
+        "icon": "💥",
+        "description": "技術細項排行：成交量放大 + 爆量反轉信號（量能柱面 ≥ 65）。量是價的先行指標，法人悄悄進場時必伴隨異常大量，爆量反轉更是主力換手的明確訊號。",
+        "score_field": "tech_pillars.volume",
+        "score_label": "量能",
+        "stocks": _format_picks(volume_picks[:10]),
+    })
+
+    # ── 9. 盤勢強攻股（盤勢細項：強勢多頭 + 多頭）──
+    regime_bull_picks = []
+    for r in results:
+        regime = r.get("details", {}).get("regime_state", "")
+        if regime in ("強勢多頭", "多頭"):
+            regime_score = r.get("scores", {}).get("regime", 0)
+            raw_tech = r.get("raw_scores", {}).get("technical", r.get("scores", {}).get("technical", 0))
+            r["_highlight"] = f"盤勢{regime}（{regime_score:.0f}分）｜技術{raw_tech:.0f}分"
+            regime_bull_picks.append(r)
+    regime_bull_picks.sort(key=lambda x: x.get("scores", {}).get("regime", 0), reverse=True)
+    _annotate_days(regime_bull_picks[:10], "regime_bull")
+    categories.append({
+        "id": "regime_bull",
+        "name": "盤勢強攻股",
+        "icon": "🔥",
+        "description": "盤勢細項排行：盤勢偵測為「強勢多頭」或「多頭」。判斷依據：5/10/20/60日均線完美多頭排列、波段高低點持續墊高、ADX趨勢強度確認。均線越整齊＋趨勢越強，多方越安全。",
+        "score_field": "scores.regime",
+        "score_label": "盤勢",
+        "stocks": _format_picks(regime_bull_picks[:10]),
+    })
+
+    # ── 10. 底部轉強股（盤勢細項：底部反轉）──
+    reversal_picks = []
+    for r in results:
+        regime = r.get("details", {}).get("regime_state", "")
+        if regime == "底部轉強":
+            raw_tech = r.get("raw_scores", {}).get("technical", r.get("scores", {}).get("technical", 0))
+            r["_highlight"] = f"盤勢底部轉強｜技術{raw_tech:.0f}分"
+            reversal_picks.append(r)
+    reversal_picks.sort(key=lambda x: x.get("scores", {}).get("regime", 0), reverse=True)
+    _annotate_days(reversal_picks[:10], "bottom_reversal")
+    categories.append({
+        "id": "bottom_reversal",
+        "name": "底部轉強股",
+        "icon": "🌱",
+        "description": "盤勢細項排行：盤勢偵測確認為「底部轉強」。綜合判斷依據：均線底部排列（5日剛翻越10日）、成交量底部放大、K棒止跌訊號（長下影線/吞噬）等，是空轉多的黃金進場視窗。",
+        "score_field": "scores.regime",
+        "score_label": "盤勢",
+        "stocks": _format_picks(reversal_picks[:10]),
+    })
+
+    # ── 11. 高檔轉折股（盤勢細項：風險示警）──
+    regime_top_picks = []
+    for r in results:
+        regime = r.get("details", {}).get("regime_state", "")
+        if regime in ("高檔轉折", "空頭"):
+            raw_tech = r.get("raw_scores", {}).get("technical", r.get("scores", {}).get("technical", 0))
+            r["_highlight"] = f"盤勢{regime}｜技術{raw_tech:.0f}分｜注意風險"
+            regime_top_picks.append(r)
+    regime_top_picks.sort(key=lambda x: x.get("scores", {}).get("regime", 100))  # regime 低分排前
+    _annotate_days(regime_top_picks[:10], "regime_warning")
+    categories.append({
+        "id": "regime_warning",
+        "name": "高檔示警股",
+        "icon": "⚠️",
+        "description": "盤勢細項排行：盤勢偵測為「高檔轉折」或「空頭」。判斷依據：均線死亡交叉、高位長黑K、波段高點不再創高。若持有這些標的建議留意停利或降低部位。",
+        "score_field": "scores.regime",
+        "score_label": "盤勢",
+        "stocks": _format_picks(regime_top_picks[:10]),
     })
 
     _save_rank_history(rank_history)
@@ -720,6 +905,8 @@ def _format_picks(picks: List[dict]) -> List[dict]:
             "scores": p["scores"],
             "raw_scores": p.get("raw_scores", {}),
             "days_in_rank": p.get("_days_in_rank", 1),
+            "tech_pillars": p.get("details", {}).get("tech_pillars", {}),
+            "regime_state": p.get("details", {}).get("regime_state", ""),
         })
     return formatted
 
