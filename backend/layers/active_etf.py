@@ -45,9 +45,13 @@ for _i, _etf in enumerate(BEAT_ETFS):
 _CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 _CACHE_FILE = os.path.join(_CACHE_DIR, "active_etf_scores.json")
 
+# ── 進榜歷史快取路徑 ──
+_RANK_HISTORY_FILE = os.path.join(_CACHE_DIR, "active_etf_rank_history.json")
+
 # ── 運行時快取（dict 用 in-place update 保持模組引用一致）──
 _scores_cache: dict = {}   # {stock_id: normalized_score(0-100)}
 _names_cache: dict = {}    # {stock_id: stock_name}
+_etf_count_cache: dict = {}  # {stock_id: int} 被幾檔 ETF 持有
 _cache_date: Optional[date] = None
 _cache_lock = threading.RLock()  # 保護多執行緒下的讀寫安全
 
@@ -114,6 +118,7 @@ def refresh_active_etf_scores() -> bool:
     # 並行撈各 ETF 持股
     raw_scores: dict = {}
     names: dict = {}
+    etf_count: dict = {}  # 每支股票被幾檔 ETF 持有
 
     with ThreadPoolExecutor(max_workers=len(BEAT_ETFS)) as executor:
         futures = {executor.submit(_fetch_holdings, etf["code"], token): etf for etf in BEAT_ETFS}
@@ -124,6 +129,7 @@ def refresh_active_etf_scores() -> bool:
             for sid, (sname, pct) in holdings.items():
                 raw_scores[sid] = raw_scores.get(sid, 0.0) + w * pct
                 names[sid] = sname
+                etf_count[sid] = etf_count.get(sid, 0) + 1
 
     if not raw_scores:
         logger.warning("[active_etf] 未取得任何持股資料")
@@ -142,11 +148,14 @@ def refresh_active_etf_scores() -> bool:
         _scores_cache.update(normalized)
         _names_cache.clear()
         _names_cache.update(names)
+        _etf_count_cache.clear()
+        _etf_count_cache.update(etf_count)
         _cache_date = date.today()
 
     os.makedirs(_CACHE_DIR, exist_ok=True)
     with open(_CACHE_FILE, "w", encoding="utf-8") as f:
         json.dump({"date": str(_cache_date), "scores": normalized, "names": names,
+                   "etf_count_per_stock": etf_count,
                    "etf_count": len(BEAT_ETFS), "stock_count": n},
                   f, ensure_ascii=False, indent=2)
 
@@ -155,22 +164,31 @@ def refresh_active_etf_scores() -> bool:
 
 
 def _load_cache_from_disk() -> bool:
-    """從磁碟讀取快取，回傳是否成功且資料是今天的"""
+    """從磁碟讀取快取，回傳是否成功且資料是今天的。
+    若資料過期但存在，仍載入作為 fallback（避免 API 失敗時完全無資料）。
+    """
     global _cache_date
     try:
         with open(_CACHE_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
         cache_date = date.fromisoformat(data["date"])
-        if cache_date < date.today():
-            return False
+        has_etf_count = "etf_count_per_stock" in data
+        is_fresh = cache_date >= date.today() and has_etf_count
+
         with _cache_lock:
             _scores_cache.clear()
             _scores_cache.update(data["scores"])
             _names_cache.clear()
             _names_cache.update(data.get("names", {}))
+            _etf_count_cache.clear()
+            _etf_count_cache.update(data.get("etf_count_per_stock", {}))
             _cache_date = cache_date
-        logger.info(f"[active_etf] 從磁碟載入快取（{cache_date}，{len(_scores_cache)} 支股票）")
-        return True
+
+        if is_fresh:
+            logger.info(f"[active_etf] 從磁碟載入快取（{cache_date}，{len(_scores_cache)} 支股票）")
+        else:
+            logger.info(f"[active_etf] 載入過期快取作為 fallback（{cache_date}，{len(_scores_cache)} 支股票）")
+        return is_fresh
     except Exception as e:
         logger.warning(f"[active_etf] 磁碟快取讀取失敗: {e}")
         return False
@@ -196,6 +214,88 @@ def get_active_etf_score(symbol: str) -> Optional[float]:
         return _scores_cache.get(sid)
 
 
+def _load_rank_history() -> dict:
+    """讀取進榜歷史 JSON"""
+    try:
+        with open(_RANK_HISTORY_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_rank_history(history: dict):
+    """儲存進榜歷史 JSON"""
+    try:
+        os.makedirs(_CACHE_DIR, exist_ok=True)
+        with open(_RANK_HISTORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.warning(f"[active_etf] 進榜歷史存檔失敗: {e}")
+
+
+_twii_trading_days_cache: list = []
+
+def _get_trading_days_count(start_date: str, end_date: str) -> int:
+    """計算台股實際開市工作天數（快取加權指數交易日避免重複呼叫）"""
+    global _twii_trading_days_cache
+    try:
+        from datetime import datetime, timedelta
+        import pandas as pd
+
+        if not _twii_trading_days_cache:
+            import yfinance as yf
+            end_dt = datetime.now()
+            start_dt = end_dt - timedelta(days=365)
+            twii = yf.Ticker("^TWII")
+            hist = twii.history(start=start_dt.strftime("%Y-%m-%d"),
+                                end=(end_dt + timedelta(days=1)).strftime("%Y-%m-%d"))
+            if not hist.empty:
+                _twii_trading_days_cache = [d.strftime("%Y-%m-%d") for d in hist.index]
+
+        if _twii_trading_days_cache:
+            count = sum(1 for d in _twii_trading_days_cache if start_date <= d <= end_date)
+            if end_date not in _twii_trading_days_cache and pd.to_datetime(end_date).weekday() < 5:
+                count += 1
+            return max(1, count)
+    except Exception:
+        pass
+    try:
+        import pandas as pd
+        return max(1, len(pd.bdate_range(start=start_date, end=end_date)))
+    except Exception:
+        return 1
+
+
+def _update_etf_rank_history(symbols: list, today: str) -> dict:
+    """
+    更新主動 ETF 進榜歷史，回傳 {symbol: days_in_rank}
+    """
+    history = _load_rank_history()
+    current_set = set(symbols)
+
+    # 移除不再上榜的股票
+    for sym in list(history.keys()):
+        if sym not in current_set:
+            del history[sym]
+
+    # 新進榜的股票記錄今天
+    for sym in symbols:
+        if sym not in history:
+            history[sym] = today
+
+    # 計算天數
+    days_map = {}
+    for sym in symbols:
+        first_seen = history.get(sym, today)
+        try:
+            days_map[sym] = max(1, _get_trading_days_count(first_seen, today))
+        except Exception:
+            days_map[sym] = 1
+
+    _save_rank_history(history)
+    return days_map
+
+
 def get_active_etf_ranking() -> dict:
     """
     公開 API：取得完整排行資料，供 /api/active-etf-ranking 呼叫。
@@ -207,18 +307,30 @@ def get_active_etf_ranking() -> dict:
             return {"stocks": [], "etfs": [], "total": 0, "updated_at": "",
                     "message": "資料載入中，請稍後再試"}
         stocks = sorted(
-            [{"symbol": sid, "name": _names_cache.get(sid, sid), "score": score}
+            [{"symbol": sid, "name": _names_cache.get(sid, sid), "score": score,
+              "etf_count": int(_etf_count_cache.get(sid, 0))}
              for sid, score in _scores_cache.items()],
             key=lambda x: -x["score"]
         )
         updated_at = str(_cache_date) if _cache_date else ""
+        is_stale = _cache_date is not None and _cache_date < date.today()
+
+    # 計算進榜天數
+    today = str(date.today())
+    symbols = [s["symbol"] for s in stocks]
+    days_map = _update_etf_rank_history(symbols, today)
+    for s in stocks:
+        s["days_in_rank"] = days_map.get(s["symbol"], 1)
 
     etfs = [
         {"code": e["code"], "name": e["name"], "alpha": e["alpha"],
          "rank_weight": round(e["rank_weight"], 3)}
         for e in BEAT_ETFS
     ]
-    return {"stocks": stocks, "etfs": etfs, "total": len(stocks), "updated_at": updated_at}
+    result = {"stocks": stocks, "etfs": etfs, "total": len(stocks), "updated_at": updated_at}
+    if is_stale:
+        result["message"] = f"顯示 {updated_at} 的快取資料（今日尚未更新成功）"
+    return result
 
 
 # 啟動時預載磁碟快取，避免第一次請求觸發網路更新

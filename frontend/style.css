@@ -1042,6 +1042,29 @@ h1, h2, h3, .glow-text {
     font-weight: 700;
 }
 
+.tutorial-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    margin-top: 8px;
+}
+.tutorial-table th,
+.tutorial-table td {
+    padding: 6px 8px;
+    border: 1px solid rgba(255,255,255,0.08);
+    text-align: left;
+    color: var(--text-muted);
+}
+.tutorial-table th {
+    background: rgba(100,108,255,0.12);
+    color: var(--text-main);
+    font-weight: 600;
+    white-space: nowrap;
+}
+.tutorial-table tr:nth-child(even) {
+    background: rgba(255,255,255,0.02);
+}
+
 .btn-tutorial-open {
     margin-top: 15px;
     background: rgba(167, 139, 250, 0.1);
@@ -2316,7 +2339,11 @@ a.event-item:hover {
     transition: background 0.15s;
 }
 .screener-stock-row:hover {
-    background: rgba(139, 92, 246, 0.08);
+    background: rgba(139, 92, 246, 0.15);
+}
+.screener-stock-row.screener-highlight {
+    background: rgba(139, 92, 246, 0.18);
+    outline: 1.5px solid rgba(139, 92, 246, 0.35);
 }
 .screener-stock-sym {
     font-size: 12px;
@@ -2349,6 +2376,19 @@ a.event-item:hover {
     text-overflow: ellipsis;
     max-width: 140px;
 }
+.aetf-etf-count {
+    font-size: 10px;
+    font-weight: 700;
+    color: #38bdf8;
+    background: rgba(56,189,248,0.12);
+    border: 1px solid rgba(56,189,248,0.3);
+    border-radius: 8px;
+    padding: 1px 6px;
+    min-width: 24px;
+    text-align: center;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
 .screener-days-badge {
     font-size: 10px;
     font-weight: 700;
@@ -2359,6 +2399,48 @@ a.event-item:hover {
     padding: 1px 6px;
     white-space: nowrap;
     flex-shrink: 0;
+}
+/* NEW 新進榜標籤 */
+.screener-new-badge {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    color: #f59e0b;
+    background: rgba(245,158,11,0.15);
+    border: 1px solid rgba(245,158,11,0.4);
+    border-radius: 10px;
+    padding: 1px 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    animation: screener-new-pulse 2s ease-in-out 3;
+}
+@keyframes screener-new-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+/* 雙分數組合：主分數 + 副綜合分數 */
+.screener-score-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    flex-shrink: 0;
+}
+.screener-score-sub {
+    font-size: 9px;
+    font-weight: 600;
+    color: var(--text-muted);
+    opacity: 0.7;
+    white-space: nowrap;
+}
+/* 卡片標頭：排序依據標籤 */
+.screener-sort-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 6px;
+    padding: 1px 5px;
+    white-space: nowrap;
 }
 .screener-empty {
     font-size: 11px;
@@ -2371,6 +2453,16 @@ a.event-item:hover {
     color: var(--text-muted);
     text-align: center;
     padding: 20px 0;
+}
+.screener-stale-banner {
+    font-size: 11px;
+    color: #f0ad4e;
+    background: rgba(240, 173, 78, 0.1);
+    border: 1px solid rgba(240, 173, 78, 0.3);
+    border-radius: 6px;
+    padding: 6px 12px;
+    text-align: center;
+    margin-bottom: 8px;
 }
 /* 綜合排行榜卡片 — 橫跨整列 */
 .screener-ranking-card {
@@ -2707,4 +2799,290 @@ a.event-item:hover {
     .rec-action {
         font-size: 15px;
     }
+}
+
+/* ── 投資諮詢系統 ── */
+
+.consultation-form {
+    padding: 18px 20px;
+    margin-bottom: 16px;
+}
+.consultation-form-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    letter-spacing: 0.03em;
+}
+.consultation-desc {
+    font-size: 12px;
+    opacity: 0.65;
+    margin-bottom: 14px;
+}
+.consultation-inputs {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: flex-end;
+}
+.consultation-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.consultation-field label {
+    font-size: 11px;
+    opacity: 0.7;
+}
+.consultation-field input {
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 6px;
+    color: inherit;
+    padding: 7px 10px;
+    font-size: 13px;
+    width: 130px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+.consultation-field input:focus {
+    border-color: rgba(255,255,255,0.4);
+}
+.consultation-btn {
+    padding: 8px 18px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    background: var(--color-accent, #7c6ef7);
+    color: #fff;
+    border: none;
+    transition: opacity 0.2s;
+    height: 34px;
+    align-self: flex-end;
+}
+.consultation-btn:disabled { opacity: 0.5; }
+.consultation-hint {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+.consult-hint-item {
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 10px;
+    background: rgba(255,255,255,0.1);
+    cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.15);
+    transition: background 0.15s;
+}
+.consult-hint-item:hover { background: rgba(255,255,255,0.2); }
+
+/* 結果區塊 */
+.consultation-result-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.consult-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 18px;
+}
+.consult-stock-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 80px;
+}
+.consult-sym { font-size: 17px; font-weight: 700; }
+.consult-name { font-size: 12px; opacity: 0.65; }
+.consult-pnl-block { flex: 1; }
+.consult-price-row {
+    display: flex;
+    gap: 14px;
+    font-size: 12px;
+    opacity: 0.75;
+    margin-bottom: 4px;
+}
+.consult-pnl { font-size: 16px; font-weight: 700; }
+.consult-rec-block {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border-radius: 10px;
+    padding: 10px 16px;
+    font-weight: 700;
+}
+.rec-buy  { background: rgba(0,200,120,0.18); color: #00c878; }
+.rec-hold { background: rgba(120,160,255,0.18); color: #7eb0ff; }
+.rec-sell { background: rgba(255,180,0,0.18); color: #ffb400; }
+.rec-clear{ background: rgba(255,80,80,0.18); color: #ff5050; }
+.rec-icon { font-size: 18px; }
+.rec-label { font-size: 18px; }
+.rec-conf { font-size: 12px; opacity: 0.8; }
+
+/* 當前市況 */
+.consult-conditions { padding: 14px 18px; }
+.consult-section-title {
+    font-size: 12px;
+    font-weight: 600;
+    opacity: 0.55;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.risk-title { color: #ff7070; opacity: 0.8; }
+.hist-stat { font-size: 12px; opacity: 0.75; text-transform: none; margin-left: auto; }
+.consult-dim-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.dim-badge {
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+}
+.dim-bull { background: rgba(0,200,120,0.14); border-color: rgba(0,200,120,0.3); color: #00c878; }
+.dim-mid  { background: rgba(120,160,255,0.12); border-color: rgba(120,160,255,0.2); color: #7eb0ff; }
+.dim-bear { background: rgba(255,80,80,0.12); border-color: rgba(255,80,80,0.25); color: #ff7070; }
+
+/* 技術柱面 bars */
+.pillar-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 4px;
+}
+.pillar-bar-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+.pillar-label { width: 34px; opacity: 0.65; }
+.pillar-bar-track {
+    flex: 1;
+    height: 8px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.08);
+    overflow: hidden;
+}
+.pillar-bar {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.4s ease;
+}
+.pillar-high { background: #00c878; }
+.pillar-mid  { background: #7eb0ff; }
+.pillar-low  { background: #ff7070; }
+.pillar-val { width: 28px; text-align: right; opacity: 0.75; }
+
+/* 分析依據 */
+.consult-reasoning { padding: 14px 18px; }
+.reasoning-list, .risk-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.reasoning-list li { font-size: 13px; padding-left: 12px; position: relative; }
+.reasoning-list li::before { content: '▸'; position: absolute; left: 0; opacity: 0.5; }
+.reason-main { font-weight: 600 !important; }
+.risk-list li {
+    font-size: 12px;
+    padding-left: 12px;
+    color: #ff9090;
+    position: relative;
+}
+.risk-list li::before { content: '!'; position: absolute; left: 0; font-weight: 700; }
+
+/* 歷史案例 */
+.consult-history { padding: 14px 18px; }
+.cases-list { display: flex; flex-direction: column; gap: 5px; }
+.case-row {
+    display: flex;
+    gap: 10px;
+    font-size: 12px;
+    align-items: center;
+    padding: 5px 8px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.04);
+}
+.case-sym { flex: 1; font-weight: 500; }
+.case-date { opacity: 0.5; }
+.case-regime { opacity: 0.7; }
+.case-ret { font-weight: 700; min-width: 55px; text-align: right; }
+
+.consult-datasource {
+    font-size: 11px;
+    opacity: 0.4;
+    text-align: right;
+    padding: 0 4px 4px;
+}
+/* 短中長期前瞻報酬表 */
+.horizon-group { margin-bottom: 14px; }
+.horizon-group-title {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    opacity: 0.8;
+}
+.horizon-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+.horizon-table th {
+    text-align: left;
+    padding: 4px 8px;
+    opacity: 0.5;
+    font-weight: 400;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.horizon-table td {
+    padding: 5px 8px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+/* 同股票案例高亮 */
+.case-self {
+    background: rgba(120,200,255,0.08) !important;
+    border-left: 3px solid rgba(120,200,255,0.4);
+}
+.case-self-tag {
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(120,200,255,0.2);
+    color: #7ec8ff;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+.case-rets {
+    font-size: 11px;
+    min-width: 130px;
+    text-align: right;
+    white-space: nowrap;
+}
+.cases-legend {
+    font-size: 10px;
+    opacity: 0.5;
+    text-transform: none;
+    margin-left: auto;
+}
+
+.consultation-error {
+    padding: 14px 18px;
+    color: #ff7070;
 }

@@ -1282,24 +1282,57 @@ function renderScreenerCards(categories) {
 
     const DEFAULT_SHOW = 5;
 
+    // 從 dot-path 取值，例如 "scores.regime" → s.scores.regime
+    function _getScore(stock, field) {
+        if (!field || field === 'composite') return stock.composite_score;
+        const parts = field.split('.');
+        let val = stock;
+        for (const p of parts) { val = val && val[p]; }
+        return typeof val === 'number' ? val : stock.composite_score;
+    }
+
     container.innerHTML = categories.map(cat => {
         const stocks = cat.stocks || [];
         const isRanking = cat.id === 'top_ranked';
         const hasMore = stocks.length > DEFAULT_SHOW;
+        const scoreField = cat.score_field || 'composite';
+        const scoreLabel = cat.score_label || '綜合';
+        const isComposite = scoreField === 'composite';
 
         const stocksHtml = stocks.length > 0
             ? stocks.map((s, idx) => {
-                const scoreCls = s.composite_score >= 70 ? 'score-high' : s.composite_score >= 45 ? 'score-mid' : 'score-low';
+                const mainScore = Math.round(_getScore(s, scoreField));
+                const mainCls = mainScore >= 70 ? 'score-high' : mainScore >= 45 ? 'score-mid' : 'score-low';
                 const hiddenCls = (isRanking && idx >= DEFAULT_SHOW) ? ' screener-hidden' : '';
                 const rankBadge = isRanking ? `<span class="screener-rank">${idx + 1}</span>` : '';
+
+                // 天數 / NEW 標籤
                 const days = s.days_in_rank || 1;
-                const daysBadge = days >= 2 ? `<span class="screener-days-badge" title="連續入榜${days}天">第${days}天</span>` : '';
+                let daysBadge = '';
+                if (days === 1) {
+                    daysBadge = '<span class="screener-new-badge" title="今日新進榜">NEW</span>';
+                } else if (days >= 2) {
+                    daysBadge = `<span class="screener-days-badge" title="連續入榜${days}天">第${days}天</span>`;
+                }
+
+                // 分數區：主分數 + 副分數（綜合排行榜只顯示綜合分數）
+                const compScore = Math.round(s.composite_score);
+                let scoreHtml;
+                if (isComposite) {
+                    scoreHtml = `<span class="screener-stock-score ${mainCls}">${mainScore}</span>`;
+                } else {
+                    scoreHtml = `<span class="screener-score-group">` +
+                        `<span class="screener-stock-score ${mainCls}" title="${scoreLabel}分數">${mainScore}</span>` +
+                        `<span class="screener-score-sub" title="綜合分數">綜${compScore}</span>` +
+                        `</span>`;
+                }
+
                 return `<div class="screener-stock-row${hiddenCls}" data-symbol="${s.symbol}" data-market="stock">
                     ${rankBadge}
                     <span class="screener-stock-sym">${s.symbol.replace('.TW','')}</span>
                     <span class="screener-stock-name">${s.name}</span>
                     ${daysBadge}
-                    <span class="screener-stock-score ${scoreCls}">${Math.round(s.composite_score)}</span>
+                    ${scoreHtml}
                     <span class="screener-stock-hl">${s.highlight}</span>
                 </div>`;
             }).join('')
@@ -1309,10 +1342,14 @@ function renderScreenerCards(categories) {
             ? `<button class="screener-expand-btn" data-cat="${cat.id}">顯示更多 (${stocks.length}檔) ▼</button>`
             : '';
 
+        // 非綜合排行榜在標頭顯示排序依據
+        const sortLabel = !isComposite ? `<span class="screener-sort-label">依${scoreLabel}分排序</span>` : '';
+
         return `<div class="screener-cat-card glass-panel ${isRanking ? 'screener-ranking-card' : ''}">
             <div class="screener-cat-header">
                 <span class="screener-cat-icon">${cat.icon}</span>
                 <span class="screener-cat-name">${cat.name}</span>
+                ${sortLabel}
                 ${cat.description ? `<span class="info-tooltip" data-tip="${cat.description}" style="margin-left: 4px;"><i>i</i></span>` : ''}
                 <span class="screener-cat-count">${stocks.length}檔</span>
             </div>
@@ -1329,6 +1366,22 @@ function renderScreenerCards(categories) {
             if (window.changeSymbol) {
                 window.changeSymbol(symbol, market);
             }
+        });
+    });
+
+    // Hover 同步高亮：滑鼠移到某股票時，所有區塊中同代號的列都高亮
+    container.querySelectorAll('.screener-stock-row').forEach(row => {
+        row.addEventListener('mouseenter', () => {
+            const sym = row.dataset.symbol;
+            container.querySelectorAll(`.screener-stock-row[data-symbol="${sym}"]`).forEach(r => {
+                r.classList.add('screener-highlight');
+            });
+        });
+        row.addEventListener('mouseleave', () => {
+            const sym = row.dataset.symbol;
+            container.querySelectorAll(`.screener-stock-row[data-symbol="${sym}"]`).forEach(r => {
+                r.classList.remove('screener-highlight');
+            });
         });
     });
 
@@ -1369,13 +1422,21 @@ function initScreener() {
             const tab = btn.dataset.tab;
             const picksEl = document.getElementById('screener-categories');
             const etfEl = document.getElementById('screener-active-etf');
+            const consultEl = document.getElementById('screener-consultation');
             if (tab === 'picks') {
                 if (picksEl) picksEl.style.display = '';
                 if (etfEl) etfEl.style.display = 'none';
-            } else {
+                if (consultEl) consultEl.style.display = 'none';
+            } else if (tab === 'active-etf') {
                 if (picksEl) picksEl.style.display = 'none';
                 if (etfEl) etfEl.style.display = '';
+                if (consultEl) consultEl.style.display = 'none';
                 fetchActiveEtfRanking();
+            } else if (tab === 'consultation') {
+                if (picksEl) picksEl.style.display = 'none';
+                if (etfEl) etfEl.style.display = 'none';
+                if (consultEl) consultEl.style.display = '';
+                initConsultation();
             }
         });
     }
@@ -1409,6 +1470,256 @@ function initScreener() {
     setInterval(fetchScreenerPicks, 30 * 60 * 1000);
 }
 
+// ── 投資諮詢系統 ──
+
+let _consultationInited = false;
+let _consultUniverse = []; // [{symbol, name}]
+
+async function initConsultation() {
+    if (_consultationInited) return;
+    _consultationInited = true;
+
+    // 載入宇宙清單（供模糊搜尋）
+    try {
+        const res = await fetch('/api/screener/universe');
+        _consultUniverse = await res.json();
+    } catch (e) {}
+
+    const submitBtn = document.getElementById('consult-submit-btn');
+    const symbolInput = document.getElementById('consult-symbol');
+    const hintEl = document.getElementById('consult-symbol-hint');
+
+    // 模糊搜尋提示
+    symbolInput && symbolInput.addEventListener('input', () => {
+        const q = symbolInput.value.trim();
+        if (!q || q.length < 1) { hintEl.style.display = 'none'; return; }
+        const hits = _consultUniverse.filter(s =>
+            s.symbol.includes(q) || s.name.includes(q) ||
+            s.symbol.replace('.TW','').startsWith(q)
+        ).slice(0, 6);
+        if (hits.length === 0) { hintEl.style.display = 'none'; return; }
+        hintEl.innerHTML = hits.map(h =>
+            `<span class="consult-hint-item" data-sym="${h.symbol}" data-name="${h.name}">${h.symbol.replace('.TW','')} ${h.name}</span>`
+        ).join('');
+        hintEl.style.display = 'flex';
+        hintEl.querySelectorAll('.consult-hint-item').forEach(el => {
+            el.addEventListener('click', () => {
+                symbolInput.value = el.dataset.sym.replace('.TW','');
+                hintEl.style.display = 'none';
+            });
+        });
+    });
+
+    submitBtn && submitBtn.addEventListener('click', runConsultation);
+}
+
+async function runConsultation() {
+    const symbolRaw = (document.getElementById('consult-symbol')?.value || '').trim();
+    const priceRaw = parseFloat(document.getElementById('consult-price')?.value || '0');
+    const qtyRaw = parseInt(document.getElementById('consult-qty')?.value || '0', 10);
+    const resultEl = document.getElementById('consultation-result');
+
+    if (!symbolRaw || !priceRaw || !qtyRaw) {
+        alert('請填寫股票代碼、買入均價和持有張數');
+        return;
+    }
+    if (priceRaw <= 0 || qtyRaw <= 0) {
+        alert('均價與張數須大於 0');
+        return;
+    }
+
+    const btn = document.getElementById('consult-submit-btn');
+    btn.disabled = true;
+    btn.textContent = '分析中...';
+    resultEl.style.display = 'none';
+
+    try {
+        const res = await fetch('/api/consultation', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ symbol: symbolRaw, buy_price: priceRaw, quantity: qtyRaw }),
+        });
+        const data = await res.json();
+
+        if (data.error) {
+            resultEl.innerHTML = `<div class="consultation-error glass-panel">${data.error}</div>`;
+            resultEl.style.display = 'block';
+            return;
+        }
+
+        renderConsultationResult(data);
+    } catch (e) {
+        resultEl.innerHTML = `<div class="consultation-error glass-panel">查詢失敗: ${e.message}</div>`;
+        resultEl.style.display = 'block';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '分析持倉';
+    }
+}
+
+function renderConsultationResult(d) {
+    const resultEl = document.getElementById('consultation-result');
+    const recClass = {
+        '加碼': 'rec-buy', '持有': 'rec-hold',
+        '減碼': 'rec-sell', '出清': 'rec-clear'
+    }[d.recommendation] || 'rec-hold';
+    const recIcon = {'加碼':'▲', '持有':'◆', '減碼':'▼', '出清':'✕'}[d.recommendation] || '◆';
+
+    const pnlSign = d.unrealized_pnl >= 0 ? '+' : '';
+    const pnlColor = d.unrealized_pnl >= 0 ? 'var(--color-bull)' : 'var(--color-bear)';
+
+    const condData = d.current_conditions || {};
+    const hist = d.historical_analysis || {};
+
+    // 技術柱面 bar
+    const pillars = condData.tech_pillars || {};
+    const pillarNames = { trend: '趨勢', momentum: '動能', volume: '量能', support: '支撐' };
+    const pillarBars = Object.entries(pillarNames).map(([k, label]) => {
+        const val = Math.round(pillars[k] || 50);
+        const cls = val >= 65 ? 'pillar-high' : val >= 40 ? 'pillar-mid' : 'pillar-low';
+        return `<div class="pillar-bar-wrap">
+            <span class="pillar-label">${label}</span>
+            <div class="pillar-bar-track"><div class="pillar-bar ${cls}" style="width:${val}%"></div></div>
+            <span class="pillar-val">${val}</span>
+        </div>`;
+    }).join('');
+
+    // ── 短中長期前瞻報酬統計表 ──
+    const horizonLabels = hist.horizon_labels || {short:'短期(5日)', mid:'中期(15日)', long:'長期(30日)'};
+    function renderHorizonTable(stats, title) {
+        if (!stats) return '';
+        const rows = ['short','mid','long'].map(h => {
+            const s = stats[h];
+            if (!s || s.count === 0) return '';
+            const retColor = s.avg_return >= 0 ? 'var(--color-bull)' : 'var(--color-bear)';
+            const retSign = s.avg_return >= 0 ? '+' : '';
+            return `<tr>
+                <td>${horizonLabels[h]}</td>
+                <td style="color:${retColor};font-weight:700">${retSign}${s.avg_return}%</td>
+                <td>${s.win_rate}%</td>
+                <td style="color:var(--color-bull)">${s.best >= 0 ? '+' : ''}${s.best}%</td>
+                <td style="color:var(--color-bear)">${s.worst}%</td>
+                <td>${s.count}筆</td>
+            </tr>`;
+        }).join('');
+        if (!rows) return '';
+        return `<div class="horizon-group">
+            <div class="horizon-group-title">${title}</div>
+            <table class="horizon-table"><thead><tr>
+                <th>期限</th><th>平均報酬</th><th>勝率</th><th>最佳</th><th>最差</th><th>樣本</th>
+            </tr></thead><tbody>${rows}</tbody></table></div>`;
+    }
+
+    const selfHorizonHtml = renderHorizonTable(hist.self_horizon_stats,
+        `${d.name}（同股票歷史 ${hist.self_matches || 0} 筆）`);
+    const otherHorizonHtml = renderHorizonTable(hist.other_horizon_stats,
+        `其他類似股票（${hist.other_matches || 0} 筆）`);
+
+    // 歷史類似案例
+    const casesHtml = (hist.top_cases || []).map(c => {
+        const fr = c.forward_returns || {};
+        const midRet = fr.mid != null ? fr.mid : (fr.short || 0);
+        const retSign = midRet >= 0 ? '+' : '';
+        const retColor = midRet >= 0 ? 'var(--color-bull)' : 'var(--color-bear)';
+        const selfTag = c.is_self ? '<span class="case-self-tag">同股</span>' : '';
+        // 顯示三個期限
+        const retParts = ['short','mid','long'].map(h => {
+            const v = fr[h];
+            if (v == null) return '--';
+            return `<span style="color:${v >= 0 ? 'var(--color-bull)' : 'var(--color-bear)'}">${v >= 0 ? '+' : ''}${v}%</span>`;
+        });
+        return `<div class="case-row ${c.is_self ? 'case-self' : ''}">
+            ${selfTag}
+            <span class="case-sym">${c.symbol.replace('.TW','')} ${c.name}</span>
+            <span class="case-date">${c.date}</span>
+            <span class="case-regime">${c.regime}</span>
+            <span class="case-rets">${retParts[0]} / ${retParts[1]} / ${retParts[2]}</span>
+        </div>`;
+    }).join('');
+
+    // 建議理由
+    const reasoningHtml = (d.reasoning || []).map((r, i) =>
+        `<li class="${i === 0 ? 'reason-main' : ''}">${r}</li>`
+    ).join('');
+    const riskHtml = (d.risk_factors || []).map(r =>
+        `<li class="risk-item">${r}</li>`
+    ).join('');
+
+    resultEl.innerHTML = `
+    <div class="consultation-result-wrap">
+        <!-- 頭部：股票 + 建議 -->
+        <div class="consult-header glass-panel">
+            <div class="consult-stock-info">
+                <span class="consult-sym">${d.symbol.replace('.TW','')}</span>
+                <span class="consult-name">${d.name}</span>
+            </div>
+            <div class="consult-pnl-block">
+                <div class="consult-price-row">
+                    <span>現價 <strong>${d.current_price}</strong></span>
+                    <span>成本 <strong>${d.buy_price}</strong></span>
+                    <span>${d.quantity} 張</span>
+                </div>
+                <div class="consult-pnl" style="color:${pnlColor}">
+                    ${pnlSign}${d.unrealized_pnl.toLocaleString()} 元
+                    （${pnlSign}${d.unrealized_pnl_pct}%）
+                </div>
+            </div>
+            <div class="consult-rec-block ${recClass}">
+                <span class="rec-icon">${recIcon}</span>
+                <span class="rec-label">${d.recommendation}</span>
+                <span class="rec-conf">信心 ${d.confidence}%</span>
+            </div>
+        </div>
+
+        <!-- 技術柱面 + 籌碼 -->
+        <div class="consult-conditions glass-panel">
+            <div class="consult-section-title">當前市況</div>
+            <div class="consult-dim-row">
+                <div class="dim-badge ${condData.regime_score >= 70 ? 'dim-bull' : condData.regime_score >= 40 ? 'dim-mid' : 'dim-bear'}">
+                    盤勢 <strong>${condData.regime_state || '--'}</strong>
+                </div>
+                <div class="dim-badge ${condData.tech_score >= 60 ? 'dim-bull' : condData.tech_score >= 35 ? 'dim-mid' : 'dim-bear'}">
+                    技術 <strong>${condData.tech_score || '--'}</strong>
+                </div>
+                <div class="dim-badge ${condData.chip_score >= 60 ? 'dim-bull' : condData.chip_score >= 35 ? 'dim-mid' : 'dim-bear'}">
+                    籌碼 <strong>${condData.chip_score || '--'}</strong>
+                </div>
+                ${condData.foreign_consec_buy >= 1 ? `<div class="dim-badge dim-bull">外資連買 <strong>${condData.foreign_consec_buy}天</strong></div>` : ''}
+                ${condData.trust_consec_buy >= 1 ? `<div class="dim-badge dim-bull">投信連買 <strong>${condData.trust_consec_buy}天</strong></div>` : ''}
+            </div>
+            ${pillarBars ? `<div class="pillar-bars">${pillarBars}</div>` : ''}
+        </div>
+
+        <!-- 建議理由 -->
+        <div class="consult-reasoning glass-panel">
+            <div class="consult-section-title">分析依據</div>
+            <ul class="reasoning-list">${reasoningHtml}</ul>
+            ${riskHtml ? `<div class="consult-section-title risk-title">風險提示</div><ul class="risk-list">${riskHtml}</ul>` : ''}
+        </div>
+
+        <!-- 歷史前瞻報酬統計 -->
+        ${hist.total_matches > 0 ? `
+        <div class="consult-history glass-panel">
+            <div class="consult-section-title">歷史類似情況 · 前瞻報酬統計</div>
+            ${selfHorizonHtml}
+            ${otherHorizonHtml}
+        </div>` : ''}
+
+        <!-- 代表性案例 -->
+        ${(hist.top_cases || []).length > 0 ? `
+        <div class="consult-cases glass-panel">
+            <div class="consult-section-title">代表性案例
+                <span class="cases-legend">5日 / 15日 / 30日</span>
+            </div>
+            <div class="cases-list">${casesHtml}</div>
+        </div>` : ''}
+
+        <div class="consult-datasource">資料來源：${d.data_source}</div>
+    </div>`;
+
+    resultEl.style.display = 'block';
+}
+
 // ── 主動 ETF 選股排行 ──
 
 let _activeEtfLoaded = false;
@@ -1431,6 +1742,13 @@ async function fetchActiveEtfRanking(forceReload = false) {
 
         renderActiveEtfRanking(data);
         _activeEtfLoaded = true;
+        // 若有 message（例如快取過期提示），在資料上方顯示
+        if (data.message && data.stocks.length > 0) {
+            const banner = document.createElement('div');
+            banner.className = 'screener-stale-banner';
+            banner.textContent = data.message;
+            container.prepend(banner);
+        }
     } catch (e) {
         container.innerHTML = '<div class="screener-loading">載入失敗，請稍後再試</div>';
         console.warn('主動 ETF 排行載入失敗:', e);
@@ -1455,14 +1773,21 @@ function renderActiveEtfRanking(data) {
 
     // 股票排行列
     const stockRows = stocks.map((s, idx) => {
-        const scoreCls = s.score >= 75 ? 'score-high' : s.score >= 40 ? 'score-mid' : 'score-low';
         const hiddenCls = idx >= DEFAULT_SHOW ? ' screener-hidden' : '';
+        const etfCount = s.etf_count || 0;
+        const days = s.days_in_rank || 1;
+        let daysBadge = '';
+        if (days === 1) {
+            daysBadge = '<span class="screener-new-badge" title="今日新進榜">NEW</span>';
+        } else if (days >= 2) {
+            daysBadge = `<span class="screener-days-badge" title="連續入榜${days}天">第${days}天</span>`;
+        }
         return `<div class="screener-stock-row${hiddenCls}" data-symbol="${s.symbol}.TW" data-market="stock">
             <span class="screener-rank">${idx + 1}</span>
             <span class="screener-stock-sym">${s.symbol}</span>
             <span class="screener-stock-name">${s.name}</span>
-            <span class="screener-stock-score ${scoreCls}">${Math.round(s.score)}</span>
-            <span class="screener-stock-hl">ETF重倉</span>
+            <span class="aetf-etf-count" title="被 ${etfCount} 檔 ETF 持有">${etfCount}檔</span>
+            ${daysBadge}
         </div>`;
     }).join('');
 
@@ -1474,7 +1799,7 @@ function renderActiveEtfRanking(data) {
     container.innerHTML = `
         <div class="aetf-header-note">
             以下為績效領先大盤的 <strong>${etfs.length} 支主動式 ETF</strong> 共同持有的台股，
-            依「ETF排名權重 × 持股比例」綜合評分排列。更新：${data.updated_at || '今日'}
+            依「ETF排名權重 × 持股比例」排列，顯示持有 ETF 檔數與進榜天數。更新：${data.updated_at || '今日'}
         </div>
         <div class="aetf-etf-summary">${etfSummaryHtml}</div>
         <div class="screener-cat-card glass-panel screener-ranking-card">
