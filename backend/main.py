@@ -199,6 +199,13 @@ async def startup_event():
         print("[Startup] BTC 自動交易引擎已啟動")
     except Exception as e:
         print(f"[Startup] BTC 交易引擎啟動失敗: {e}")
+    # 啟動每日績效報告排程（每晚 21:00）
+    try:
+        from daily_report import daily_report_scheduler
+        asyncio.create_task(daily_report_scheduler())
+        print("[Startup] 每日績效報告排程已啟動（21:00）")
+    except Exception as e:
+        print(f"[Startup] 每日績效報告排程啟動失敗: {e}")
 
 
 async def preload_tw_ticker_data():
@@ -1076,6 +1083,15 @@ async def btc_trading_run_once():
     t = threading.Thread(target=btc_trader.run_once, daemon=True)
     t.start()
     return {"triggered": True, "message": "已觸發 BTC 交易檢查"}
+
+@app.post("/api/daily-report/send")
+async def trigger_daily_report():
+    """手動觸發每日績效報告"""
+    import threading
+    from daily_report import send_daily_report
+    t = threading.Thread(target=send_daily_report, daemon=True)
+    t.start()
+    return {"triggered": True, "message": "績效報告已觸發，稍後將發送至 Telegram"}
 
 @app.get("/api/btc-trading/history")
 async def btc_trading_history():
