@@ -23,7 +23,7 @@ import json
 import time
 import logging
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Optional
 
 import pandas as pd
@@ -186,15 +186,16 @@ def fetch_signal_data(symbol: str, lookback_days: int = 250) -> Optional[pd.Data
     tw_tz = pytz.timezone("Asia/Taipei")
     today_tw = datetime.now(tw_tz).date()
 
-    # 2. 本地 CSV（盤後 / 資料已更新時直接使用，省掉 API 請求）
+    # 2. 本地 CSV
     local_df = _load_local_csv(symbol)
+    csv_last_date = None
     if local_df is not None and len(local_df) >= 50:
         last_idx = local_df.index[-1]
-        last_date = last_idx.date() if hasattr(last_idx, 'date') else pd.Timestamp(last_idx).date()
-        if last_date >= today_tw:
-            # CSV 已有今日資料 → 直接使用
+        csv_last_date = last_idx.date() if hasattr(last_idx, 'date') else pd.Timestamp(last_idx).date()
+        if csv_last_date >= today_tw:
+            # CSV 已有今日資料 → 直接使用，不需要再問 yfinance
             _update_price_cache(cache_key, local_df, now)
-            logger.info(f"{symbol} 使用本地 CSV（{len(local_df)} 筆，最新 {last_date}）")
+            logger.info(f"{symbol} 使用本地 CSV（{len(local_df)} 筆，最新 {csv_last_date}）")
             return local_df
 
     # 3. yfinance API
@@ -202,7 +203,7 @@ def fetch_signal_data(symbol: str, lookback_days: int = 250) -> Optional[pd.Data
         ticker = yf.Ticker(symbol)
         df = ticker.history(period=f"{lookback_days}d", interval="1d")
         if df.empty or len(df) < 50:
-            # yfinance 也失敗 → fallback 到本地 CSV（即使不是今天的）
+            # yfinance 也失敗 → fallback 到本地 CSV
             if local_df is not None and len(local_df) >= 50:
                 _update_price_cache(cache_key, local_df, now)
                 return local_df
@@ -212,15 +213,18 @@ def fetch_signal_data(symbol: str, lookback_days: int = 250) -> Optional[pd.Data
         df = df[['open', 'high', 'low', 'close', 'volume']].dropna()
         df = df[df['volume'] > 0]
 
+        yf_last = df.index[-1]
+        yf_last_date = yf_last.date() if hasattr(yf_last, 'date') else pd.Timestamp(yf_last).date()
+
+        # 核心防護：yfinance 回傳的最新日期比本地 CSV 舊 → 用 CSV
+        if csv_last_date is not None and yf_last_date < csv_last_date:
+            logger.warning(f"{symbol} yfinance 最新 {yf_last_date} 比本地 CSV {csv_last_date} 舊，使用本地 CSV")
+            _update_price_cache(cache_key, local_df, now)
+            return local_df
+
         _update_price_cache(cache_key, df, now)
 
         # 若 yfinance 有更新的資料 → 同步更新本地 CSV（走勢圖也受惠）
-        yf_last = df.index[-1]
-        yf_last_date = yf_last.date() if hasattr(yf_last, 'date') else pd.Timestamp(yf_last).date()
-        csv_last_date = None
-        if local_df is not None and not local_df.empty:
-            ld = local_df.index[-1]
-            csv_last_date = ld.date() if hasattr(ld, 'date') else pd.Timestamp(ld).date()
         if csv_last_date is None or yf_last_date > csv_last_date:
             _save_local_csv(symbol, df)
 
@@ -531,9 +535,24 @@ class SectorAutoTrader:
                 print(f"❌ 自動交易錯誤: {e}")
             time.sleep(self.interval)
 
+    @staticmethod
+    def _is_tw_market_open() -> bool:
+        """判斷現在是否為台股交易時段（週一～週五 08:30～13:35）"""
+        tw_tz = pytz.timezone("Asia/Taipei")
+        now_tw = datetime.now(tw_tz)
+        weekday = now_tw.weekday()  # 0=週一 ... 6=週日
+        if weekday >= 5:  # 週六、週日
+            return False
+        t = now_tw.hour * 60 + now_tw.minute  # 轉換為分鐘數
+        # 08:30 = 510, 13:35 = 815（收盤後留 5 分鐘緩衝）
+        return 510 <= t <= 815
+
     def _run_once(self):
         """執行一輪所有類股檢查"""
         self.last_run_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        if not self._is_tw_market_open():
+            return
 
         managers = get_all_managers()
         active_count = 0
