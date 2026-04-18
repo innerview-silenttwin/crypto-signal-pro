@@ -11,7 +11,7 @@ let overlayChart = null;
 
 const SECTOR_NAMES = {
     semiconductor: '半導體', electronics: '電子',
-    finance: '金融', traditional: '傳產', default: '其他',
+    finance: '金融', traditional: '傳產/電信', default: '其他',
 };
 
 const COLUMNS = [

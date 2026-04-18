@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-TW" data-theme="kawaii">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>系統後台設定 | CryptoSignal Pro</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script>
+        (function() {
+            var t = localStorage.getItem('csp-theme') || 'kawaii';
+            document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
+    <style>
+        .settings-layout {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+        .settings-card {
+            padding: 24px;
+            margin-bottom: 24px;
+            border-radius: 16px;
+        }
+        .settings-title {
+            font-size: 18px;
+            color: var(--text-main);
+            margin-bottom: 16px;
+            border-bottom: 1px solid rgba(167,139,250,0.1);
+            padding-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        .form-label {
+            display: block;
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            font-weight: 600;
+        }
+        .form-input {
+            width: 100%;
+            padding: 10px 14px;
+            border-radius: 10px;
+            border: 1px solid rgba(167,139,250,0.2);
+            background: rgba(0,0,0,0.02);
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+            transition: all 0.2s;
+        }
+        [data-theme="pro-dark"] .form-input,
+        [data-theme="ocean"] .form-input {
+            background: rgba(255,255,255,0.03);
+            border-color: rgba(255,255,255,0.1);
+        }
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(167,139,250,0.2);
+        }
+        .form-select {
+            width: 100%;
+            padding: 10px 14px;
+            border-radius: 10px;
+            border: 1px solid rgba(167,139,250,0.2);
+            background: var(--glass-bg);
+            color: var(--text-main);
+            font-family: 'Inter', sans-serif;
+        }
+        .btn-save {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 10px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn-save:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);
+        }
+        .alert-success {
+            background: rgba(52, 211, 153, 0.1);
+            color: var(--buy-color);
+            padding: 12px;
+            border-radius: 8px;
+            margin-top: 16px;
+            display: none;
+            font-weight: 600;
+            font-size: 13px;
+        }
+        .stocks-list {
+            margin-top: 16px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .stock-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(167, 139, 250, 0.1);
+            font-size: 13px;
+        }
+        .stock-item:last-child {
+            border-bottom: none;
+        }
+        .small-hint {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <!-- 側邊欄 -->
+        <aside class="sidebar glass-panel">
+            <div class="logo">
+                <span class="glow-text">CryptoSignal</span>
+                <span class="pro-badge">PRO</span>
+            </div>
+
+            <div class="theme-switcher">
+                <button class="theme-btn active" data-theme-value="kawaii">Kawaii</button>
+                <button class="theme-btn" data-theme-value="pro-dark">Pro Dark</button>
+                <button class="theme-btn" data-theme-value="ocean">Ocean</button>
+                <button class="theme-btn" data-theme-value="warm">Warm</button>
+            </div>
+
+            <nav class="nav-menu">
+                <a href="index.html" class="nav-item">分析儀表板</a>
+                <a href="trading.html" class="nav-item">幣圈交易中心</a>
+                <a href="sector_trading.html" class="nav-item">台股交易中心</a>
+                <a href="signal_performance.html" class="nav-item">信號績效統計</a>
+                <a href="settings.html" class="nav-item active">⚙️ 後台設定</a>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <header class="top-bar">
+                <h1>⚙️ 系統後台設定</h1>
+            </header>
+
+            <div class="settings-layout">
+                
+                <!-- 新增自選股 -->
+                <div class="settings-card glass-panel">
+                    <h2 class="settings-title">📈 增加股票進入系統</h2>
+                    <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">
+                        將自定義的股票加入系統中以便自動追蹤。您只需輸入「股票代碼」或「中文名稱」其一即可，系統會嘗試自動補齊！
+                    </p>
+                    
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                        <div class="form-group">
+                            <label class="form-label">股票代碼 (含後綴)</label>
+                            <input type="text" id="stock-symbol" class="form-input" placeholder="例如: 2330.TW">
+                            <div class="small-hint">台股上市請加 .TW，上櫃加 .TWO</div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">股票名稱</label>
+                            <input type="text" id="stock-name" class="form-input" placeholder="例如: 台積電">
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">所屬產業類別 (用於策略權重與歸類)</label>
+                        <select id="stock-sector" class="form-select">
+                            <option value="" disabled selected>請選擇產業類別...</option>
+                            <option value="半導體">半導體</option>
+                            <option value="電子代工/零組件">電子代工/零組件</option>
+                            <option value="金融">金融</option>
+                            <option value="傳產/航運/電信">傳產/航運/電信</option>
+                            <option value="精密機械/工業">精密機械/工業</option>
+                        </select>
+                    </div>
+                    
+                    <button class="btn-save" id="btn-add-stock">➕ 加到系統</button>
+                    <div id="stock-alert" class="alert-success"></div>
+
+                    <div style="margin-top:24px; padding-top:16px; border-top:1px solid rgba(167,139,250,0.1);">
+                        <h3 style="font-size:14px; margin-bottom:8px;">自加自選股清單</h3>
+                        <div id="custom-stocks-list" class="stocks-list">
+                            <div style="text-align:center; padding:20px; color:var(--text-muted); font-size:13px;">載入中...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Telegram 白名單設定 -->
+                <div class="settings-card glass-panel">
+                    <h2 class="settings-title">💬 Telegram 推播白名單</h2>
+                    <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">
+                        設定要接收自動交易通知的 Telegram Chat ID。若有多個請用「逗號」隔開。
+                    </p>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Telegram Chat IDs (白名單)</label>
+                        <input type="text" id="telegram-ids" class="form-input" placeholder="例如: 123456789, 987654321">
+                        <div class="small-hint">系統的 BOT_TOKEN 仍從環境變數載入，此處覆蓋/增加推播對象。</div>
+                    </div>
+                    
+                    <button class="btn-save" id="btn-save-telegram">💾 儲存設定</button>
+                    <div id="tg-alert" class="alert-success"></div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- 腳本 -->
+    <script>
+        // Theme init
+        (function() {
+            var btns = document.querySelectorAll('.theme-btn');
+            btns.forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var theme = this.getAttribute('data-theme-value');
+                    document.documentElement.setAttribute('data-theme', theme);
+                    localStorage.setItem('csp-theme', theme);
+                    btns.forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                });
+            });
+        })();
+
+        let currentCustomStocks = [];
+
+        // ====== 設定邏輯 ======
+        async function loadSettings() {
+            try {
+                const res = await fetch('/api/settings');
+                const data = await res.json();
+                
+                // Telegram
+                const chatIds = data.telegram?.chat_ids || '';
+                document.getElementById('telegram-ids').value = chatIds;
+
+                // Custom Stocks
+                const stocksList = document.getElementById('custom-stocks-list');
+                currentCustomStocks = data.custom_stocks || [];
+                
+                if (currentCustomStocks.length === 0) {
+                    stocksList.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted); font-size:13px;">目前無手動加入的股票</div>';
+                } else {
+                    stocksList.innerHTML = currentCustomStocks.map(s => `
+                        <div class="stock-item">
+                            <div>
+                                <strong style="color:var(--text-main)">${s.symbol}</strong> 
+                                <span>${s.name}</span>
+                            </div>
+                            <div style="color:var(--primary); background:rgba(167,139,250,0.1); padding:2px 8px; border-radius:4px;">
+                                ${s.sector}
+                            </div>
+                        </div>
+                    `).join('');
+                }
+            } catch (err) {
+                console.error("載入設定錯誤", err);
+            }
+        }
+
+        document.getElementById('btn-save-telegram').addEventListener('click', async () => {
+            const chatIds = document.getElementById('telegram-ids').value;
+            try {
+                const res = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ telegram_chat_ids: chatIds })
+                });
+                
+                if(res.ok) {
+                    const alertEl = document.getElementById('tg-alert');
+                    alertEl.textContent = '✅ Telegram 設定已儲存';
+                    alertEl.style.display = 'block';
+                    setTimeout(() => alertEl.style.display = 'none', 3000);
+                }
+            } catch (err) {
+                alert("儲存失敗");
+            }
+        });
+
+        document.getElementById('btn-add-stock').addEventListener('click', async () => {
+            let symbol = document.getElementById('stock-symbol').value.trim();
+            const name = document.getElementById('stock-name').value.trim();
+            const sector = document.getElementById('stock-sector').value;
+            
+            if(!symbol && !name) {
+                alert("請至少填寫「股票代碼」或「股票名稱」其中一項！");
+                return;
+            }
+            if(!sector) {
+                alert("請選擇該股票所屬的「產業類別」！");
+                return;
+            }
+            
+            // 防呆處理: 有輸入代碼時才檢查
+            if(symbol) {
+                symbol = symbol.toUpperCase();
+                if(!symbol.endsWith(".TW") && !symbol.endsWith(".TWO")) {
+                    symbol += ".TW";
+                }
+            }
+
+            // 若有明確代碼才在前端優先檢查重複
+            if(symbol) {
+                const exists = currentCustomStocks.find(s => s.symbol === symbol);
+                if(exists) {
+                    const confirmUpdate = confirm(`⚠️ 代碼 ${symbol} 已存在於系統內！\n\n您確定要將原來設定的 [${exists.name} - ${exists.sector}] 覆蓋成 [${name || '保留原名'} - ${sector}] 嗎？`);
+                    if(!confirmUpdate) {
+                        return; // 使用者按取消，終止操作
+                    }
+                }
+            }
+
+            try {
+                const res = await fetch('/api/settings/stock', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ symbol, name, sector })
+                });
+                
+                const data = await res.json();
+                if(res.ok && data.status !== "error") {
+                    const alertEl = document.getElementById('stock-alert');
+                    alertEl.innerHTML = `✅ 已將 <b>${data.symbol}</b> 納入 <b>${sector}</b> 類群，系統即刻生效！`;
+                    alertEl.style.display = 'block';
+                    
+                    document.getElementById('stock-symbol').value = '';
+                    document.getElementById('stock-name').value = '';
+                    
+                    setTimeout(() => alertEl.style.display = 'none', 4000);
+                    loadSettings(); // refresh list
+                } else {
+                    alert(data.message || "新增失敗，無法辨識該股票。");
+                }
+            } catch (err) {
+                alert("新增失敗");
+            }
+        });
+
+        // 啟動時載入
+        loadSettings();
+    </script>
+</body>
+</html>

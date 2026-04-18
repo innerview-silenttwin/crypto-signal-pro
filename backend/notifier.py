@@ -25,6 +25,17 @@ def _get_config() -> tuple:
     """從環境變數取得 Telegram 設定"""
     token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
     chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+    
+    # Override chat_id with our settings
+    try:
+        from settings_manager import get_settings
+        settings = get_settings()
+        stored_chat_ids = settings.get("telegram", {}).get("chat_ids", "")
+        if stored_chat_ids:
+            chat_id = stored_chat_ids
+    except Exception as e:
+        logger.warning(f"Failed to load settings: {e}")
+        
     return token, chat_id
 
 
@@ -42,25 +53,29 @@ def send_telegram(message: str) -> bool:
         logger.debug("TELEGRAM_BOT_TOKEN 或 TELEGRAM_CHAT_ID 未設定，跳過通知")
         return False
 
-    try:
-        resp = requests.post(
-            TELEGRAM_API.format(token=token),
-            json={
-                "chat_id": chat_id,
-                "text": message,
-                "parse_mode": "HTML",
-            },
-            timeout=10,
-        )
-        if resp.status_code == 200:
-            logger.debug(f"Telegram 通知已送出: {message[:50]}")
-            return True
-        else:
-            logger.warning(f"Telegram 通知失敗: {resp.status_code} {resp.text}")
-            return False
-    except Exception as e:
-        logger.warning(f"Telegram 通知例外: {e}")
-        return False
+    chat_ids_list = [c.strip() for c in chat_id.split(",") if c.strip()]
+    success = False
+    
+    for c_id in chat_ids_list:
+        try:
+            resp = requests.post(
+                TELEGRAM_API.format(token=token),
+                json={
+                    "chat_id": c_id,
+                    "text": message,
+                    "parse_mode": "HTML",
+                },
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                logger.debug(f"Telegram 通知已送出至 {c_id}: {message[:50]}")
+                success = True
+            else:
+                logger.warning(f"Telegram 通知失敗至 {c_id}: {resp.status_code} {resp.text}")
+        except Exception as e:
+            logger.warning(f"Telegram 通知例外至 {c_id}: {e}")
+            
+    return success
 
 
 def notify_trade(sector_name: str, symbol: str, stock_name: str,

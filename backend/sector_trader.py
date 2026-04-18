@@ -70,7 +70,23 @@ DEFAULT_STRATEGIES = {
         "buy_ratio": 0.10,
         "description": "VR 爆量反轉（歸因+15.4%勝率）+ PS 拉回支撐（+14.9%）為金融股主要信號，MACD/EMA 趨勢過濾",
     },
-    "傳產/航運": {
+    "精密機械/工業": {
+        "name": "穩健動能 (MACD+EMA+RSI)",
+        "param_preset": "標準",
+        "weights": {
+            'macd': 28.0, 'ema_cross': 28.0, 'rsi': 22.0,
+            'pullback_support': 15.0, 'volume_reversal': 8.0,
+            'stoch_rsi': 8.0, 'volume': 8.0,
+            'adx': 8.0, 'bollinger': 2.0, 'mfi': 2.0,
+        },
+        "buy_threshold": 40,
+        "sell_threshold": 40,
+        "stop_loss_pct": 8.0,
+        "take_profit_pct": 18.0,
+        "buy_ratio": 0.12,
+        "description": "MACD+EMA 穩健動能主導（回測亞德客-KY 最佳），RSI 過濾，適合精密製造業高動能走勢",
+    },
+    "傳產/航運/電信": {
         "name": "趨勢追蹤 (EMA+ADX+Vol)",
         "param_preset": "寬鬆",
         "weights": {
@@ -91,22 +107,6 @@ DEFAULT_STRATEGIES = {
             "chipflow": {"enabled": True},
         },
     },
-    "電信/其他": {
-        "name": "穩健動能 (MACD+EMA+RSI)",
-        "param_preset": "標準",
-        "weights": {
-            'macd': 28.0, 'ema_cross': 28.0, 'rsi': 22.0,
-            'pullback_support': 15.0, 'volume_reversal': 8.0,
-            'stoch_rsi': 8.0, 'volume': 8.0,
-            'adx': 8.0, 'bollinger': 2.0, 'mfi': 2.0,
-        },
-        "buy_threshold": 40,
-        "sell_threshold": 40,
-        "stop_loss_pct": 8.0,
-        "take_profit_pct": 18.0,
-        "buy_ratio": 0.12,
-        "description": "電信/公用/零售穩健股，MACD+EMA 趨勢為主，RSI 動能過濾，低波動標的適合較保守停利",
-    },
 }
 
 # ── 類股標的 ──
@@ -122,10 +122,14 @@ SECTOR_STOCKS = {
         "2317.TW": "鴻海", "2382.TW": "廣達", "2308.TW": "台達電",
         "2357.TW": "華碩", "3008.TW": "大立光", "2345.TW": "智邦",
         "3231.TW": "緯創", "2356.TW": "英業達", "4938.TW": "和碩",
-        "3443.TW": "創意", "2395.TW": "研華", "6669.TW": "緯穎",
+        "3443.TW": "創意", "6669.TW": "緯穎",
         "3037.TW": "欣興", "2327.TW": "國巨", "3661.TW": "世芯-KY",
         "2376.TW": "技嘉", "3017.TW": "奇鋐", "2353.TW": "宏碁",
         "6488.TW": "環球晶", "3653.TW": "健策",
+        "8046.TW": "南電", "2474.TW": "可成", "2301.TW": "光寶科",
+    },
+    "精密機械/工業": {
+        "1590.TW": "亞德客-KY", "2049.TW": "上銀", "2395.TW": "研華",
     },
     "金融": {
         "2881.TW": "富邦金", "2882.TW": "國泰金", "2891.TW": "中信金",
@@ -133,18 +137,14 @@ SECTOR_STOCKS = {
         "2887.TW": "台新金", "2890.TW": "永豐金", "2883.TW": "開發金",
         "2892.TW": "第一金", "5880.TW": "合庫金", "2885.TW": "元大金",
     },
-    "傳產/航運": {
+    "傳產/航運/電信": {
         "1301.TW": "台塑", "2002.TW": "中鋼", "1216.TW": "統一",
         "2603.TW": "長榮", "2609.TW": "陽明", "2615.TW": "萬海",
         "1303.TW": "南亞", "1326.TW": "台化", "1101.TW": "台泥",
         "2207.TW": "和泰車", "9910.TW": "豐泰", "6505.TW": "台塑化",
         "2618.TW": "長榮航",
-    },
-    "電信/其他": {
+        "2912.TW": "統一超", "1513.TW": "中興電",
         "2412.TW": "中華電", "3045.TW": "台灣大", "4904.TW": "遠傳",
-        "2912.TW": "統一超", "1590.TW": "亞德客-KY", "2301.TW": "光寶科",
-        "2474.TW": "可成", "2049.TW": "上銀", "1513.TW": "中興電",
-        "8046.TW": "南電",
     },
 }
 
@@ -152,8 +152,8 @@ SECTOR_IDS = {
     "半導體": "semiconductor",
     "電子代工/零組件": "electronics",
     "金融": "finance",
-    "傳產/航運": "traditional",
-    "電信/其他": "telecom",
+    "傳產/航運/電信": "traditional",
+    "精密機械/工業": "precision",
 }
 
 SECTOR_ID_TO_NAME = {v: k for k, v in SECTOR_IDS.items()}
@@ -192,6 +192,10 @@ class SectorTradingManager:
                     state["strategy"] = DEFAULT_STRATEGIES[self.sector_name].copy()
                 if "equity_curve" not in state:
                     state["equity_curve"] = []
+                # 同步最新股票清單與類股名稱
+                state["stocks"] = list(self.stocks.keys())
+                state["sector_name"] = self.sector_name
+                state["sector_id"] = self.sector_id
                 return state
             except Exception:
                 pass
@@ -231,6 +235,8 @@ class SectorTradingManager:
         current_prices = current_prices or {}
         equity = self.state["balance"]
         total_unrealized_pl = 0.0
+        unrealized_gain = 0.0
+        unrealized_loss = 0.0
         holdings_detail = {}
 
         for symbol, hold in self.state["holdings"].items():
@@ -246,6 +252,10 @@ class SectorTradingManager:
                 unrealized_pl = net_sell - total_cost
                 equity += market_value
                 total_unrealized_pl += unrealized_pl
+                if unrealized_pl >= 0:
+                    unrealized_gain += unrealized_pl
+                else:
+                    unrealized_loss += abs(unrealized_pl)
                 holdings_detail[symbol] = {
                     **hold,
                     "name": self.stocks.get(symbol, symbol),
@@ -263,6 +273,8 @@ class SectorTradingManager:
         wins = [t for t in closed_trades if t.get("profit", 0) > 0]
         losses = [t for t in closed_trades if t.get("profit", 0) <= 0]
         total_profit = sum(t.get("profit", 0) for t in closed_trades)
+        realized_gain = sum(t.get("profit", 0) for t in wins)
+        realized_loss = abs(sum(t.get("profit", 0) for t in losses))
 
         # 累積損益 = 已實現損益 + 未實現損益（含手續費和稅）
         # 這樣才能和交易紀錄加總一致
@@ -286,6 +298,10 @@ class SectorTradingManager:
                 "losses": len(losses),
                 "win_rate": round(len(wins) / len(closed_trades) * 100, 1) if closed_trades else 0,
                 "realized_profit": round(total_profit, 2),
+                "realized_gain": round(realized_gain, 2),
+                "realized_loss": round(realized_loss, 2),
+                "unrealized_gain": round(unrealized_gain, 2),
+                "unrealized_loss": round(unrealized_loss, 2),
             },
             "equity_curve": self.state.get("equity_curve", [])[-100:],  # 最近 100 筆
         }

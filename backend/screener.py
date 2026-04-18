@@ -76,6 +76,13 @@ SECTOR_WEIGHTS = {
         'mfi': 2.0, 'ema_cross': 38.0, 'volume': 19.0, 'adx': 25.0,
         'stoch_rsi': 6.0, 'volume_reversal': 10.0, 'pullback_support': 3.0,
     },
+    "precision": {
+        # 精密機械/工業自動化（亞德客-KY、上銀、研華）
+        # 歸因：MACD+EMA 穩健動能主導（亞德客-KY 回測最佳策略）
+        'rsi': 22.0, 'macd': 28.0, 'bollinger': 2.0,
+        'mfi': 2.0, 'ema_cross': 28.0, 'volume': 8.0, 'adx': 8.0,
+        'stoch_rsi': 8.0, 'volume_reversal': 8.0, 'pullback_support': 15.0,
+    },
     "default": {  # 其他（生技、ETF 等）：通用台股權重
         'rsi': 10.0, 'macd': 15.0, 'bollinger': 3.0,
         'mfi': 5.0, 'ema_cross': 18.0, 'volume': 25.0, 'adx': 14.0,
@@ -172,6 +179,11 @@ SECTOR_COMPOSITE_WEIGHTS = {
         "regime": 0.05, "sentiment": 0.10,
         "active_etf": 0.03,
     },
+    "precision": {  # 精密機械/工業自動化：動能主導，技術面權重高
+        "chipflow": 0.28, "technical": 0.30, "fundamental": 0.18,
+        "regime": 0.15, "sentiment": 0.07,
+        "active_etf": 0.05,
+    },
     "default": {  # 通用
         "chipflow": 0.35, "fundamental": 0.20, "technical": 0.25,
         "regime": 0.13, "sentiment": 0.07,
@@ -190,21 +202,25 @@ for _s in ["2330.TW", "2454.TW", "2303.TW", "3711.TW", "2379.TW", "3034.TW",
 
 # 電子代工 / AI / 零組件
 for _s in ["2317.TW", "2382.TW", "2308.TW", "2357.TW", "3008.TW", "2345.TW",
-           "3231.TW", "2356.TW", "4938.TW", "3443.TW", "2395.TW", "6669.TW",
+           "3231.TW", "2356.TW", "4938.TW", "3443.TW", "6669.TW",
            "3037.TW", "2327.TW", "3661.TW", "2376.TW", "3017.TW", "2353.TW",
            "6488.TW", "2301.TW", "2474.TW", "8046.TW", "3653.TW"]:
     SYMBOL_SECTOR_MAP[_s] = "electronics"
+
+# 精密機械 / 工業自動化
+for _s in ["1590.TW", "2049.TW", "2395.TW"]:
+    SYMBOL_SECTOR_MAP[_s] = "precision"
 
 # 金融
 for _s in ["2881.TW", "2882.TW", "2891.TW", "2886.TW", "2884.TW", "2880.TW",
            "2887.TW", "2890.TW", "2883.TW", "2892.TW", "5880.TW", "2885.TW"]:
     SYMBOL_SECTOR_MAP[_s] = "finance"
 
-# 傳產 / 航運 / 鋼鐵 / 塑化 / 電信 / 食品
+# 傳產 / 航運 / 鋼鐵 / 塑化 / 食品 / 電信
 for _s in ["1301.TW", "2002.TW", "1216.TW", "2603.TW", "2609.TW", "2615.TW",
            "1303.TW", "1326.TW", "1101.TW", "2207.TW", "9910.TW",
-           "2412.TW", "3045.TW", "4904.TW", "2912.TW", "1590.TW",
-           "2049.TW", "1513.TW", "6505.TW", "2618.TW"]:
+           "2412.TW", "3045.TW", "4904.TW", "2912.TW",
+           "1513.TW", "6505.TW", "2618.TW"]:
     SYMBOL_SECTOR_MAP[_s] = "traditional"
 
 
@@ -302,7 +318,7 @@ _BUILTIN_UNIVERSE = {
     "2603.TW": "長榮", "2609.TW": "陽明", "2615.TW": "萬海",
     "1303.TW": "南亞", "1326.TW": "台化", "1101.TW": "台泥",
     "2207.TW": "和泰車", "9910.TW": "豐泰",
-    # 電信 / 公用
+    # 電信
     "2412.TW": "中華電", "3045.TW": "台灣大", "4904.TW": "遠傳",
     # 生技
     "4743.TW": "合一", "6446.TW": "藥華藥", "1760.TW": "寶齡富錦",

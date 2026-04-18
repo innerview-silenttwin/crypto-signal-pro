@@ -1,0 +1,17 @@
+{
+  "telegram": {
+    "chat_ids": ""
+  },
+  "custom_stocks": [
+    {
+      "symbol": "2317.TW",
+      "name": "鴻海",
+      "sector": "半導體"
+    },
+    {
+      "symbol": "9941.TW",
+      "name": "",
+      "sector": "金融"
+    }
+  ]
+}

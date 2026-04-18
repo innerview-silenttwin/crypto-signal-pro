@@ -1972,6 +1972,65 @@ async def get_screener_universe():
     from screener import SCREENER_UNIVERSE
     return [{"symbol": k, "name": v} for k, v in SCREENER_UNIVERSE.items()]
 
+from pydantic import BaseModel
+class SettingsUpdate(BaseModel):
+    telegram_chat_ids: str
+
+class CustomStock(BaseModel):
+    symbol: str = ""
+    name: str = ""
+    sector: str = ""
+
+@app.get("/api/settings")
+async def get_settings_api():
+    from settings_manager import get_settings
+    return get_settings()
+
+@app.post("/api/settings")
+async def update_settings_api(req: SettingsUpdate):
+    from settings_manager import update_telegram_settings
+    settings = update_telegram_settings(req.telegram_chat_ids)
+    return {"status": "success", "settings": settings}
+
+@app.post("/api/settings/stock")
+async def add_custom_stock_api(req: CustomStock):
+    from settings_manager import add_custom_stock
+    from layers.fundamental import fetch_twse_pe_all
+    
+    sym = req.symbol.strip().upper()
+    name = req.name.strip()
+    
+    # 嘗試從 TWSE 資料庫反查
+    all_pe = fetch_twse_pe_all()
+    if not sym and name:
+        for code, info in all_pe.items():
+            if info.get("name") == name:
+                sym = f"{code}.TW"
+                break
+    if sym and not name:
+        code = sym.replace(".TW", "").replace(".TWO", "")
+        if code in all_pe:
+            name = all_pe[code].get("name", "")
+            
+    if not sym:
+        return {"status": "error", "message": "無法找到對應代碼，請手動輸入"}
+    if not name:
+        name = "未知名稱"
+
+    if not sym.endswith(".TW") and not sym.endswith(".TWO"):
+        sym += ".TW"
+        
+    settings = add_custom_stock(sym, req.name, req.sector)
+    
+    # Update screener universe
+    try:
+        from screener import add_custom_stock as screener_add_stock
+        screener_add_stock(sym, req.name)
+    except Exception as e:
+        print(f"Failed to add to screener: {e}")
+        
+    return {"status": "success", "symbol": sym, "settings": settings}
+
 
 if __name__ == "__main__":
     import uvicorn
