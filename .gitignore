@@ -34,3 +34,8 @@ Thumbs.db
 
 # Legacy
 data/stocks/
+
+# Backend user data
+backend/data/settings.json
+backend/data/custom_stocks.json
+
