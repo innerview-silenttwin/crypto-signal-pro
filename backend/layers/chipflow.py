@@ -409,7 +409,8 @@ def fetch_chip_summary(symbol: str, days: int = 5) -> Optional[dict]:
         "latest_date": daily_data[0]["date"] if daily_data else "",
         "days_analyzed": len(daily_data),
         "days_30d_analyzed": len(all_daily_data),
-        "daily_data": daily_data[:5],  # 只回傳最近 5 天明細給前端
+        "daily_data": daily_data[:5],  # 前端顯示用（只取 5 天）
+        "daily_data_full": daily_data,  # 完整 N 天，供後端逐日計算金額
     }
 
     # 存入快取
@@ -421,7 +422,7 @@ def fetch_chip_summary(symbol: str, days: int = 5) -> Optional[dict]:
     return summary
 
 
-def compute_chip_score(summary: dict) -> dict:
+def compute_chip_score(summary: dict, close_price: float = None) -> dict:
     """
     根據籌碼摘要計算籌碼分數 (0-100)
 
@@ -431,6 +432,10 @@ def compute_chip_score(summary: dict) -> dict:
     - 自營商 10%
     - 融資餘額增減 20% (反向指標)
     - 融券餘額 15%
+
+    Args:
+        summary: fetch_chip_summary() 的回傳值
+        close_price: 最新收盤價，用於將股數轉換為金額判斷門檻
 
     Returns:
         {"score": int, "sub_scores": {...}, "label": str, "advice": str}
@@ -455,12 +460,19 @@ def compute_chip_score(summary: dict) -> dict:
     else:
         foreign_score = 15
 
-    # 累計金額加成
+    # 累計金額加成（有收盤價時用金額門檻，更公平）
     ft = summary.get("foreign_total_net", 0)
-    if ft > 50000:       # 累計買超 5 萬張以上
-        foreign_score = min(100, foreign_score + 10)
-    elif ft < -50000:
-        foreign_score = max(0, foreign_score - 10)
+    if close_price and close_price > 0:
+        ft_amount = ft * close_price
+        if ft_amount > 50_000_000:       # 累計買超 5 千萬元以上
+            foreign_score = min(100, foreign_score + 10)
+        elif ft_amount < -50_000_000:
+            foreign_score = max(0, foreign_score - 10)
+    else:
+        if ft > 50000:
+            foreign_score = min(100, foreign_score + 10)
+        elif ft < -50000:
+            foreign_score = max(0, foreign_score - 10)
 
     # ── 2. 投信分數 (25%) ──
     tc = summary.get("trust_consec_buy", 0)

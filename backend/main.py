@@ -13,7 +13,7 @@ import asyncio
 import json
 import logging
 from typing import List
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 import pandas as pd
 import yfinance as yf
@@ -185,6 +185,8 @@ async def startup_event():
     asyncio.create_task(background_signal_updater())
     # 預載台股 ticker 資料（L2 本地 CSV → L3 TWSE，尊重 rate limit）
     asyncio.create_task(preload_tw_ticker_data())
+    # 每日 14:35 自動刷新台股 ticker 資料（避免資料停滯）
+    asyncio.create_task(daily_tw_data_refresh())
     # 自動啟動類股交易引擎
     try:
         from sector_auto_trader import auto_trader as _sat
@@ -219,12 +221,17 @@ async def preload_tw_ticker_data():
         if cache_key in signals_cache:
             continue
 
-        # 嘗試 L2: 本地 CSV
+        # 嘗試 L2: 本地 CSV（資料超過 4 天則視為過期，改抓 TWSE）
         local_df = load_local_history(tw_sym)
         if local_df is not None and len(local_df) >= 30:
-            print(f"[preload] {tw_sym} from local CSV ({len(local_df)} rows)")
-            _analyze_tw_df(tw_sym, tw_market, local_df, "local_csv_preload")
-            continue
+            last_idx = local_df.index[-1]
+            last_date = last_idx.date() if hasattr(last_idx, 'date') else pd.to_datetime(last_idx).date()
+            days_old = (datetime.now().date() - last_date).days
+            if days_old <= 4:
+                print(f"[preload] {tw_sym} from local CSV ({len(local_df)} rows, {days_old}d old)")
+                _analyze_tw_df(tw_sym, tw_market, local_df, "local_csv_preload")
+                continue
+            print(f"[preload] {tw_sym} local CSV stale ({days_old}d old), fetching fresh data...")
 
         # 嘗試 L3: TWSE API（尊重 rate limit）
         if tw_market != 'futures':
@@ -247,6 +254,48 @@ async def preload_tw_ticker_data():
                     _save_tw_rate_state()
 
     print(f"[preload] TW ticker preload complete. Cache keys: {list(signals_cache.keys())}")
+
+
+async def daily_tw_data_refresh():
+    """每個交易日盤後（14:35）自動刷新台股 ticker 資料，避免資料停滯。"""
+    while True:
+        now = datetime.now()
+        today_refresh = now.replace(hour=14, minute=35, second=0, microsecond=0)
+        next_refresh = today_refresh if now < today_refresh else today_refresh + timedelta(days=1)
+        wait_seconds = (next_refresh - datetime.now()).total_seconds()
+        print(f"[daily-refresh] Next TW data refresh scheduled in {int(wait_seconds/3600)}h {int((wait_seconds%3600)/60)}m")
+        await asyncio.sleep(wait_seconds)
+
+        # 只在工作日（週一~週五）執行
+        if datetime.now().weekday() < 5:
+            print("[daily-refresh] Starting daily TW stock data refresh...")
+            global tw_last_real_fetch
+            for tw_sym, tw_market in TW_TICKER_SYMBOLS:
+                if tw_market == 'futures':
+                    continue
+                try:
+                    df = fetch_twse_daily(tw_sym, limit=200, months=12)
+                    if df is not None and len(df) >= 30:
+                        save_local_history(tw_sym, df)
+                        _analyze_tw_df(tw_sym, tw_market, df, "twse_daily_refresh")
+                        tw_last_real_fetch = time.time()
+                        _save_tw_rate_state()
+                        print(f"[daily-refresh] Updated {tw_sym}: {len(df)} rows")
+                    await asyncio.sleep(8)  # 每檔間隔 8 秒，避免 TWSE rate limit
+                except Exception as e:
+                    print(f"[daily-refresh] Error refreshing {tw_sym}: {e}")
+            # 同步刷新主動 ETF 持股分數
+            try:
+                from layers.active_etf import refresh_active_etf_scores
+                ok = refresh_active_etf_scores()
+                print(f"[daily-refresh] Active ETF scores refresh: {'OK' if ok else 'FAILED'}")
+            except Exception as e:
+                print(f"[daily-refresh] Active ETF refresh error: {e}")
+
+            print("[daily-refresh] Daily TW stock data refresh complete.")
+        else:
+            print("[daily-refresh] Weekend, skipping TW data refresh.")
+
 
 def fetch_stooq_ohlcv(symbol: str, start_date: datetime, end_date: datetime, limit: int = 200):
     """使用 Stooq 下載台股日線歷史資料（較少被封鎖）。"""
@@ -486,14 +535,43 @@ def _analyze_tw_df(symbol: str, market: str, df, data_source: str):
     return result_data
 
 
+def _fetch_yfinance_df(symbol: str):
+    """用 yfinance 抓取台股日線 DataFrame（自動嘗試 .TW 和 .TWO）。
+    回傳格式與 fetch_twse_daily 相容（index=date, columns=open/high/low/close/volume）。
+    """
+    base = symbol.split('.')[0] if '.' in symbol else symbol
+    for suffix in ['.TW', '.TWO']:
+        yf_sym = base + suffix
+        try:
+            ticker = yf.Ticker(yf_sym)
+            df = ticker.history(period='1y', interval='1d')
+            if df.empty or len(df) < 30:
+                continue
+            df = df.rename(columns={
+                'Open': 'open', 'High': 'high', 'Low': 'low',
+                'Close': 'close', 'Volume': 'volume',
+            })[['open', 'high', 'low', 'close', 'volume']]
+            df.index.name = 'date'
+            df.index = df.index.tz_localize(None)
+            print(f"[yfinance-df] {yf_sym}: {len(df)} rows")
+            return df
+        except Exception as e:
+            print(f"[yfinance-df] {yf_sym} failed: {e}")
+    return None
+
+
 def _fetch_tw_df(symbol: str, market: str):
-    """嘗試從 TWSE 抓取台股資料，成功後存入本地 CSV（L2）。尊重 rate limit。"""
+    """嘗試從 TWSE → yfinance 抓取台股資料，成功後存入本地 CSV（L2）。尊重 rate limit。"""
     global tw_last_real_fetch
     if market == 'futures':
         return None
     if not tw_can_fetch_now():
         return None
+    # 優先 TWSE（上市股）
     df = fetch_twse_daily(symbol, limit=200, months=12)
+    # TWSE 無資料 → yfinance fallback（支援上櫃股 .TWO）
+    if df is None or len(df) < 30:
+        df = _fetch_yfinance_df(symbol)
     if df is not None and len(df) >= 30:
         # 記錄 rate limit 時間戳
         tw_last_real_fetch = time.time()
@@ -536,10 +614,12 @@ async def get_tw_signals(symbol: str, market: str = "stock"):
         src = "local_csv" + ("" if market_open else "_closed")
         return _analyze_tw_df(symbol, market, local_df, src)
 
-    # --- 盤後無任何資料，嘗試強制抓一次 TWSE（忽略 rate limit，僅此一次） ---
+    # --- 盤後無任何資料，嘗試強制抓一次（TWSE → yfinance，忽略 rate limit） ---
     if not market_open and market != 'futures':
-        print(f"[signals] No cache for {symbol}, one-time TWSE fetch for after-hours...")
+        print(f"[signals] No cache for {symbol}, one-time fetch for after-hours...")
         df = fetch_twse_daily(symbol, limit=200, months=12)
+        if df is None or len(df) < 30:
+            df = _fetch_yfinance_df(symbol)
         if df is not None and len(df) >= 30:
             save_local_history(symbol, df)
             return _analyze_tw_df(symbol, market, df, "twse_daily_closed")
@@ -757,19 +837,31 @@ def fetch_yfinance_candles(symbol: str, timeframe: str, limit: int = 200):
     """不帶快取、直接向 yfinance 抓資料，回傳 (candles_list, source_str)。"""
     global tw_last_real_fetch
 
-    yf_symbol = f"{symbol}.TW" if '.' not in symbol else symbol
-    print(f"[yfinance] Fetching {yf_symbol} ({timeframe})")
-
+    base = symbol.split('.')[0] if '.' in symbol else symbol
     yf_interval = "1d"
     period = "1y"
     if timeframe in ["1m", "5m", "15m", "30m", "60m", "1h", "4h"]:
         yf_interval = "60m" if timeframe in ["1h", "4h"] else timeframe
         period = "1mo"
 
+    # 自動嘗試 .TW（上市）和 .TWO（上櫃）
+    suffixes = ['.TW', '.TWO'] if '.' not in symbol or symbol.endswith('.TW') else [symbol.split('.', 1)[1]]
+    df = None
+    yf_symbol = None
+    for suffix in suffixes:
+        yf_symbol = base + suffix
+        try:
+            ticker = yf.Ticker(yf_symbol)
+            df = ticker.history(period=period, interval=yf_interval)
+            if not df.empty:
+                break
+            df = None
+        except Exception:
+            df = None
+
+    print(f"[yfinance] Fetching {yf_symbol} ({timeframe}) -> {'OK' if df is not None else 'empty'}")
     try:
-        ticker = yf.Ticker(yf_symbol)
-        df = ticker.history(period=period, interval=yf_interval)
-        if df.empty:
+        if df is None or df.empty:
             return None, None
 
         if timeframe == "4h":

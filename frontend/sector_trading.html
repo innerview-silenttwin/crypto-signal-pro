@@ -303,7 +303,7 @@
             transition: max-height 0.4s ease, opacity 0.3s ease;
         }
         .analysis-result-wrap.open {
-            max-height: 360px;
+            max-height: 1200px;
             opacity: 1;
         }
         .analysis-result-card {
@@ -329,6 +329,18 @@
         .arc-subtitle {
             font-size: 11px;
             color: var(--text-muted);
+        }
+        .arc-sector-tag {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 7px;
+            border-radius: 6px;
+            background: rgba(167,139,250,0.12);
+            color: var(--primary);
+            border: 1px solid rgba(167,139,250,0.25);
+            margin-top: 3px;
+            letter-spacing: 0.02em;
         }
         .arc-goto {
             margin-left: auto;
@@ -730,6 +742,7 @@
                     <div class="arc-header">
                         <div>
                             <div class="arc-title" id="arc-title">-- ----</div>
+                            <span class="arc-sector-tag" id="arc-sector-tag" style="display:none"></span>
                             <div class="arc-subtitle" id="arc-subtitle">五維策略分數評估</div>
                         </div>
                         <button class="arc-goto" id="arc-goto-btn">前往儀表板分析 ↗</button>
@@ -1316,7 +1329,7 @@
                         <td>${h.price.toLocaleString()}</td>
                         <td>${h.qty.toLocaleString()}</td>
                         <td>${plText}</td>
-                        <td style="font-size:11px; max-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap" title="${h.signal || ''}">${h.signal || ''}</td>
+                        <td style="font-size:11px; min-width:160px; white-space:normal; line-height:1.5">${h.signal || ''}</td>
                     </tr>`;
                 }).join('');
             }
@@ -1528,6 +1541,18 @@
             const name = (data.fundamental && data.fundamental.name) || sym.replace('.TW','');
             document.getElementById('arc-title').textContent = sym.replace('.TW','') + ' ' + name;
             document.getElementById('arc-subtitle').textContent = '五維策略分數 · ' + new Date().toLocaleDateString('zh-TW');
+
+            // 分類標籤
+            const sectorTag = document.getElementById('arc-sector-tag');
+            const sector = (data.fundamental && data.fundamental.sector) || '';
+            if (sectorTag) {
+                if (sector) {
+                    sectorTag.textContent = sector;
+                    sectorTag.style.display = 'inline-block';
+                } else {
+                    sectorTag.style.display = 'none';
+                }
+            }
 
             // 跳轉按鈕
             document.getElementById('arc-goto-btn').onclick = () => {

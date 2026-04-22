@@ -32,7 +32,7 @@ from signals.aggregator import SignalAggregator
 from layers.fundamental import fetch_twse_pe_all, _strip_tw
 from layers.chipflow import fetch_chip_summary, compute_chip_score
 from layers.regime import RegimeLayer
-from layers.sentiment import get_stock_sentiment, get_market_sentiment, fetch_rss_articles
+from layers.sentiment import get_stock_sentiment, fetch_rss_articles
 from layers.active_etf import get_active_etf_score
 
 logger = logging.getLogger(__name__)
@@ -417,21 +417,8 @@ def scan_single_stock(symbol: str, name: str, all_pe: dict, articles: list) -> O
 
         scores["fundamental"] = fund_score
 
-        # ── 2. 籌碼面 ──
+        # ── 2. 籌碼面（先取摘要，待取得收盤價後再算分數）──
         chip_summary = fetch_chip_summary(symbol, days=10)
-        chip_score = 50
-        if chip_summary:
-            chip_result = compute_chip_score(chip_summary)
-            chip_score = chip_result["score"]
-            details["chipflow"] = {
-                "label": chip_result["label"],
-                "foreign_consec_buy": chip_summary.get("foreign_consec_buy", 0),
-                "trust_consec_buy": chip_summary.get("trust_consec_buy", 0),
-                "foreign_total_net": chip_summary.get("foreign_total_net", 0),
-                "trust_total_net": chip_summary.get("trust_total_net", 0),
-                "margin_change_sum": chip_summary.get("margin_change_sum", 0),
-            }
-        scores["chipflow"] = chip_score
 
         # ── 3. 技術面 + 盤勢（按產業使用回測最佳權重）──
         tech_score = 50
@@ -470,6 +457,61 @@ def scan_single_stock(symbol: str, name: str, all_pe: dict, articles: list) -> O
         scores["regime"] = regime_score
         details["sector_type"] = symbol_sector
 
+        # ── 2b. 籌碼面評分（有價格資料後才計算）──
+        close_price = float(df['close'].iloc[-1]) if df is not None and len(df) > 0 else None
+
+        # 建立「日期(YYYYMMDD) → 收盤價」對照表，供逐日金額計算
+        price_map: dict = {}
+        if df is not None and len(df) > 0:
+            for ts, row in df.iterrows():
+                try:
+                    date_key = ts.strftime("%Y%m%d") if hasattr(ts, 'strftime') else str(ts)[:10].replace("-", "")
+                    price_map[date_key] = float(row['close'])
+                except Exception:
+                    pass
+
+        chip_score = 50
+        if chip_summary:
+            chip_result = compute_chip_score(chip_summary, close_price=close_price)
+            chip_score = chip_result["score"]
+            foreign_net = chip_summary.get("foreign_total_net", 0)
+            trust_net = chip_summary.get("trust_total_net", 0)
+
+            # 逐日計算金額：每天淨買超股數 × 當天收盤價（更準確）
+            daily_full = chip_summary.get("daily_data_full", [])
+            foreign_net_amount = None
+            trust_net_amount = None
+            if daily_full and price_map:
+                f_amt = sum(
+                    d["foreign_net"] * price_map.get(d["date"], close_price or 0)
+                    for d in daily_full
+                    if price_map.get(d["date"], close_price)
+                )
+                t_amt = sum(
+                    d["trust_net"] * price_map.get(d["date"], close_price or 0)
+                    for d in daily_full
+                    if price_map.get(d["date"], close_price)
+                )
+                foreign_net_amount = round(f_amt)
+                trust_net_amount = round(t_amt)
+            elif close_price:
+                # fallback：無逐日資料時用最新收盤價近似
+                foreign_net_amount = round(foreign_net * close_price)
+                trust_net_amount = round(trust_net * close_price)
+
+            details["chipflow"] = {
+                "label": chip_result["label"],
+                "foreign_consec_buy": chip_summary.get("foreign_consec_buy", 0),
+                "trust_consec_buy": chip_summary.get("trust_consec_buy", 0),
+                "foreign_total_net": foreign_net,
+                "trust_total_net": trust_net,
+                "foreign_net_amount": foreign_net_amount,
+                "trust_net_amount": trust_net_amount,
+                "margin_change_sum": chip_summary.get("margin_change_sum", 0),
+                "close_price": close_price,
+            }
+        scores["chipflow"] = chip_score
+
         # ── 4. 主動式 ETF 評分（未被持有時設為 None，不列入綜合評分）──
         active_etf_score = get_active_etf_score(symbol)
         scores["active_etf"] = active_etf_score
@@ -500,11 +542,14 @@ def scan_single_stock(symbol: str, name: str, all_pe: dict, articles: list) -> O
         highlights = []
         fc = details.get("chipflow", {}).get("foreign_consec_buy", 0)
         tc = details.get("chipflow", {}).get("trust_consec_buy", 0)
-        ft = details.get("chipflow", {}).get("foreign_total_net", 0)
+        fa = details.get("chipflow", {}).get("foreign_net_amount")
+        ta = details.get("chipflow", {}).get("trust_net_amount")
         if fc >= 3:
-            highlights.append(f"外資連買{fc}天")
+            amt_str = f"，{_format_amount(fa)}" if fa else ""
+            highlights.append(f"外資連買{fc}天{amt_str}")
         if tc >= 3:
-            highlights.append(f"投信連買{tc}天")
+            amt_str = f"，{_format_amount(ta)}" if ta else ""
+            highlights.append(f"投信連買{tc}天{amt_str}")
         if details.get("pe_percentile") is not None and details["pe_percentile"] <= 40:
             highlights.append(f"產業低本益比(擊敗{100-details['pe_percentile']}%同業)")
         elif details.get("pe") and details["pe"] < 12:
@@ -655,44 +700,130 @@ def categorize_picks(results: List[dict]) -> List[dict]:
         "stocks": _format_picks(top_ranked),
     })
 
-    # ── 1. 外資狂買股 ──
-    foreign_picks = []
+    # ── 1a. 外資狂買股（依籌碼分數排序，連買 >= 3 天）──
+    foreign_chip_picks = []
     for r in results:
         fc = r.get("details", {}).get("chipflow", {}).get("foreign_consec_buy", 0)
-        ft = r.get("details", {}).get("chipflow", {}).get("foreign_total_net", 0)
+        fa = r.get("details", {}).get("chipflow", {}).get("foreign_net_amount")
         if fc >= 3:
-            r["_highlight"] = f"外資連買{fc}天，累計{_format_shares(ft)}"
-            foreign_picks.append(r)
-    foreign_picks.sort(key=lambda x: x.get("scores", {}).get("chipflow", 0), reverse=True)
-    _annotate_days(foreign_picks[:10], "foreign_buy")
+            amt_str = f"，累計{_format_amount(fa)}" if fa else ""
+            r["_highlight"] = f"外資連買{fc}天{amt_str}"
+            foreign_chip_picks.append(r)
+    foreign_chip_picks.sort(key=lambda x: x.get("scores", {}).get("chipflow", 0), reverse=True)
+    _annotate_days(foreign_chip_picks[:10], "foreign_buy")
     categories.append({
         "id": "foreign_buy",
         "name": "外資狂買股",
-        "icon": "🏦",
-        "description": "篩選條件：外資連續買超 ≥ 3 天。外資為台股最大買方，連續買超代表中長線看好，搭配大量買超金額更具參考價值。",
+        "icon": "🔥",
+        "description": "篩選條件：外資連續買超 ≥ 3 天，依籌碼面綜合分數排序。籌碼分數綜合外資連買天數、投信方向、融資券變化等多維訊號，分數高代表整體籌碼最強。",
         "score_field": "scores.chipflow",
         "score_label": "籌碼",
-        "stocks": _format_picks(foreign_picks[:10]),
+        "stocks": _format_picks(foreign_chip_picks[:10]),
     })
 
-    # ── 2. 投信認養股 ──
-    trust_picks = []
+    # ── 1b. 外資連買股（依連買天數排序）──
+    foreign_days_picks = []
+    for r in results:
+        fc = r.get("details", {}).get("chipflow", {}).get("foreign_consec_buy", 0)
+        fa = r.get("details", {}).get("chipflow", {}).get("foreign_net_amount")
+        if fc >= 3:
+            amt_str = f"，累計{_format_amount(fa)}" if fa else ""
+            r["_highlight"] = f"外資連買{fc}天{amt_str}"
+            foreign_days_picks.append(r)
+    foreign_days_picks.sort(key=lambda x: x.get("details", {}).get("chipflow", {}).get("foreign_consec_buy", 0), reverse=True)
+    _annotate_days(foreign_days_picks[:10], "foreign_days")
+    categories.append({
+        "id": "foreign_days",
+        "name": "外資連買股",
+        "icon": "🏦",
+        "description": "依外資連續買超天數排序。連買天數越多代表外資持續看好、分批佈局，是中長線信心指標。",
+        "score_field": "chipflow.foreign_consec_buy",
+        "score_label": "連買天數",
+        "stocks": _format_picks(foreign_days_picks[:10]),
+    })
+
+    # ── 1d. 外資買超金額（依累計金額排序）──
+    foreign_amount_picks = []
+    for r in results:
+        fa = r.get("details", {}).get("chipflow", {}).get("foreign_net_amount")
+        fc = r.get("details", {}).get("chipflow", {}).get("foreign_consec_buy", 0)
+        if fa and fa > 0:
+            days_str = f"，連買{fc}天" if fc >= 2 else ""
+            r["_highlight"] = f"外資累計買超{_format_amount(fa)}{days_str}"
+            foreign_amount_picks.append(r)
+    foreign_amount_picks.sort(key=lambda x: x.get("details", {}).get("chipflow", {}).get("foreign_net_amount", 0), reverse=True)
+    _annotate_days(foreign_amount_picks[:10], "foreign_amount")
+    categories.append({
+        "id": "foreign_amount",
+        "name": "外資買超金額",
+        "icon": "💰",
+        "description": "依外資近 10 日累計淨買超金額排序（股數 × 收盤價）。金額越大代表外資投入的真實資金越多，反映實質買盤力道。",
+        "score_field": "chipflow.foreign_net_amount",
+        "score_label": "買超金額",
+        "stocks": _format_picks(foreign_amount_picks[:10]),
+    })
+
+    # ── 2a. 投信狂買股（依籌碼分數排序，連買 >= 3 天）──
+    trust_chip_picks = []
     for r in results:
         tc = r.get("details", {}).get("chipflow", {}).get("trust_consec_buy", 0)
-        tt = r.get("details", {}).get("chipflow", {}).get("trust_total_net", 0)
+        ta = r.get("details", {}).get("chipflow", {}).get("trust_net_amount")
         if tc >= 3:
-            r["_highlight"] = f"投信連買{tc}天，累計{_format_shares(tt)}"
-            trust_picks.append(r)
-    trust_picks.sort(key=lambda x: x.get("scores", {}).get("chipflow", 0), reverse=True)
-    _annotate_days(trust_picks[:10], "trust_buy")
+            amt_str = f"，累計{_format_amount(ta)}" if ta else ""
+            r["_highlight"] = f"投信連買{tc}天{amt_str}"
+            trust_chip_picks.append(r)
+    trust_chip_picks.sort(key=lambda x: x.get("scores", {}).get("chipflow", 0), reverse=True)
+    _annotate_days(trust_chip_picks[:10], "trust_buy")
     categories.append({
         "id": "trust_buy",
-        "name": "投信認養股",
-        "icon": "🎯",
-        "description": "篩選條件：投信連續買超 ≥ 3 天。投信選股嚴謹，連續買超往往代表有基本面研究支撐，是中期波段的領先指標。",
+        "name": "投信狂買股",
+        "icon": "🔥",
+        "description": "篩選條件：投信連續買超 ≥ 3 天，依籌碼面綜合分數排序。籌碼分數綜合投信連買天數、外資方向、融資券變化等多維訊號，分數高代表整體籌碼最強。",
         "score_field": "scores.chipflow",
         "score_label": "籌碼",
-        "stocks": _format_picks(trust_picks[:10]),
+        "stocks": _format_picks(trust_chip_picks[:10]),
+    })
+
+    # ── 2b. 投信連買股（依連買天數排序）──
+    trust_days_picks = []
+    for r in results:
+        tc = r.get("details", {}).get("chipflow", {}).get("trust_consec_buy", 0)
+        ta = r.get("details", {}).get("chipflow", {}).get("trust_net_amount")
+        if tc >= 3:
+            amt_str = f"，累計{_format_amount(ta)}" if ta else ""
+            r["_highlight"] = f"投信連買{tc}天{amt_str}"
+            trust_days_picks.append(r)
+    trust_days_picks.sort(key=lambda x: x.get("details", {}).get("chipflow", {}).get("trust_consec_buy", 0), reverse=True)
+    _annotate_days(trust_days_picks[:10], "trust_days")
+    categories.append({
+        "id": "trust_days",
+        "name": "投信連買股",
+        "icon": "🎯",
+        "description": "依投信連續買超天數排序。投信選股嚴謹，連續買超代表有基本面研究支撐，是中期波段的領先指標。",
+        "score_field": "chipflow.trust_consec_buy",
+        "score_label": "連買天數",
+        "stocks": _format_picks(trust_days_picks[:10]),
+    })
+
+    # ── 2c. 投信買超金額（依累計金額排序）──
+    trust_amount_picks = []
+    for r in results:
+        ta = r.get("details", {}).get("chipflow", {}).get("trust_net_amount")
+        tc = r.get("details", {}).get("chipflow", {}).get("trust_consec_buy", 0)
+        if ta and ta > 0:
+            days_str = f"，連買{tc}天" if tc >= 2 else ""
+            r["_highlight"] = f"投信累計買超{_format_amount(ta)}{days_str}"
+            trust_amount_picks.append(r)
+    trust_amount_picks.sort(key=lambda x: x.get("details", {}).get("chipflow", {}).get("trust_net_amount", 0), reverse=True)
+    _annotate_days(trust_amount_picks[:10], "trust_amount")
+    categories.append({
+        "id": "trust_amount",
+        "name": "投信買超金額",
+        "icon": "🎯💰",
+        "description": "依投信近 10 日累計淨買超金額排序（股數 × 收盤價）。投信資金規模雖不如外資，但選股精準度高，金額大代表高度認同。",
+        "score_field": "chipflow.trust_net_amount",
+        "score_label": "買超金額",
+        "stocks": _format_picks(trust_amount_picks[:10]),
     })
 
     # ── 3. 籌碼集中股 ──
@@ -909,10 +1040,25 @@ def _format_shares(shares: int) -> str:
         return f"{shares}張"
 
 
+def _format_amount(amount) -> str:
+    """格式化金額顯示（元）"""
+    if amount is None:
+        return ""
+    a = abs(amount)
+    sign = "" if amount >= 0 else "-"
+    if a >= 1_0000_0000:  # 億
+        return f"{sign}{a / 1_0000_0000:.1f}億"
+    elif a >= 1_0000:     # 萬
+        return f"{sign}{a / 1_0000:.0f}萬"
+    else:
+        return f"{sign}{a:.0f}元"
+
+
 def _format_picks(picks: List[dict]) -> List[dict]:
     """格式化精選股票為前端需要的格式"""
     formatted = []
     for p in picks:
+        chip = p.get("details", {}).get("chipflow", {})
         formatted.append({
             "symbol": p["symbol"],
             "name": p["name"],
@@ -923,6 +1069,10 @@ def _format_picks(picks: List[dict]) -> List[dict]:
             "days_in_rank": p.get("_days_in_rank", 1),
             "tech_pillars": p.get("details", {}).get("tech_pillars", {}),
             "regime_state": p.get("details", {}).get("regime_state", ""),
+            "foreign_consec_buy": chip.get("foreign_consec_buy", 0),
+            "trust_consec_buy": chip.get("trust_consec_buy", 0),
+            "foreign_net_amount": chip.get("foreign_net_amount"),
+            "trust_net_amount": chip.get("trust_net_amount"),
         })
     return formatted
 

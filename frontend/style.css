@@ -2224,8 +2224,8 @@ a.event-item:hover {
     transition: all 0.2s;
 }
 .screener-tab.active {
-    background: var(--accent);
-    border-color: var(--accent);
+    background: var(--primary);
+    border-color: var(--primary);
     color: #fff;
     font-weight: 700;
 }

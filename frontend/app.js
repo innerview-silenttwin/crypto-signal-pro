@@ -1268,6 +1268,7 @@ async function fetchScreenerPicks() {
         section.style.display = 'block';
         if (updatedEl && data.updated_at) {
             updatedEl.textContent = `更新: ${data.updated_at}`;
+            updatedEl.dataset.picksUpdated = `更新: ${data.updated_at}`;
         }
 
         renderScreenerCards(data.categories);
@@ -1423,19 +1424,25 @@ function initScreener() {
             const picksEl = document.getElementById('screener-categories');
             const etfEl = document.getElementById('screener-active-etf');
             const consultEl = document.getElementById('screener-consultation');
+            const updatedEl = document.getElementById('screener-updated');
             if (tab === 'picks') {
                 if (picksEl) picksEl.style.display = '';
                 if (etfEl) etfEl.style.display = 'none';
                 if (consultEl) consultEl.style.display = 'none';
+                if (updatedEl && updatedEl.dataset.picksUpdated) {
+                    updatedEl.textContent = updatedEl.dataset.picksUpdated;
+                }
             } else if (tab === 'active-etf') {
                 if (picksEl) picksEl.style.display = 'none';
                 if (etfEl) etfEl.style.display = '';
                 if (consultEl) consultEl.style.display = 'none';
+                if (updatedEl) updatedEl.textContent = '';
                 fetchActiveEtfRanking();
             } else if (tab === 'consultation') {
                 if (picksEl) picksEl.style.display = 'none';
                 if (etfEl) etfEl.style.display = 'none';
                 if (consultEl) consultEl.style.display = '';
+                if (updatedEl) updatedEl.textContent = '';
                 initConsultation();
             }
         });
@@ -1759,6 +1766,12 @@ function renderActiveEtfRanking(data) {
     const container = document.getElementById('screener-active-etf');
     if (!container) return;
 
+    // 更新 header 時間為 ETF 資料的更新時間
+    const updatedEl = document.getElementById('screener-updated');
+    if (updatedEl && data.updated_at) {
+        updatedEl.textContent = `更新: ${data.updated_at}`;
+    }
+
     const DEFAULT_SHOW = 15;
     const stocks = data.stocks || [];
     const etfs = data.etfs || [];
@@ -1775,6 +1788,9 @@ function renderActiveEtfRanking(data) {
     const stockRows = stocks.map((s, idx) => {
         const hiddenCls = idx >= DEFAULT_SHOW ? ' screener-hidden' : '';
         const etfCount = s.etf_count || 0;
+        const etfCountDisplay = etfCount > 0
+            ? `<span class="aetf-etf-count" title="被 ${etfCount} 檔 ETF 持有">${etfCount}檔</span>`
+            : `<span class="aetf-etf-count" style="opacity:0.4" title="ETF 持股數資料更新中">--</span>`;
         const days = s.days_in_rank || 1;
         let daysBadge = '';
         if (days === 1) {
@@ -1786,7 +1802,7 @@ function renderActiveEtfRanking(data) {
             <span class="screener-rank">${idx + 1}</span>
             <span class="screener-stock-sym">${s.symbol}</span>
             <span class="screener-stock-name">${s.name}</span>
-            <span class="aetf-etf-count" title="被 ${etfCount} 檔 ETF 持有">${etfCount}檔</span>
+            ${etfCountDisplay}
             ${daysBadge}
         </div>`;
     }).join('');
