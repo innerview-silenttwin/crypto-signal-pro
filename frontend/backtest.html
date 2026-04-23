@@ -1,0 +1,983 @@
+<!DOCTYPE html>
+<html lang="zh-TW" data-theme="kawaii">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>回測中心 | CryptoSignal Pro</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@500;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script>
+        (function () {
+            var t = localStorage.getItem('csp-theme') || 'kawaii';
+            document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
+    <style>
+        .bt-content { padding: 0 20px 24px; }
+
+        /* ── 輸入表單 ── */
+        .bt-form {
+            display: flex; gap: 12px; align-items: flex-end;
+            flex-wrap: wrap; margin-bottom: 20px;
+        }
+        .bt-form .field { display: flex; flex-direction: column; gap: 4px; }
+        .bt-form label { font-size: 11px; font-weight: 700; color: var(--text-muted); }
+        .bt-form input, .bt-form select {
+            padding: 8px 12px; border-radius: 8px; font-size: 13px;
+            border: 1.5px solid var(--border-color);
+            background: var(--card-bg); color: var(--text-primary);
+        }
+        .bt-form input { width: 160px; }
+        /* ── 股票搜尋自動完成 ── */
+        .symbol-wrap { position: relative; }
+        .symbol-dropdown {
+            display: none; position: absolute; top: 100%; left: 0; right: 0;
+            z-index: 10; margin-top: 2px; border-radius: 8px; overflow: hidden;
+            background: var(--card-bg); border: 1.5px solid var(--border-color);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15); max-height: 220px; overflow-y: auto;
+        }
+        .symbol-dropdown.show { display: block; }
+        .symbol-option {
+            padding: 8px 12px; font-size: 12px; cursor: pointer;
+            display: flex; justify-content: space-between; gap: 8px;
+            transition: background 0.1s;
+        }
+        .symbol-option:hover, .symbol-option.active { background: rgba(167,139,250,0.1); }
+        .symbol-option .so-code { font-weight: 700; }
+        .symbol-option .so-name { color: var(--text-muted); }
+        .symbol-option .so-sector { font-size: 10px; color: var(--text-muted); opacity: 0.7; }
+        .bt-form select { min-width: 100px; }
+        .bt-form .btn-run {
+            padding: 8px 24px; border-radius: 8px; font-size: 13px; font-weight: 700;
+            border: none; cursor: pointer;
+            background: var(--primary); color: #fff;
+            transition: opacity 0.2s;
+        }
+        .bt-form .btn-run:hover { opacity: 0.85; }
+        .bt-form .btn-run:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* ── 進階參數收合 ── */
+        .bt-advanced { margin-bottom: 16px; }
+        .bt-advanced summary {
+            font-size: 12px; color: var(--text-muted); cursor: pointer;
+            font-weight: 600; margin-bottom: 8px;
+        }
+        .bt-advanced .adv-row {
+            display: flex; gap: 12px; flex-wrap: wrap;
+        }
+        .bt-advanced .adv-row .field input { width: 120px; }
+
+        /* ── 進度條 ── */
+        .bt-progress-wrap {
+            display: none; margin-bottom: 20px;
+            padding: 16px; border-radius: 12px;
+            background: var(--card-bg); border: 1.5px solid var(--border-color);
+        }
+        .bt-progress-wrap.show { display: block; }
+        .bt-progress-label { font-size: 12px; color: var(--text-muted); margin-bottom: 6px; }
+        .bt-progress-bar {
+            width: 100%; height: 8px; border-radius: 4px;
+            background: rgba(167,139,250,0.1); overflow: hidden;
+        }
+        .bt-progress-bar .fill {
+            height: 100%; border-radius: 4px;
+            background: var(--primary); transition: width 0.3s;
+        }
+
+        /* ── 基準列 ── */
+        .bt-baseline {
+            font-size: 13px; color: var(--text-muted); margin-bottom: 14px;
+        }
+        .bt-baseline .val { font-weight: 700; }
+
+        /* ── 結果表格 ── */
+        .bt-table-wrap {
+            overflow-x: auto; border-radius: 14px;
+            border: 1.5px solid var(--border-color);
+            background: var(--card-bg, rgba(255,255,255,0.02));
+            margin-bottom: 24px;
+        }
+        .bt-table {
+            width: 100%; border-collapse: collapse; font-size: 12px; white-space: nowrap;
+        }
+        .bt-table th {
+            position: sticky; top: 0; z-index: 2;
+            background: rgba(167,139,250,0.1); backdrop-filter: blur(4px);
+            padding: 10px 10px; text-align: left; font-weight: 700;
+            font-size: 11px; color: var(--text-muted);
+            border-bottom: 2px solid var(--border-color);
+            cursor: pointer; user-select: none;
+        }
+        .bt-table th:hover { background: rgba(167,139,250,0.18); }
+        .bt-table th.sort-asc::after { content: ' \u25B2'; font-size: 9px; }
+        .bt-table th.sort-desc::after { content: ' \u25BC'; font-size: 9px; }
+        .bt-table td {
+            padding: 8px 10px; border-bottom: 1px solid rgba(167,139,250,0.06);
+            vertical-align: middle;
+        }
+        .bt-table tr:hover { background: rgba(167,139,250,0.05); }
+        .bt-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+        .bt-table .pos { color: var(--buy-color, #10b981); font-weight: 600; }
+        .bt-table .neg { color: var(--sell-color, #ef4444); font-weight: 600; }
+
+        /* ── 展開的交易明細 ── */
+        .trade-detail-row td { padding: 0 !important; }
+        .trade-detail-inner {
+            max-height: 300px; overflow-y: auto;
+            padding: 10px 16px; background: rgba(167,139,250,0.03);
+        }
+        .trade-detail-inner table {
+            width: 100%; border-collapse: collapse; font-size: 11px;
+            table-layout: fixed;
+        }
+        .trade-detail-inner th {
+            position: static; background: transparent;
+            border-bottom: 1px solid var(--border-color);
+            padding: 6px 8px; font-size: 10px; font-weight: 700;
+            color: var(--text-muted); white-space: nowrap;
+        }
+        .trade-detail-inner td {
+            padding: 5px 8px; border-bottom: 1px solid rgba(167,139,250,0.04);
+            white-space: nowrap;
+        }
+        .trade-detail-inner .num {
+            text-align: right; font-variant-numeric: tabular-nums;
+        }
+        .trade-detail-inner .pos { color: var(--buy-color, #10b981); font-weight: 600; }
+        .trade-detail-inner .neg { color: var(--sell-color, #ef4444); font-weight: 600; }
+
+        /* ── combo tag ── */
+        .combo-tag {
+            display: inline-block; padding: 2px 8px; margin: 1px 2px;
+            border-radius: 6px; font-size: 11px; font-weight: 600;
+            background: rgba(167,139,250,0.12); color: var(--primary);
+        }
+
+        /* ── 歷史紀錄 ── */
+        .bt-history { margin-top: 8px; }
+        .bt-history-header {
+            display: flex; align-items: center; gap: 12px; margin-bottom: 10px;
+        }
+        .bt-history-header h3 {
+            font-size: 14px; color: var(--text-primary); margin: 0;
+        }
+        .history-filter {
+            padding: 5px 10px; border-radius: 7px; font-size: 12px;
+            border: 1.5px solid var(--border-color);
+            background: var(--card-bg); color: var(--text-primary);
+            width: 160px; transition: border-color 0.2s;
+        }
+        .history-filter:focus { border-color: var(--primary); outline: none; }
+        .history-filter-count {
+            font-size: 11px; color: var(--text-muted); margin-left: auto;
+        }
+        .history-item {
+            display: flex; gap: 16px; align-items: center;
+            padding: 10px 14px; border-radius: 10px 10px 10px 10px;
+            background: var(--card-bg); border: 1px solid var(--border-color);
+            font-size: 12px; cursor: pointer; transition: background 0.15s;
+            margin-bottom: 6px;
+        }
+        .history-item:hover { background: rgba(167,139,250,0.06); }
+        .history-item.expanded {
+            border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+            margin-bottom: 0; border-bottom-color: transparent;
+            background: rgba(167,139,250,0.06);
+        }
+        .history-item .hi-symbol { font-weight: 700; min-width: 90px; }
+        .history-item .hi-date { color: var(--text-muted); min-width: 130px; }
+        .history-item .hi-actions {
+            margin-left: auto; display: flex; align-items: center; gap: 8px;
+        }
+        .history-item .hi-toggle {
+            font-size: 10px; color: var(--text-muted);
+            transition: transform 0.2s;
+        }
+        .history-item .hi-del {
+            padding: 2px 6px; border-radius: 5px; border: none; cursor: pointer;
+            font-size: 11px; color: var(--text-muted); background: transparent;
+            transition: all 0.15s;
+        }
+        .history-item .hi-del:hover {
+            color: var(--sell-color, #ef4444); background: rgba(239,68,68,0.1);
+        }
+        .history-item.expanded .hi-toggle { transform: rotate(180deg); }
+        .history-expand {
+            display: none; margin-bottom: 6px; padding: 16px;
+            border-radius: 0 0 10px 10px;
+            background: var(--card-bg); border: 1px solid var(--border-color);
+            border-top: none;
+            animation: expandSlide 0.2s ease-out;
+        }
+        .history-expand.show { display: block; }
+        @keyframes expandSlide { from { opacity: 0; max-height: 0; } to { opacity: 1; max-height: 2000px; } }
+
+        /* ── 組合排行榜 ── */
+        .bt-stats { margin-bottom: 20px; }
+        .bt-stats-header {
+            display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+        }
+        .bt-stats-header h3 { font-size: 14px; color: var(--text-primary); margin: 0; }
+        .bt-stats-header .stats-sub { font-size: 11px; color: var(--text-muted); }
+        .stats-card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 10px;
+        }
+        .stats-card {
+            padding: 14px 16px; border-radius: 12px;
+            background: var(--card-bg); border: 1.5px solid var(--border-color);
+            transition: border-color 0.15s;
+        }
+        .stats-card:hover { border-color: rgba(167,139,250,0.4); }
+        .stats-card .sc-rank {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 22px; height: 22px; border-radius: 6px; font-size: 11px; font-weight: 700;
+            background: rgba(167,139,250,0.15); color: var(--primary); margin-right: 8px;
+        }
+        .stats-card .sc-rank.gold { background: rgba(255,193,7,0.2); color: #f59e0b; }
+        .stats-card .sc-rank.silver { background: rgba(156,163,175,0.2); color: #9ca3af; }
+        .stats-card .sc-rank.bronze { background: rgba(205,127,50,0.2); color: #cd7f32; }
+        .stats-card .sc-combos { margin-bottom: 8px; }
+        .stats-card .sc-metrics {
+            display: flex; gap: 14px; flex-wrap: wrap;
+            font-size: 11px; color: var(--text-muted); margin-bottom: 6px;
+        }
+        .stats-card .sc-metrics b { color: var(--text-primary); }
+        .stats-card .sc-stocks {
+            font-size: 11px; color: var(--text-muted); line-height: 1.6;
+        }
+        .stats-card .sc-stocks .stock-tag {
+            display: inline-block; padding: 1px 7px; margin: 1px 2px;
+            border-radius: 5px; font-size: 10px; font-weight: 600;
+            background: rgba(16,185,129,0.1); color: var(--buy-color, #10b981);
+        }
+        .stats-card .sc-stocks .stock-tag.neg {
+            background: rgba(239,68,68,0.1); color: var(--sell-color, #ef4444);
+        }
+
+        /* ── 空態 ── */
+        .bt-empty {
+            text-align: center; padding: 48px 20px;
+            color: var(--text-muted); font-size: 14px;
+        }
+
+        /* ── 說明面板 ── */
+        .bt-help-btn {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 5px 12px; border-radius: 8px; font-size: 12px; font-weight: 600;
+            border: 1.5px solid var(--border-color); cursor: pointer;
+            background: var(--card-bg); color: var(--text-muted);
+            transition: all 0.2s;
+        }
+        .bt-help-btn:hover { background: rgba(167,139,250,0.1); color: var(--primary); border-color: var(--primary); }
+        .bt-help-panel {
+            display: none; margin-bottom: 20px; padding: 20px 24px;
+            border-radius: 14px; background: var(--card-bg);
+            border: 1.5px solid var(--border-color);
+            font-size: 13px; line-height: 1.8; color: var(--text-primary);
+            animation: helpSlide 0.25s ease-out;
+        }
+        .bt-help-panel.show { display: block; }
+        @keyframes helpSlide { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+        .bt-help-panel h3 { font-size: 15px; margin: 0 0 12px; color: var(--primary); }
+        .bt-help-panel h4 { font-size: 13px; margin: 16px 0 6px; color: var(--text-primary); font-weight: 700; }
+        .bt-help-panel p { margin: 4px 0; color: var(--text-secondary, var(--text-muted)); }
+        .bt-help-panel ul { margin: 4px 0 4px 18px; padding: 0; }
+        .bt-help-panel li { margin: 2px 0; color: var(--text-secondary, var(--text-muted)); }
+        .bt-help-panel .help-note {
+            margin-top: 14px; padding: 10px 14px; border-radius: 8px;
+            background: rgba(167,139,250,0.08); font-size: 12px;
+            border-left: 3px solid var(--primary);
+        }
+        .bt-help-panel .help-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 6px 16px; margin: 6px 0;
+        }
+        .bt-help-panel .help-grid span {
+            font-size: 12px; padding: 3px 0;
+        }
+        .bt-help-panel .help-close {
+            float: right; border: none; background: none; cursor: pointer;
+            font-size: 18px; color: var(--text-muted); line-height: 1;
+        }
+        .bt-help-panel .help-close:hover { color: var(--primary); }
+
+        /* ── 狀態訊息 ── */
+        .bt-status {
+            padding: 12px 16px; border-radius: 10px; margin-bottom: 16px;
+            font-size: 13px; display: none;
+        }
+        .bt-status.error {
+            display: block; background: rgba(239,68,68,0.1);
+            border: 1px solid rgba(239,68,68,0.3); color: var(--sell-color);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-container">
+        <aside class="sidebar glass-panel">
+            <div class="logo">
+                <span class="glow-text">CryptoSignal</span>
+                <span class="pro-badge">PRO</span>
+            </div>
+            <div class="theme-switcher">
+                <button class="theme-btn active" data-theme-value="kawaii">Kawaii</button>
+                <button class="theme-btn" data-theme-value="pro-dark">Pro Dark</button>
+                <button class="theme-btn" data-theme-value="ocean">Ocean</button>
+                <button class="theme-btn" data-theme-value="warm">Warm</button>
+            </div>
+            <nav class="nav-menu">
+                <a href="index.html" class="nav-item">分析儀表板</a>
+                <a href="trading.html" class="nav-item">幣圈交易中心</a>
+                <a href="sector_trading.html" class="nav-item">台股交易中心</a>
+                <a href="signal_performance.html" class="nav-item">信號績效統覽</a>
+                <a href="backtest.html" class="nav-item active">📊 回測中心</a>
+                <a href="settings.html" class="nav-item">⚙️ 後台設定</a>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <header class="top-bar">
+                <h1>📊 回測中心</h1>
+                <button class="bt-help-btn" onclick="toggleHelp()">? 系統說明</button>
+            </header>
+
+            <div class="bt-content">
+                <!-- 說明面板 -->
+                <div class="bt-help-panel" id="help-panel">
+                    <button class="help-close" onclick="toggleHelp()">&times;</button>
+                    <h3>回測系統說明</h3>
+
+                    <h4>什麼是回測？</h4>
+                    <p>回測系統會自動將所有技術指標排列組合，模擬歷史行情下的買賣操作，找出表現最佳的指標組合，幫助你制定交易策略。</p>
+
+                    <h4>涵蓋的技術指標（共 13 個）</h4>
+                    <div class="help-grid">
+                        <span>RSI 相對強弱</span>
+                        <span>MACD 趨勢動能</span>
+                        <span>布林通道</span>
+                        <span>MFI 資金流量</span>
+                        <span>EMA 均線交叉</span>
+                        <span>成交量分析</span>
+                        <span>ADX 趨勢強度</span>
+                        <span>隨機 RSI</span>
+                        <span>爆量反轉</span>
+                        <span>均線拉回支撐</span>
+                        <span>乖離率 (BIAS)</span>
+                        <span>KD 隨機指標</span>
+                        <span>威廉指標 %R</span>
+                    </div>
+
+                    <h4>買賣邏輯</h4>
+                    <ul>
+                        <li><b>買入條件：</b>組合內<b>所有</b>指標同時發出買入信號（交集）</li>
+                        <li><b>賣出條件：</b>組合內<b>任一</b>指標發出賣出信號（聯集）</li>
+                        <li><b>執行價：</b>信號產生的<b>隔日開盤價</b>（避免未來偏差 look-ahead bias）</li>
+                        <li><b>倉位：</b>每次以 95% 資金全倉買入，賣出後全部出清</li>
+                    </ul>
+
+                    <h4>回測期間與暖機</h4>
+                    <p>系統從今天往回抓取歷史日K資料。前 <b>200 個交易日</b>為暖機期，僅用於計算指標初始值（如 EMA200），不會產生交易。</p>
+                    <ul>
+                        <li><b>1 年</b>（約 252 天）：扣暖機後僅剩約 50 天有效回測，參考性較低</li>
+                        <li><b>2 年</b>（約 504 天）：約 300 天有效回測，適合快速驗證</li>
+                        <li><b>5 年</b>（約 1260 天）：超過 1000 天有效回測，結果最可靠</li>
+                    </ul>
+
+                    <h4>結果欄位解讀</h4>
+                    <ul>
+                        <li><b>報酬率：</b>回測期間總損益百分比</li>
+                        <li><b>年化：</b>將總報酬換算成年化報酬率</li>
+                        <li><b>最大回撤：</b>期間內從高點到低點的最大跌幅，衡量風險</li>
+                        <li><b>勝率：</b>獲利交易次數 / 總交易次數</li>
+                        <li><b>夏普比率：</b>平均報酬 / 報酬波動，越高越好</li>
+                        <li><b>盈虧比：</b>平均獲利 / 平均虧損，> 1 代表賺多賠少</li>
+                        <li><b>基準（買入持有）：</b>不做任何操作、直接持有的報酬率，用來對比策略是否優於大盤</li>
+                    </ul>
+
+                    <h4>費用假設</h4>
+                    <p>預設手續費 0.1425%（台股券商公定費率）、交易稅 0.3%（賣出時收取），可在進階參數中調整。</p>
+
+                    <div class="help-note">
+                        點擊結果表格的任一列可展開該組合的<b>每筆交易明細</b>（前 100 名）。帶有 * 標記的交易表示回測結束時尚未平倉，以最後收盤價強制結算。
+                    </div>
+                </div>
+
+                <!-- 輸入表單 -->
+                <div class="bt-form glass-panel" style="padding:16px; border-radius:14px;">
+                    <div class="field symbol-wrap">
+                        <label>股票代碼 / 名稱</label>
+                        <input type="text" id="inp-symbol" placeholder="例: 2330 或 台積電" value="" autocomplete="off">
+                        <div class="symbol-dropdown" id="symbol-dropdown"></div>
+                    </div>
+                    <div class="field">
+                        <label>回測期間</label>
+                        <select id="inp-period">
+                            <option value="1y">1 年</option>
+                            <option value="2y">2 年</option>
+                            <option value="5y" selected>5 年</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>最大組合數</label>
+                        <select id="inp-max-combo">
+                            <option value="2">2 個指標</option>
+                            <option value="3">3 個指標</option>
+                            <option value="4" selected>4 個指標</option>
+                        </select>
+                    </div>
+                    <button class="btn-run" id="btn-run" onclick="startBacktest()">開始回測</button>
+                </div>
+
+                <!-- 進階參數 -->
+                <details class="bt-advanced">
+                    <summary>進階參數</summary>
+                    <div class="adv-row">
+                        <div class="field">
+                            <label>初始資金</label>
+                            <input type="number" id="inp-capital" value="1000000">
+                        </div>
+                        <div class="field">
+                            <label>手續費率</label>
+                            <input type="number" id="inp-commission" value="0.001425" step="0.0001">
+                        </div>
+                        <div class="field">
+                            <label>交易稅率</label>
+                            <input type="number" id="inp-tax" value="0.003" step="0.0001">
+                        </div>
+                    </div>
+                </details>
+
+                <!-- 狀態訊息 -->
+                <div class="bt-status" id="bt-status"></div>
+
+                <!-- 進度條 -->
+                <div class="bt-progress-wrap" id="progress-wrap">
+                    <div class="bt-progress-label" id="progress-label">準備中...</div>
+                    <div class="bt-progress-bar"><div class="fill" id="progress-fill" style="width:0%"></div></div>
+                </div>
+
+                <!-- 組合排行榜 -->
+                <div class="bt-stats" id="stats-section" style="display:none">
+                    <div class="bt-stats-header">
+                        <h3>指標組合排行榜</h3>
+                        <span class="stats-sub" id="stats-sub"></span>
+                    </div>
+                    <div class="stats-card-grid" id="stats-grid"></div>
+                </div>
+
+                <!-- 歷史紀錄 -->
+                <div class="bt-history">
+                    <div class="bt-history-header">
+                        <h3>歷史回測紀錄</h3>
+                        <input type="text" class="history-filter" id="history-filter" placeholder="篩選股票代碼/名稱" oninput="filterHistory()">
+                        <span class="history-filter-count" id="history-filter-count"></span>
+                    </div>
+                    <div id="history-list"><div class="bt-empty">尚無回測紀錄</div></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+    // ── Theme switcher ──
+    document.querySelectorAll('.theme-btn').forEach(btn => {
+        const v = btn.getAttribute('data-theme-value');
+        if (v === (localStorage.getItem('csp-theme') || 'kawaii')) btn.classList.add('active');
+        else btn.classList.remove('active');
+        btn.addEventListener('click', () => {
+            document.documentElement.setAttribute('data-theme', v);
+            localStorage.setItem('csp-theme', v);
+            document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+        });
+    });
+
+    // ── Help toggle ──
+    function toggleHelp() {
+        document.getElementById('help-panel').classList.toggle('show');
+    }
+
+    // ── Symbol autocomplete ──
+    let acTimer = null;
+    let acResults = [];
+    let acIndex = -1;
+    const inpSymbol = document.getElementById('inp-symbol');
+    const dropdown = document.getElementById('symbol-dropdown');
+
+    inpSymbol.addEventListener('input', () => {
+        clearTimeout(acTimer);
+        delete inpSymbol.dataset.name;  // 手動輸入時清除殘留名稱
+        const q = inpSymbol.value.trim();
+        if (q.length < 1) { hideDropdown(); return; }
+        acTimer = setTimeout(() => fetchSuggestions(q), 250);
+    });
+
+    inpSymbol.addEventListener('keydown', (e) => {
+        if (!dropdown.classList.contains('show')) return;
+        if (e.key === 'ArrowDown') { e.preventDefault(); acIndex = Math.min(acIndex + 1, acResults.length - 1); highlightOption(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); acIndex = Math.max(acIndex - 1, 0); highlightOption(); }
+        else if (e.key === 'Enter' && acIndex >= 0) { e.preventDefault(); selectOption(acResults[acIndex]); }
+        else if (e.key === 'Escape') { hideDropdown(); }
+    });
+
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.symbol-wrap')) hideDropdown();
+    });
+
+    async function fetchSuggestions(q) {
+        try {
+            const res = await fetch('/api/stock-lookup?q=' + encodeURIComponent(q));
+            acResults = await res.json();
+            if (!acResults.length) { hideDropdown(); return; }
+            acIndex = -1;
+            dropdown.innerHTML = acResults.map((r, i) =>
+                `<div class="symbol-option" data-idx="${i}" onmousedown="selectOption(acResults[${i}])">
+                    <span><span class="so-code">${r.symbol.replace('.TW','').replace('.TWO','')}</span> <span class="so-name">${r.name}</span></span>
+                    ${r.sector ? `<span class="so-sector">${r.sector}</span>` : ''}
+                </div>`
+            ).join('');
+            dropdown.classList.add('show');
+        } catch { hideDropdown(); }
+    }
+
+    function selectOption(item) {
+        inpSymbol.value = item.symbol;
+        inpSymbol.dataset.name = item.name;
+        hideDropdown();
+    }
+
+    function highlightOption() {
+        dropdown.querySelectorAll('.symbol-option').forEach((el, i) => {
+            el.classList.toggle('active', i === acIndex);
+        });
+    }
+
+    function hideDropdown() { dropdown.classList.remove('show'); acResults = []; acIndex = -1; }
+
+    async function resolveSymbol(input) {
+        // 純數字 → 加 .TW
+        if (/^\d{4,5}$/.test(input)) return { symbol: input + '.TW', name: '' };
+        // 已含 .TW/.TWO → 直接用
+        if (/\.\w+$/.test(input)) return { symbol: input, name: '' };
+        // 中文或其他 → 查 API
+        try {
+            const res = await fetch('/api/stock-lookup?q=' + encodeURIComponent(input));
+            const list = await res.json();
+            if (list.length > 0) return { symbol: list[0].symbol, name: list[0].name };
+        } catch {}
+        return null;
+    }
+
+    // ── State ──
+    let currentTaskId = null;
+    let pollTimer = null;
+
+    // ── Start backtest ──
+    async function startBacktest() {
+        const rawInput = document.getElementById('inp-symbol').value.trim();
+        if (!rawInput) { showStatus('請輸入股票代碼或名稱', true); return; }
+
+        // 解析輸入
+        const resolved = await resolveSymbol(rawInput);
+        if (!resolved) {
+            showStatus(`找不到「${rawInput}」對應的股票`, true);
+            return;
+        }
+        const symbol = resolved.symbol;
+        // 更新輸入框顯示
+        inpSymbol.value = symbol;
+
+        const payload = {
+            symbol: symbol,
+            symbol_name: resolved.name || inpSymbol.dataset.name || '',
+            period: document.getElementById('inp-period').value,
+            max_combo_size: parseInt(document.getElementById('inp-max-combo').value),
+            min_combo_size: 2,
+            initial_capital: parseFloat(document.getElementById('inp-capital').value),
+            commission_rate: parseFloat(document.getElementById('inp-commission').value),
+            tax_rate: parseFloat(document.getElementById('inp-tax').value),
+        };
+
+        document.getElementById('btn-run').disabled = true;
+        hideStatus();
+        showProgress('送出回測請求...', 0);
+
+        try {
+            const res = await fetch('/api/backtest/run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+
+            if (data.status === 'error') {
+                showStatus(data.message, true);
+                hideProgress();
+                document.getElementById('btn-run').disabled = false;
+                return;
+            }
+
+            currentTaskId = data.task_id;
+            showProgress('回測啟動中...', 5);
+            pollStatus();
+        } catch (e) {
+            showStatus('連線失敗：' + e.message, true);
+            hideProgress();
+            document.getElementById('btn-run').disabled = false;
+        }
+    }
+
+    // ── Poll status ──
+    function pollStatus() {
+        if (!currentTaskId) return;
+        clearTimeout(pollTimer);
+
+        pollTimer = setTimeout(async () => {
+            try {
+                const res = await fetch('/api/backtest/status/' + currentTaskId);
+                const data = await res.json();
+
+                const statusMap = {
+                    'queued': '排隊中...',
+                    'fetching_data': '正在抓取歷史資料...',
+                    'preparing_signals': '計算指標信號中（此步驟較久）...',
+                    'running_combos': '跑組合回測中...',
+                };
+
+                if (data.status === 'completed') {
+                    showProgress('回測完成！', 100);
+                    document.getElementById('btn-run').disabled = false;
+                    const finishedTaskId = currentTaskId;
+                    await loadHistory();
+                    loadStats();
+                    toggleHistoryResult(finishedTaskId);
+                    setTimeout(hideProgress, 1500);
+                    return;
+                } else if (data.status === 'failed') {
+                    showStatus('回測失敗：' + (data.error || '未知錯誤'), true);
+                    hideProgress();
+                    document.getElementById('btn-run').disabled = false;
+                    return;
+                } else {
+                    const pct = data.progress || 0;
+                    const label = statusMap[data.status] || data.status;
+                    const extra = data.completed_combos
+                        ? ` (${data.completed_combos}/${data.total_combos})`
+                        : '';
+                    showProgress(label + extra, Math.max(pct, 5));
+                    pollStatus();
+                }
+            } catch {
+                pollStatus();
+            }
+        }, 1500);
+    }
+
+    // ── Toggle history result (expand/collapse below the item) ──
+    async function toggleHistoryResult(taskId) {
+        const safeId = taskId.replace(/[^a-zA-Z0-9_]/g, '_');
+        const item = document.getElementById('hi-' + safeId);
+        const panel = document.getElementById('he-' + safeId);
+        if (!item || !panel) return;
+
+        // 已展開 → 收合
+        if (panel.classList.contains('show')) {
+            panel.classList.remove('show');
+            item.classList.remove('expanded');
+            return;
+        }
+
+        // 收合其他已展開的
+        document.querySelectorAll('.history-expand.show').forEach(el => {
+            el.classList.remove('show');
+        });
+        document.querySelectorAll('.history-item.expanded').forEach(el => {
+            el.classList.remove('expanded');
+        });
+
+        // 展開此項
+        item.classList.add('expanded');
+        panel.classList.add('show');
+        panel.innerHTML = '<div style="padding:12px; color:var(--text-muted); font-size:12px">載入中...</div>';
+
+        try {
+            const res = await fetch('/api/backtest/result/' + taskId);
+            const data = await res.json();
+            if (!data || !data.results || !Array.isArray(data.results)) {
+                panel.innerHTML = '<div style="padding:12px; color:var(--text-muted); font-size:12px">找不到回測結果（任務可能已過期）</div>';
+                return;
+            }
+            renderResult(data, panel);
+            item.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } catch (e) {
+            panel.innerHTML = `<div style="padding:12px; color:var(--sell-color); font-size:12px">載入失敗：${e.message}</div>`;
+        }
+    }
+
+    // ── Render result ──
+    let renderCounter = 0;
+    function renderResult(data, targetEl) {
+        const area = targetEl;
+        const results = data.results || [];
+        const uid = 'r' + (++renderCounter) + '_';  // 唯一前綴，避免 ID 衝突
+
+        const nameLabel = data.symbol_name ? ` ${data.symbol_name}` : '';
+        const baseClass = data.buy_and_hold_return >= 0 ? 'pos' : 'neg';
+        let html = `<div class="bt-baseline">基準：買入持有 <span class="val ${baseClass}">${fmtPct(data.buy_and_hold_return)}</span> ｜ ${data.symbol}${nameLabel} ｜ 期間 ${data.period} ｜ 共 ${data.total_combos} 種組合</div>`;
+
+        if (!results.length) {
+            html += '<div class="bt-empty">沒有回測結果</div>';
+            area.innerHTML = html;
+            return;
+        }
+
+        // 只顯示前 100 名
+        const top = results.slice(0, 100);
+
+        html += `<div class="bt-table-wrap"><table class="bt-table">
+            <thead><tr>
+                <th>#</th>
+                <th>指標組合</th>
+                <th class="num">報酬率</th>
+                <th class="num">年化</th>
+                <th class="num">最大回撤</th>
+                <th class="num">勝率</th>
+                <th class="num">交易次數</th>
+                <th class="num">均持有天</th>
+                <th class="num">夏普</th>
+                <th class="num">盈虧比</th>
+            </tr></thead><tbody>`;
+
+        top.forEach((r, idx) => {
+            const rank = r.rank || (idx + 1);
+            const retClass = r.total_return_pct >= 0 ? 'pos' : 'neg';
+            const annClass = r.annual_return_pct >= 0 ? 'pos' : 'neg';
+            const comboTags = (r.combo_display || r.combo).map(c => `<span class="combo-tag">${c}</span>`).join('');
+            const rowId = uid + rank;
+
+            html += `<tr onclick="toggleDetail('${rowId}')" style="cursor:pointer">
+                <td>${rank}</td>
+                <td>${comboTags}</td>
+                <td class="num ${retClass}">${fmtPct(r.total_return_pct)}</td>
+                <td class="num ${annClass}">${fmtPct(r.annual_return_pct)}</td>
+                <td class="num neg">${fmtPct(-Math.abs(r.max_drawdown_pct))}</td>
+                <td class="num">${r.win_rate}%</td>
+                <td class="num">${r.trade_count}</td>
+                <td class="num">${r.avg_hold_days}</td>
+                <td class="num">${r.sharpe_ratio}</td>
+                <td class="num">${r.profit_loss_ratio}</td>
+            </tr>`;
+
+            // 隱藏的交易明細行
+            html += `<tr class="trade-detail-row" id="${rowId}" style="display:none">
+                <td colspan="10"><div class="trade-detail-inner">${renderTrades(r.trades)}</div></td>
+            </tr>`;
+        });
+
+        html += '</tbody></table></div>';
+        area.innerHTML = html;
+    }
+
+    function renderTrades(trades) {
+        if (!trades || !trades.length) return '<div style="padding:8px; color:var(--text-muted)">無交易紀錄</div>';
+        let h = `<table><thead><tr>
+            <th>買入日期</th><th>賣出日期</th><th class="num">買入價</th><th class="num">賣出價</th>
+            <th class="num">持有天</th><th class="num">損益</th><th class="num">損益%</th>
+        </tr></thead><tbody>`;
+        trades.forEach(t => {
+            const cls = t.pnl_pct >= 0 ? 'pos' : 'neg';
+            const forced = t.forced_close ? ' *' : '';
+            h += `<tr>
+                <td>${fmtDate(t.entry_date)}</td>
+                <td>${fmtDate(t.exit_date)}${forced}</td>
+                <td class="num">${fmtNum(t.entry_price)}</td>
+                <td class="num">${fmtNum(t.exit_price)}</td>
+                <td class="num">${t.hold_days}</td>
+                <td class="num ${cls}">${fmtMoney(t.pnl)}</td>
+                <td class="num ${cls}">${fmtPct(t.pnl_pct)}</td>
+            </tr>`;
+        });
+        h += '</tbody></table>';
+        return h;
+    }
+
+    function toggleDetail(rowId) {
+        const row = document.getElementById(rowId);
+        if (!row) return;
+        row.style.display = row.style.display === 'none' ? '' : 'none';
+    }
+
+    // ── History ──
+    let historyRecords = [];  // 存下來給 filter 用
+
+    async function loadHistory() {
+        try {
+            const res = await fetch('/api/backtest/history');
+            const data = await res.json();
+            historyRecords = data.records || [];
+            renderHistory(historyRecords);
+        } catch { /* ignore */ }
+    }
+
+    function renderHistory(records) {
+        const el = document.getElementById('history-list');
+        const countEl = document.getElementById('history-filter-count');
+
+        if (!records.length) {
+            el.innerHTML = '<div class="bt-empty">尚無回測紀錄</div>';
+            countEl.textContent = '';
+            return;
+        }
+
+        const filterVal = (document.getElementById('history-filter').value || '').trim().toLowerCase();
+        const isFiltered = filterVal.length > 0;
+        countEl.textContent = isFiltered ? `${records.length} / ${historyRecords.length}` : '';
+
+        el.innerHTML = records.map(r => {
+            const retClass = (r.best_return || 0) >= 0 ? 'pos' : 'neg';
+            const combo = (r.best_combo || []).join(' + ');
+            const safeId = r.task_id.replace(/[^a-zA-Z0-9_]/g, '_');
+            const nameLabel = r.symbol_name ? ` ${r.symbol_name}` : '';
+            return `<div class="history-item" id="hi-${safeId}" onclick="toggleHistoryResult('${r.task_id}')">
+                <span class="hi-symbol">${r.symbol}${nameLabel}</span>
+                <span>${r.period}</span>
+                <span class="hi-date">${r.created_at || ''}</span>
+                <span>最佳: ${combo} <span class="${retClass}">${fmtPct(r.best_return)}</span></span>
+                <span class="hi-actions">
+                    <button class="hi-del" onclick="event.stopPropagation(); deleteRecord('${r.task_id}')" title="刪除此紀錄">&times;</button>
+                    <span class="hi-toggle">&#9660;</span>
+                </span>
+            </div>
+            <div class="history-expand" id="he-${safeId}"></div>`;
+        }).join('');
+    }
+
+    function filterHistory() {
+        const q = document.getElementById('history-filter').value.trim().toLowerCase();
+        if (!q) { renderHistory(historyRecords); return; }
+        const filtered = historyRecords.filter(r => {
+            const code = (r.symbol || '').toLowerCase();
+            const name = (r.symbol_name || '').toLowerCase();
+            return code.includes(q) || name.includes(q);
+        });
+        renderHistory(filtered);
+    }
+
+    // ── Delete record ──
+    async function deleteRecord(taskId) {
+        if (!confirm('確定刪除此回測紀錄？')) return;
+        try {
+            const res = await fetch('/api/backtest/history/' + taskId, { method: 'DELETE' });
+            const data = await res.json();
+            if (data.status === 'deleted') {
+                loadHistory();
+                loadStats();
+            }
+        } catch (e) {
+            alert('刪除失敗：' + e.message);
+        }
+    }
+
+    // ── Stats leaderboard ──
+    async function loadStats() {
+        try {
+            const res = await fetch('/api/backtest/stats');
+            const data = await res.json();
+            const combos = data.combos || [];
+            const section = document.getElementById('stats-section');
+            const grid = document.getElementById('stats-grid');
+            const sub = document.getElementById('stats-sub');
+
+            if (!combos.length) {
+                section.style.display = 'none';
+                return;
+            }
+
+            section.style.display = '';
+            sub.textContent = `統計自 ${data.stock_count} 檔股票的回測結果（同股票+期間取最新一次）`;
+
+            grid.innerHTML = combos.slice(0, 12).map((c, i) => {
+                const rankClass = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
+                const comboTags = (c.combo_display || c.combo).map(n => `<span class="combo-tag">${n}</span>`).join('');
+
+                const retClass = c.avg_return_pct >= 0 ? 'pos' : 'neg';
+                const bestClass = c.best_return_pct >= 0 ? 'pos' : 'neg';
+                const bestLabel = c.best_symbol_name
+                    ? `${c.best_symbol.replace('.TW','')} ${c.best_symbol_name}`
+                    : c.best_symbol.replace('.TW','');
+
+                // 第 1 名的股票標籤
+                const stockTags = c.first_place.map(fp => {
+                    const label = fp.symbol_name
+                        ? `${fp.symbol.replace('.TW','')} ${fp.symbol_name}`
+                        : fp.symbol.replace('.TW','');
+                    const cls = fp.return_pct >= 0 ? '' : ' neg';
+                    return `<span class="stock-tag${cls}">${label} ${fmtPct(fp.return_pct)}</span>`;
+                }).join('');
+
+                return `<div class="stats-card">
+                    <div class="sc-combos">
+                        <span class="sc-rank ${rankClass}">${i + 1}</span>${comboTags}
+                    </div>
+                    <div class="sc-metrics">
+                        <span>冠軍 <b>${c.first_count} 次</b></span>
+                        <span>平均報酬 <b class="${retClass}">${fmtPct(c.avg_return_pct)}</b></span>
+                        <span>平均勝率 <b>${c.avg_win_rate}%</b></span>
+                        <span>平均夏普 <b>${c.avg_sharpe}</b></span>
+                    </div>
+                    ${c.first_place.length ? `<div class="sc-stocks">冠軍股票：${stockTags}</div>` : ''}
+                </div>`;
+            }).join('');
+        } catch { /* ignore */ }
+    }
+
+    // ── Helpers ──
+    function fmtPct(v) {
+        if (v == null || isNaN(v)) return '--';
+        return (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+    }
+    function fmtNum(v) {
+        if (v == null) return '--';
+        return Number(v).toLocaleString('zh-TW', { maximumFractionDigits: 2 });
+    }
+    function fmtMoney(v) {
+        if (v == null) return '--';
+        const s = (v >= 0 ? '+' : '') + Number(v).toLocaleString('zh-TW');
+        return s;
+    }
+    function fmtDate(d) {
+        if (!d) return '--';
+        return d.slice(0, 10);
+    }
+    function showProgress(text, pct) {
+        const wrap = document.getElementById('progress-wrap');
+        wrap.classList.add('show');
+        document.getElementById('progress-label').textContent = text;
+        document.getElementById('progress-fill').style.width = pct + '%';
+    }
+    function hideProgress() {
+        document.getElementById('progress-wrap').classList.remove('show');
+    }
+    function showStatus(msg, isError) {
+        const el = document.getElementById('bt-status');
+        el.textContent = msg;
+        el.className = 'bt-status' + (isError ? ' error' : '');
+    }
+    function hideStatus() {
+        const el = document.getElementById('bt-status');
+        el.style.display = 'none';
+        el.className = 'bt-status';
+    }
+
+    // ── Init ──
+    loadHistory();
+    loadStats();
+    </script>
+</body>
+</html>
