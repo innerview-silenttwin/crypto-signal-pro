@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="style.css">
     <script>
         // Apply saved theme immediately to prevent flash
-        (function() {
+        (function () {
             var t = localStorage.getItem('csp-theme') || 'kawaii';
             document.documentElement.setAttribute('data-theme', t);
         })();
@@ -41,6 +41,7 @@
                 <a href="trading.html" class="nav-item">幣圈交易中心</a>
                 <a href="sector_trading.html" class="nav-item">台股交易中心</a>
                 <a href="signal_performance.html" class="nav-item">信號績效統計</a>
+                <a href="backtest.html" class="nav-item">📊 回測中心</a>
                 <a href="settings.html" class="nav-item">⚙️ 後台設定</a>
                 <a href="#" class="nav-item" onclick="alert('🏆 會員中心將於 Phase 3 開放！'); return false;">🏆 會員中心</a>
                 <a href="#" class="nav-item" onclick="alert('⚙️ 策略參數將於 Phase 3 開放！'); return false;">⚙️ 策略參數</a>
@@ -65,23 +66,63 @@
             <!-- 頂部實時行情滾動條 (Market Ticker) -->
             <div class="market-ticker-strip">
                 <div id="ticker-content" class="ticker-content">
-                    <span class="ticker-item" data-symbol="BTC/USDT" data-market="crypto"><span class="t-sym">BTC</span> <span id="ticker-btc" class="t-val">--</span> <span class="t-chg" id="ticker-btc-chg">--</span> <span class="t-score" id="ticker-btc-score">--</span></span>
-                    <span class="ticker-item" data-symbol="ETH/USDT" data-market="crypto"><span class="t-sym">ETH</span> <span id="ticker-eth" class="t-val">--</span> <span class="t-chg" id="ticker-eth-chg">--</span> <span class="t-score" id="ticker-eth-score">--</span></span>
-                    <span class="ticker-item" data-symbol="SOL/USDT" data-market="crypto"><span class="t-sym">SOL</span> <span id="ticker-sol" class="t-val">--</span> <span class="t-chg" id="ticker-sol-chg">--</span> <span class="t-score" id="ticker-sol-score">--</span></span>
-                    <span class="ticker-item" data-symbol="2330.TW" data-market="stock"><span class="t-sym">2330 台積電</span> <span id="ticker-2330" class="t-val">--</span> <span class="t-chg" id="ticker-2330-chg">--</span> <span class="t-score" id="ticker-2330-score">--</span></span>
-                    <span class="ticker-item" data-symbol="0050.TW" data-market="stock"><span class="t-sym">0050 台灣50</span> <span id="ticker-0050" class="t-val">--</span> <span class="t-chg" id="ticker-0050-chg">--</span> <span class="t-score" id="ticker-0050-score">--</span></span>
-                    <span class="ticker-item" data-symbol="2317.TW" data-market="stock"><span class="t-sym">2317 鴻海</span> <span id="ticker-2317" class="t-val">--</span> <span class="t-chg" id="ticker-2317-chg">--</span> <span class="t-score" id="ticker-2317-score">--</span></span>
-                    <span class="ticker-item" data-symbol="2881.TW" data-market="stock"><span class="t-sym">2881 富邦金</span> <span id="ticker-2881" class="t-val">--</span> <span class="t-chg" id="ticker-2881-chg">--</span> <span class="t-score" id="ticker-2881-score">--</span></span>
-                    <span class="ticker-item" data-symbol="2603.TW" data-market="stock"><span class="t-sym">2603 長榮</span> <span id="ticker-2603" class="t-val">--</span> <span class="t-chg" id="ticker-2603-chg">--</span> <span class="t-score" id="ticker-2603-score">--</span></span>
+                    <span class="ticker-item" data-symbol="BTC/USDT" data-market="crypto"><span class="t-sym">BTC</span>
+                        <span id="ticker-btc" class="t-val">--</span> <span class="t-chg" id="ticker-btc-chg">--</span>
+                        <span class="t-score" id="ticker-btc-score">--</span></span>
+                    <span class="ticker-item" data-symbol="ETH/USDT" data-market="crypto"><span class="t-sym">ETH</span>
+                        <span id="ticker-eth" class="t-val">--</span> <span class="t-chg" id="ticker-eth-chg">--</span>
+                        <span class="t-score" id="ticker-eth-score">--</span></span>
+                    <span class="ticker-item" data-symbol="SOL/USDT" data-market="crypto"><span class="t-sym">SOL</span>
+                        <span id="ticker-sol" class="t-val">--</span> <span class="t-chg" id="ticker-sol-chg">--</span>
+                        <span class="t-score" id="ticker-sol-score">--</span></span>
+                    <span class="ticker-item" data-symbol="2330.TW" data-market="stock"><span class="t-sym">2330
+                            台積電</span> <span id="ticker-2330" class="t-val">--</span> <span class="t-chg"
+                            id="ticker-2330-chg">--</span> <span class="t-score" id="ticker-2330-score">--</span></span>
+                    <span class="ticker-item" data-symbol="0050.TW" data-market="stock"><span class="t-sym">0050
+                            台灣50</span> <span id="ticker-0050" class="t-val">--</span> <span class="t-chg"
+                            id="ticker-0050-chg">--</span> <span class="t-score" id="ticker-0050-score">--</span></span>
+                    <span class="ticker-item" data-symbol="2317.TW" data-market="stock"><span class="t-sym">2317
+                            鴻海</span> <span id="ticker-2317" class="t-val">--</span> <span class="t-chg"
+                            id="ticker-2317-chg">--</span> <span class="t-score" id="ticker-2317-score">--</span></span>
+                    <span class="ticker-item" data-symbol="2881.TW" data-market="stock"><span class="t-sym">2881
+                            富邦金</span> <span id="ticker-2881" class="t-val">--</span> <span class="t-chg"
+                            id="ticker-2881-chg">--</span> <span class="t-score" id="ticker-2881-score">--</span></span>
+                    <span class="ticker-item" data-symbol="2603.TW" data-market="stock"><span class="t-sym">2603
+                            長榮</span> <span id="ticker-2603" class="t-val">--</span> <span class="t-chg"
+                            id="ticker-2603-chg">--</span> <span class="t-score" id="ticker-2603-score">--</span></span>
                     <!-- 複製第二組以無縫銜接 -->
-                    <span class="ticker-item" data-symbol="BTC/USDT" data-market="crypto"><span class="t-sym">BTC</span> <span id="ticker-btc-clone" class="t-val">--</span> <span class="t-chg" id="ticker-btc-chg-clone">--</span> <span class="t-score" id="ticker-btc-score-clone">--</span></span>
-                    <span class="ticker-item" data-symbol="ETH/USDT" data-market="crypto"><span class="t-sym">ETH</span> <span id="ticker-eth-clone" class="t-val">--</span> <span class="t-chg" id="ticker-eth-chg-clone">--</span> <span class="t-score" id="ticker-eth-score-clone">--</span></span>
-                    <span class="ticker-item" data-symbol="SOL/USDT" data-market="crypto"><span class="t-sym">SOL</span> <span id="ticker-sol-clone" class="t-val">--</span> <span class="t-chg" id="ticker-sol-chg-clone">--</span> <span class="t-score" id="ticker-sol-score-clone">--</span></span>
-                    <span class="ticker-item" data-symbol="2330.TW" data-market="stock"><span class="t-sym">2330 台積電</span> <span id="ticker-2330-clone" class="t-val">--</span> <span class="t-chg" id="ticker-2330-chg-clone">--</span> <span class="t-score" id="ticker-2330-score-clone">--</span></span>
-                    <span class="ticker-item" data-symbol="0050.TW" data-market="stock"><span class="t-sym">0050 台灣50</span> <span id="ticker-0050-clone" class="t-val">--</span> <span class="t-chg" id="ticker-0050-chg-clone">--</span> <span class="t-score" id="ticker-0050-score-clone">--</span></span>
-                    <span class="ticker-item" data-symbol="2317.TW" data-market="stock"><span class="t-sym">2317 鴻海</span> <span id="ticker-2317-clone" class="t-val">--</span> <span class="t-chg" id="ticker-2317-chg-clone">--</span> <span class="t-score" id="ticker-2317-score-clone">--</span></span>
-                    <span class="ticker-item" data-symbol="2881.TW" data-market="stock"><span class="t-sym">2881 富邦金</span> <span id="ticker-2881-clone" class="t-val">--</span> <span class="t-chg" id="ticker-2881-chg-clone">--</span> <span class="t-score" id="ticker-2881-score-clone">--</span></span>
-                    <span class="ticker-item" data-symbol="2603.TW" data-market="stock"><span class="t-sym">2603 長榮</span> <span id="ticker-2603-clone" class="t-val">--</span> <span class="t-chg" id="ticker-2603-chg-clone">--</span> <span class="t-score" id="ticker-2603-score-clone">--</span></span>
+                    <span class="ticker-item" data-symbol="BTC/USDT" data-market="crypto"><span class="t-sym">BTC</span>
+                        <span id="ticker-btc-clone" class="t-val">--</span> <span class="t-chg"
+                            id="ticker-btc-chg-clone">--</span> <span class="t-score"
+                            id="ticker-btc-score-clone">--</span></span>
+                    <span class="ticker-item" data-symbol="ETH/USDT" data-market="crypto"><span class="t-sym">ETH</span>
+                        <span id="ticker-eth-clone" class="t-val">--</span> <span class="t-chg"
+                            id="ticker-eth-chg-clone">--</span> <span class="t-score"
+                            id="ticker-eth-score-clone">--</span></span>
+                    <span class="ticker-item" data-symbol="SOL/USDT" data-market="crypto"><span class="t-sym">SOL</span>
+                        <span id="ticker-sol-clone" class="t-val">--</span> <span class="t-chg"
+                            id="ticker-sol-chg-clone">--</span> <span class="t-score"
+                            id="ticker-sol-score-clone">--</span></span>
+                    <span class="ticker-item" data-symbol="2330.TW" data-market="stock"><span class="t-sym">2330
+                            台積電</span> <span id="ticker-2330-clone" class="t-val">--</span> <span class="t-chg"
+                            id="ticker-2330-chg-clone">--</span> <span class="t-score"
+                            id="ticker-2330-score-clone">--</span></span>
+                    <span class="ticker-item" data-symbol="0050.TW" data-market="stock"><span class="t-sym">0050
+                            台灣50</span> <span id="ticker-0050-clone" class="t-val">--</span> <span class="t-chg"
+                            id="ticker-0050-chg-clone">--</span> <span class="t-score"
+                            id="ticker-0050-score-clone">--</span></span>
+                    <span class="ticker-item" data-symbol="2317.TW" data-market="stock"><span class="t-sym">2317
+                            鴻海</span> <span id="ticker-2317-clone" class="t-val">--</span> <span class="t-chg"
+                            id="ticker-2317-chg-clone">--</span> <span class="t-score"
+                            id="ticker-2317-score-clone">--</span></span>
+                    <span class="ticker-item" data-symbol="2881.TW" data-market="stock"><span class="t-sym">2881
+                            富邦金</span> <span id="ticker-2881-clone" class="t-val">--</span> <span class="t-chg"
+                            id="ticker-2881-chg-clone">--</span> <span class="t-score"
+                            id="ticker-2881-score-clone">--</span></span>
+                    <span class="ticker-item" data-symbol="2603.TW" data-market="stock"><span class="t-sym">2603
+                            長榮</span> <span id="ticker-2603-clone" class="t-val">--</span> <span class="t-chg"
+                            id="ticker-2603-chg-clone">--</span> <span class="t-score"
+                            id="ticker-2603-score-clone">--</span></span>
                 </div>
             </div>
 
@@ -100,8 +141,10 @@
                             </select>
                             <div class="omnibox-divider"></div>
                             <input id="crypto-symbol-input" type="search" placeholder="代碼 (如 BTC/USDT)..." />
-                            <input id="stock-symbol-input" type="search" placeholder="代碼/名稱 (如 2330)..." style="display:none;" />
-                            <input id="futures-symbol-input" type="search" placeholder="期號 (TX/MTX)..." style="display:none;" />
+                            <input id="stock-symbol-input" type="search" placeholder="代碼/名稱 (如 2330)..."
+                                style="display:none;" />
+                            <input id="futures-symbol-input" type="search" placeholder="期號 (TX/MTX)..."
+                                style="display:none;" />
                             <button id="global-load-btn" class="btn-search-icon">🔍</button>
                         </div>
                         <div class="hot-tags">
@@ -138,7 +181,7 @@
                         <span id="alert-text" class="news-text"></span>
                     </div>
                 </div>
-                
+
                 <div class="vertical-divider"></div>
 
                 <div id="event-ticker-area" class="event-ticker-area" style="display: none;">
@@ -183,7 +226,8 @@
                                     <div class="signal-level" id="lvl-btc-1d">Loading</div>
                                     <div class="score-breakdown">
                                         買: <span id="buy-btc-1d">0</span> | 賣: <span id="sell-btc-1d">0</span>
-                                        <span class="info-tooltip" data-tip="買入分/賣出分由 7 項技術指標各自判斷後加權合計（滿分 100）。各指標根據最近 200 根日 K 的 OHLCV 計算：RSI(14) 20% — 相對強弱指標，判斷超買(>70)超賣(<30)。MACD(12,26,9) 20% — 趨勢動能，金叉=買、死叉=賣。EMA交叉(9,21) 15% — 均線交叉方向。成交量 15% — 當日量 vs 20日均量比較，量增確認趨勢。布林帶(20,2) 10% — 價格在帶中的位置，靠近下軌=買、上軌=賣。MFI(14) 10% — 資金流量指標，結合價量判斷資金進出。ADX(14) 10% — 趨勢強度，>25=有趨勢、<20=盤整。買入分>賣出分→方向=BUY；賣出分>買入分→方向=SELL。"><i>i</i></span>
+                                        <span class="info-tooltip"
+                                            data-tip="買入分/賣出分由 7 項技術指標各自判斷後加權合計（滿分 100）。各指標根據最近 200 根日 K 的 OHLCV 計算：RSI(14) 20% — 相對強弱指標，判斷超買(>70)超賣(<30)。MACD(12,26,9) 20% — 趨勢動能，金叉=買、死叉=賣。EMA交叉(9,21) 15% — 均線交叉方向。成交量 15% — 當日量 vs 20日均量比較，量增確認趨勢。布林帶(20,2) 10% — 價格在帶中的位置，靠近下軌=買、上軌=賣。MFI(14) 10% — 資金流量指標，結合價量判斷資金進出。ADX(14) 10% — 趨勢強度，>25=有趨勢、<20=盤整。買入分>賣出分→方向=BUY；賣出分>買入分→方向=SELL。"><i>i</i></span>
                                     </div>
                                 </div>
                             </div>
@@ -218,13 +262,15 @@
                     <div class="resonance-alert" id="res-btc">
                         💡 建議：等待日線與4小時產生共振。
                     </div>
-                    <div style="font-size:10px; color:var(--text-muted); padding:4px 12px; font-weight:600; opacity:0.7">
+                    <div
+                        style="font-size:10px; color:var(--text-muted); padding:4px 12px; font-weight:600; opacity:0.7">
                         建議語根據日線動能分數與方向即時產生 — 分數與方向變動時建議會同步更新
                     </div>
                 </div>
 
                 <!-- 綜合推薦分數（台股時顯示在左欄 signal-card 下方） -->
-                <div id="tla-recommendation-inline" class="tla-recommendation-inline glass-panel" style="display:none;"></div>
+                <div id="tla-recommendation-inline" class="tla-recommendation-inline glass-panel" style="display:none;">
+                </div>
 
                 <!-- 交易圖表區塊 -->
                 <div class="chart-container glass-panel">
@@ -245,7 +291,7 @@
                                     </ul>
                                 </div>
                             </div>
-                            
+
                             <!-- 數據來源與倒數提示 -->
                             <div id="data-source-badge" class="data-source-badge" style="display: none;"></div>
 
@@ -345,7 +391,8 @@
                         <div class="tla-card-header">
                             <span class="tla-icon">🏦</span>
                             <span class="tla-label">籌碼面</span>
-                            <span class="info-tooltip" data-tip="追蹤三大法人（外資/投信/自營商）近 10 個交易日的買賣超張數，結合融資融券增減變化。資料來源：證交所每日收盤後公布的法人買賣超統計。最強加分：外資/投信連續買超 + 融資同步減少（籌碼穩定集中）。最強扣分：法人連續賣超 + 融資暴增（散戶接刀）。綜合分數權重依產業：半導體/電子 35%、傳產 30%、金融 15%。"><i>i</i></span>
+                            <span class="info-tooltip"
+                                data-tip="追蹤三大法人（外資/投信/自營商）近 10 個交易日的買賣超張數，結合融資融券增減變化。資料來源：證交所每日收盤後公布的法人買賣超統計。最強加分：外資/投信連續買超 + 融資同步減少（籌碼穩定集中）。最強扣分：法人連續賣超 + 融資暴增（散戶接刀）。綜合分數權重依產業：半導體/電子 35%、傳產 30%、金融 15%。"><i>i</i></span>
                             <span id="tla-chip-score" class="tla-score-badge"></span>
                         </div>
                         <div id="tla-chipflow" class="tla-body">--</div>
@@ -354,7 +401,8 @@
                         <div class="tla-card-header">
                             <span class="tla-icon">📊</span>
                             <span class="tla-label">技術面</span>
-                            <span class="info-tooltip" data-tip="技術面信號分數由 7 項指標各自判斷後加權合計（滿分 100）。使用最近 200 根日線 K 棒的 OHLCV 計算。K 線來源：虛擬幣=Binance API、台股=Yahoo Finance。指標與權重（台股）：RSI(14) 10%、MACD(12,26,9) 15%、布林帶(20,2) 10%、MFI(14) 15%、EMA交叉(9,21) 15%、成交量 25%、ADX(14) 10%。虛擬幣權重略不同：RSI 20%、MACD 20%、成交量 15%、EMA 15%。"><i>i</i></span>
+                            <span class="info-tooltip"
+                                data-tip="技術面信號分數由 7 項指標各自判斷後加權合計（滿分 100）。使用最近 200 根日線 K 棒的 OHLCV 計算。K 線來源：虛擬幣=Binance API、台股=Yahoo Finance。指標與權重（台股）：RSI(14) 10%、MACD(12,26,9) 15%、布林帶(20,2) 10%、MFI(14) 15%、EMA交叉(9,21) 15%、成交量 25%、ADX(14) 10%。虛擬幣權重略不同：RSI 20%、MACD 20%、成交量 15%、EMA 15%。"><i>i</i></span>
                             <span id="tla-tech-score" class="tla-score-badge"></span>
                         </div>
                         <div id="tla-technical" class="tla-body">--</div>
@@ -363,7 +411,8 @@
                         <div class="tla-card-header">
                             <span class="tla-icon">📋</span>
                             <span class="tla-label">基本面</span>
-                            <span class="info-tooltip" data-tip="成長股用 PEG 比率（P/E÷營收成長率）評估，< 1 為低估；價值股用傳統 P/E + 殖利率評估。營收動能（YoY/MoM）反映未來訂單趨勢。資料來源：證交所公開資訊觀測站（TWSE MOPS）。"><i>i</i></span>
+                            <span class="info-tooltip"
+                                data-tip="成長股用 PEG 比率（P/E÷營收成長率）評估，< 1 為低估；價值股用傳統 P/E + 殖利率評估。營收動能（YoY/MoM）反映未來訂單趨勢。資料來源：證交所公開資訊觀測站（TWSE MOPS）。"><i>i</i></span>
                             <span id="tla-fund-score" class="tla-score-badge"></span>
                         </div>
                         <div id="tla-fundamental" class="tla-body">--</div>
@@ -372,7 +421,8 @@
                         <div class="tla-card-header">
                             <span class="tla-icon">🧭</span>
                             <span class="tla-label">盤勢</span>
-                            <span class="info-tooltip" data-tip="盤勢辨識層（RegimeLayer）綜合 6 項子信號判斷市場所處階段。使用最近 120 根日 K 計算：(1)趨勢確認（Swing High/Low 頭頭高底底高）、(2)均線排列（5/10/20/60MA 排列+方向，六六大順 0-6 分）、(3)位階偵測（120日高低點相對位置百分比）、(4)K線型態（長紅/長黑/吞噬/十字星等 7 種）、(5)量價分析（底部爆量/高檔爆量不漲等 5 種）、(6)ADX趨勢強度（>25有趨勢）。產出 6 種狀態，做多分數對照：強勢多頭=90、多頭=75、底部轉強=70、盤整=50、高檔轉折=25、空頭=15。綜合分數權重依產業不同：半導體/電子 18%、金融 13%、傳產 5%。"><i>i</i></span>
+                            <span class="info-tooltip"
+                                data-tip="盤勢辨識層（RegimeLayer）綜合 6 項子信號判斷市場所處階段。使用最近 120 根日 K 計算：(1)趨勢確認（Swing High/Low 頭頭高底底高）、(2)均線排列（5/10/20/60MA 排列+方向，六六大順 0-6 分）、(3)位階偵測（120日高低點相對位置百分比）、(4)K線型態（長紅/長黑/吞噬/十字星等 7 種）、(5)量價分析（底部爆量/高檔爆量不漲等 5 種）、(6)ADX趨勢強度（>25有趨勢）。產出 6 種狀態，做多分數對照：強勢多頭=90、多頭=75、底部轉強=70、盤整=50、高檔轉折=25、空頭=15。綜合分數權重依產業不同：半導體/電子 18%、金融 13%、傳產 5%。"><i>i</i></span>
                             <span id="tla-regime-score" class="tla-score-badge"></span>
                         </div>
                         <div id="tla-regime" class="tla-body">--</div>
@@ -381,7 +431,8 @@
                         <div class="tla-card-header">
                             <span class="tla-icon">📰</span>
                             <span class="tla-label">消息面</span>
-                            <span class="info-tooltip" data-tip="即時掃描 Yahoo 股市新聞 RSS，透過正負面關鍵字（三級權重：強/中/弱）分析每則新聞的多空情緒。標題權重 30%、摘要權重 100%（防標題殺人）。情緒分數正規化至 -100~+100。若查無相關新聞則不計入綜合分數，避免失真。綜合分數權重：半導體/電子 7%、金融 14%、傳產 10%。"><i>i</i></span>
+                            <span class="info-tooltip"
+                                data-tip="即時掃描 Yahoo 股市新聞 RSS，透過正負面關鍵字（三級權重：強/中/弱）分析每則新聞的多空情緒。標題權重 30%、摘要權重 100%（防標題殺人）。情緒分數正規化至 -100~+100。若查無相關新聞則不計入綜合分數，避免失真。綜合分數權重：半導體/電子 7%、金融 14%、傳產 10%。"><i>i</i></span>
                             <span id="tla-sent-score" class="tla-score-badge"></span>
                         </div>
                         <div id="tla-sentiment" class="tla-body">--</div>
@@ -468,12 +519,12 @@
     <script src="app.js?v=20260321"></script>
     <script>
         // Theme Switcher Logic
-        (function() {
+        (function () {
             var currentTheme = localStorage.getItem('csp-theme') || 'kawaii';
             var btns = document.querySelectorAll('.theme-btn');
 
             function setActiveBtn(theme) {
-                btns.forEach(function(b) {
+                btns.forEach(function (b) {
                     b.classList.toggle('active', b.getAttribute('data-theme-value') === theme);
                 });
             }
@@ -491,8 +542,8 @@
 
             setActiveBtn(currentTheme);
 
-            btns.forEach(function(btn) {
-                btn.addEventListener('click', function() {
+            btns.forEach(function (btn) {
+                btn.addEventListener('click', function () {
                     applyTheme(this.getAttribute('data-theme-value'));
                 });
             });
@@ -510,7 +561,8 @@
             <div class="tutorial-body" style="overflow-y: auto; max-height: calc(85vh - 80px); padding-right: 8px;">
 
                 <!-- ===== 目錄 ===== -->
-                <div class="tutorial-step" style="background: rgba(100,108,255,0.08); border-radius: 8px; padding: 12px 16px;">
+                <div class="tutorial-step"
+                    style="background: rgba(100,108,255,0.08); border-radius: 8px; padding: 12px 16px;">
                     <h4>📋 目錄</h4>
                     <p style="line-height: 2;">
                         <a href="#tut-score" style="color: var(--accent);">1. 動能分數怎麼讀</a><br>
@@ -546,7 +598,8 @@
                 <!-- ===== 2. 共振 ===== -->
                 <div class="tutorial-step" id="tut-resonance">
                     <h4>🎯 2. 核心獲利術：多時框共振</h4>
-                    <p>當 <span class="tutorial-highlight">1D（日線）</span> 與 <span class="tutorial-highlight">4H（四小時線）</span>
+                    <p>當 <span class="tutorial-highlight">1D（日線）</span> 與 <span
+                            class="tutorial-highlight">4H（四小時線）</span>
                         方向完全一致且分數 ≥50 時，稱為「共振」，是進場的高勝率時機！</p>
                 </div>
 
@@ -555,16 +608,63 @@
                     <h4>🕐 3. 收盤後台股資料何時更新？</h4>
                     <p>台股每日 13:30 收盤後，各資料來源的更新時程如下：</p>
                     <table class="tutorial-table">
-                        <thead><tr><th>資料類型</th><th>來源</th><th>約可用時間</th><th>快取策略</th></tr></thead>
+                        <thead>
+                            <tr>
+                                <th>資料類型</th>
+                                <th>來源</th>
+                                <th>約可用時間</th>
+                                <th>快取策略</th>
+                            </tr>
+                        </thead>
                         <tbody>
-                            <tr><td>日K線 (OHLCV)</td><td>TWSE 官方 API</td><td>~14:30</td><td>盤中每 60 秒刷新，盤後用快取</td></tr>
-                            <tr><td>法人買賣超</td><td>FinMind API</td><td>~15:00</td><td>4 小時快取</td></tr>
-                            <tr><td>融資融券餘額</td><td>TWSE 信用交易 API</td><td>~14:30</td><td>4 小時快取 + 本地 35 日歷史</td></tr>
-                            <tr><td>本益比/殖利率</td><td>TWSE OpenAPI</td><td>~14:30</td><td>4 小時快取</td></tr>
-                            <tr><td>營收 YoY/MoM</td><td>TWSE 營收 API</td><td>每月 10 日後</td><td>24 小時快取</td></tr>
-                            <tr><td>主動 ETF 持股</td><td>CMoney</td><td>~15:00</td><td>每日一次快取</td></tr>
-                            <tr><td>新聞消息面</td><td>鉅亨網 / Yahoo RSS</td><td>即時</td><td>30 分鐘快取</td></tr>
-                            <tr><td>超選掃描</td><td>系統自算</td><td>上述資料到位後</td><td>前端手動觸發 / 自動排程</td></tr>
+                            <tr>
+                                <td>日K線 (OHLCV)</td>
+                                <td>TWSE 官方 API</td>
+                                <td>~14:30</td>
+                                <td>盤中每 60 秒刷新，盤後用快取</td>
+                            </tr>
+                            <tr>
+                                <td>法人買賣超</td>
+                                <td>FinMind API</td>
+                                <td>~15:00</td>
+                                <td>4 小時快取</td>
+                            </tr>
+                            <tr>
+                                <td>融資融券餘額</td>
+                                <td>TWSE 信用交易 API</td>
+                                <td>~14:30</td>
+                                <td>4 小時快取 + 本地 35 日歷史</td>
+                            </tr>
+                            <tr>
+                                <td>本益比/殖利率</td>
+                                <td>TWSE OpenAPI</td>
+                                <td>~14:30</td>
+                                <td>4 小時快取</td>
+                            </tr>
+                            <tr>
+                                <td>營收 YoY/MoM</td>
+                                <td>TWSE 營收 API</td>
+                                <td>每月 10 日後</td>
+                                <td>24 小時快取</td>
+                            </tr>
+                            <tr>
+                                <td>主動 ETF 持股</td>
+                                <td>CMoney</td>
+                                <td>~15:00</td>
+                                <td>每日一次快取</td>
+                            </tr>
+                            <tr>
+                                <td>新聞消息面</td>
+                                <td>鉅亨網 / Yahoo RSS</td>
+                                <td>即時</td>
+                                <td>30 分鐘快取</td>
+                            </tr>
+                            <tr>
+                                <td>超選掃描</td>
+                                <td>系統自算</td>
+                                <td>上述資料到位後</td>
+                                <td>前端手動觸發 / 自動排程</td>
+                            </tr>
                         </tbody>
                     </table>
                     <p style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">
@@ -578,18 +678,57 @@
                     <h4>⚖️ 4. 綜合分數與五維權重</h4>
                     <p>每支股票的綜合分數由五大面向加權計算，<span class="tutorial-highlight">不同產業權重不同</span>：</p>
                     <table class="tutorial-table">
-                        <thead><tr><th>面向</th><th>半導體/電子</th><th>金融</th><th>傳產</th><th>預設</th></tr></thead>
+                        <thead>
+                            <tr>
+                                <th>面向</th>
+                                <th>半導體/電子</th>
+                                <th>金融</th>
+                                <th>傳產</th>
+                                <th>預設</th>
+                            </tr>
+                        </thead>
                         <tbody>
-                            <tr><td>籌碼面</td><td>35%</td><td>15%</td><td>30%</td><td>35%</td></tr>
-                            <tr><td>技術面</td><td>25%</td><td>20%</td><td>25%</td><td>25%</td></tr>
-                            <tr><td>基本面</td><td>15%</td><td>38%</td><td>30%</td><td>20%</td></tr>
-                            <tr><td>盤勢</td><td>18%</td><td>13%</td><td>5%</td><td>13%</td></tr>
-                            <tr><td>消息面</td><td>7%</td><td>14%</td><td>10%</td><td>7%</td></tr>
+                            <tr>
+                                <td>籌碼面</td>
+                                <td>35%</td>
+                                <td>15%</td>
+                                <td>30%</td>
+                                <td>35%</td>
+                            </tr>
+                            <tr>
+                                <td>技術面</td>
+                                <td>25%</td>
+                                <td>20%</td>
+                                <td>25%</td>
+                                <td>25%</td>
+                            </tr>
+                            <tr>
+                                <td>基本面</td>
+                                <td>15%</td>
+                                <td>38%</td>
+                                <td>30%</td>
+                                <td>20%</td>
+                            </tr>
+                            <tr>
+                                <td>盤勢</td>
+                                <td>18%</td>
+                                <td>13%</td>
+                                <td>5%</td>
+                                <td>13%</td>
+                            </tr>
+                            <tr>
+                                <td>消息面</td>
+                                <td>7%</td>
+                                <td>14%</td>
+                                <td>10%</td>
+                                <td>7%</td>
+                            </tr>
                         </tbody>
                     </table>
                     <p style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">
                         ※ 主動 ETF 評分額外佔 3~7%，若該股未被任何 ETF 持有，權重自動分配給其他面向。<br>
-                        ※ 所有原始分數先做<span class="tutorial-highlight">百分位正規化</span>（Percentile Normalization），確保各面向分布公平後才加權。
+                        ※ 所有原始分數先做<span class="tutorial-highlight">百分位正規化</span>（Percentile
+                        Normalization），確保各面向分布公平後才加權。
                     </p>
                 </div>
 
@@ -598,18 +737,64 @@
                     <h4>📈 5. 技術面分析</h4>
                     <p><b>計算方式：</b>綜合 10 個技術指標，依產業回測歸因分析調整權重。</p>
                     <table class="tutorial-table">
-                        <thead><tr><th>指標</th><th>用途</th><th>看多判斷</th></tr></thead>
+                        <thead>
+                            <tr>
+                                <th>指標</th>
+                                <th>用途</th>
+                                <th>看多判斷</th>
+                            </tr>
+                        </thead>
                         <tbody>
-                            <tr><td>EMA 均線排列</td><td>趨勢方向（權重最高）</td><td>5 > 10 > 20 > 60 日均線多頭排列</td></tr>
-                            <tr><td>ADX</td><td>趨勢強度</td><td>ADX ≥ 25 且 +DI > -DI</td></tr>
-                            <tr><td>MACD</td><td>動能方向</td><td>MACD 線上穿信號線 + 柱狀圖翻正</td></tr>
-                            <tr><td>RSI (14日)</td><td>超買超賣</td><td>RSI &lt; 30 超賣（偏多）；> 70 超買（偏空）</td></tr>
-                            <tr><td>Stoch RSI</td><td>拉回超賣偵測</td><td>Stoch RSI 在上升趨勢中觸底反彈</td></tr>
-                            <tr><td>成交量</td><td>量價配合</td><td>量增 ≥ 1.5 倍 + 紅K棒</td></tr>
-                            <tr><td>爆量反轉</td><td>主力換手</td><td>量 ≥ 2 倍 + 漲幅 ≥ 2%（底部）</td></tr>
-                            <tr><td>拉回支撐</td><td>均線拉回進場</td><td>回測到均線附近止跌</td></tr>
-                            <tr><td>布林通道</td><td>波動率（低權重）</td><td>觸及下軌反彈</td></tr>
-                            <tr><td>MFI</td><td>資金流（低權重）</td><td>MFI &lt; 20 資金超賣</td></tr>
+                            <tr>
+                                <td>EMA 均線排列</td>
+                                <td>趨勢方向（權重最高）</td>
+                                <td>5 > 10 > 20 > 60 日均線多頭排列</td>
+                            </tr>
+                            <tr>
+                                <td>ADX</td>
+                                <td>趨勢強度</td>
+                                <td>ADX ≥ 25 且 +DI > -DI</td>
+                            </tr>
+                            <tr>
+                                <td>MACD</td>
+                                <td>動能方向</td>
+                                <td>MACD 線上穿信號線 + 柱狀圖翻正</td>
+                            </tr>
+                            <tr>
+                                <td>RSI (14日)</td>
+                                <td>超買超賣</td>
+                                <td>RSI &lt; 30 超賣（偏多）；> 70 超買（偏空）</td>
+                            </tr>
+                            <tr>
+                                <td>Stoch RSI</td>
+                                <td>拉回超賣偵測</td>
+                                <td>Stoch RSI 在上升趨勢中觸底反彈</td>
+                            </tr>
+                            <tr>
+                                <td>成交量</td>
+                                <td>量價配合</td>
+                                <td>量增 ≥ 1.5 倍 + 紅K棒</td>
+                            </tr>
+                            <tr>
+                                <td>爆量反轉</td>
+                                <td>主力換手</td>
+                                <td>量 ≥ 2 倍 + 漲幅 ≥ 2%（底部）</td>
+                            </tr>
+                            <tr>
+                                <td>拉回支撐</td>
+                                <td>均線拉回進場</td>
+                                <td>回測到均線附近止跌</td>
+                            </tr>
+                            <tr>
+                                <td>布林通道</td>
+                                <td>波動率（低權重）</td>
+                                <td>觸及下軌反彈</td>
+                            </tr>
+                            <tr>
+                                <td>MFI</td>
+                                <td>資金流（低權重）</td>
+                                <td>MFI &lt; 20 資金超賣</td>
+                            </tr>
                         </tbody>
                     </table>
                     <p style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">
@@ -633,7 +818,8 @@
                         ● 營收月增率 > 10% 額外 +8 分，殖利率 ≥ 3% +3 分
                     </p>
                     <p><b>價值股軌道</b>（營收 YoY ≤ 15%）：<br>
-                        ● 主要看 <span class="tutorial-highlight">本益比（P/E）</span>或<span class="tutorial-highlight">產業估值百分位</span><br>
+                        ● 主要看 <span class="tutorial-highlight">本益比（P/E）</span>或<span
+                            class="tutorial-highlight">產業估值百分位</span><br>
                         ● P/E &lt; 8 → 90 分（深度低估）<br>
                         ● P/E 12~20 → 55 分（合理）<br>
                         ● P/E > 30 → 15 分（嚴重高估）<br>
@@ -650,13 +836,39 @@
                     <h4>🏦 7. 籌碼面分析</h4>
                     <p><b>計算方式：</b>五大子信號加權。</p>
                     <table class="tutorial-table">
-                        <thead><tr><th>子信號</th><th>權重</th><th>看多判斷</th></tr></thead>
+                        <thead>
+                            <tr>
+                                <th>子信號</th>
+                                <th>權重</th>
+                                <th>看多判斷</th>
+                            </tr>
+                        </thead>
                         <tbody>
-                            <tr><td>外資連買天數</td><td>30%</td><td>連買 ≥ 5 天 → 90 分；淨買超 > 5 萬股額外加分</td></tr>
-                            <tr><td>投信連買天數</td><td>25%</td><td>連買 ≥ 5 天 → 92 分（投信選股精準）</td></tr>
-                            <tr><td>融資餘額增減</td><td>20%</td><td>融資減少 → 高分（散戶離場=籌碼沉澱）；反向指標</td></tr>
-                            <tr><td>融券餘額</td><td>15%</td><td>融券高 + 外資買 → 軋空潛力 85 分</td></tr>
-                            <tr><td>自營商</td><td>10%</td><td>淨買超 > 1 萬股 → 70 分</td></tr>
+                            <tr>
+                                <td>外資連買天數</td>
+                                <td>30%</td>
+                                <td>連買 ≥ 5 天 → 90 分；淨買超 > 5 萬股額外加分</td>
+                            </tr>
+                            <tr>
+                                <td>投信連買天數</td>
+                                <td>25%</td>
+                                <td>連買 ≥ 5 天 → 92 分（投信選股精準）</td>
+                            </tr>
+                            <tr>
+                                <td>融資餘額增減</td>
+                                <td>20%</td>
+                                <td>融資減少 → 高分（散戶離場=籌碼沉澱）；反向指標</td>
+                            </tr>
+                            <tr>
+                                <td>融券餘額</td>
+                                <td>15%</td>
+                                <td>融券高 + 外資買 → 軋空潛力 85 分</td>
+                            </tr>
+                            <tr>
+                                <td>自營商</td>
+                                <td>10%</td>
+                                <td>淨買超 > 1 萬股 → 70 分</td>
+                            </tr>
                         </tbody>
                     </table>
                     <p style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">
@@ -672,14 +884,44 @@
                     <h4>🔥 8. 盤勢偵測系統</h4>
                     <p><b>計算方式：</b>綜合六大子信號的總分，映射為五種盤勢狀態。</p>
                     <table class="tutorial-table">
-                        <thead><tr><th>盤勢狀態</th><th>觸發條件</th><th>對做多的影響</th></tr></thead>
+                        <thead>
+                            <tr>
+                                <th>盤勢狀態</th>
+                                <th>觸發條件</th>
+                                <th>對做多的影響</th>
+                            </tr>
+                        </thead>
                         <tbody>
-                            <tr><td>🟢 強勢多頭</td><td>總分 ≥ 7</td><td>買進信號 ×1.3 倍加成</td></tr>
-                            <tr><td>🟢 多頭</td><td>總分 3~7</td><td>買進信號 ×1.15 倍</td></tr>
-                            <tr><td>🟡 盤整</td><td>總分 -2~+2</td><td>所有信號 ×0.6 倍（避免追高殺低）</td></tr>
-                            <tr><td>🌱 底部轉強</td><td>低檔區 + ≥3 反轉信號</td><td>買進 ×1.4 倍 + 額外 +10 分</td></tr>
-                            <tr><td>⚠️ 高檔轉折</td><td>高檔區 + ≥3 警示信號</td><td>買進 ×0.2 倍（幾乎封鎖）</td></tr>
-                            <tr><td>🔴 空頭</td><td>總分 ≤ -5</td><td>直接封鎖買進信號</td></tr>
+                            <tr>
+                                <td>🟢 強勢多頭</td>
+                                <td>總分 ≥ 7</td>
+                                <td>買進信號 ×1.3 倍加成</td>
+                            </tr>
+                            <tr>
+                                <td>🟢 多頭</td>
+                                <td>總分 3~7</td>
+                                <td>買進信號 ×1.15 倍</td>
+                            </tr>
+                            <tr>
+                                <td>🟡 盤整</td>
+                                <td>總分 -2~+2</td>
+                                <td>所有信號 ×0.6 倍（避免追高殺低）</td>
+                            </tr>
+                            <tr>
+                                <td>🌱 底部轉強</td>
+                                <td>低檔區 + ≥3 反轉信號</td>
+                                <td>買進 ×1.4 倍 + 額外 +10 分</td>
+                            </tr>
+                            <tr>
+                                <td>⚠️ 高檔轉折</td>
+                                <td>高檔區 + ≥3 警示信號</td>
+                                <td>買進 ×0.2 倍（幾乎封鎖）</td>
+                            </tr>
+                            <tr>
+                                <td>🔴 空頭</td>
+                                <td>總分 ≤ -5</td>
+                                <td>直接封鎖買進信號</td>
+                            </tr>
                         </tbody>
                     </table>
                     <p style="margin-top: 8px;"><b>六大子信號：</b><br>
@@ -729,20 +971,74 @@
                 <div class="tutorial-step" id="tut-screener">
                     <h4>🔍 11. 超選 11 大精選類別</h4>
                     <table class="tutorial-table">
-                        <thead><tr><th>類別</th><th>篩選條件</th><th>排序方式</th></tr></thead>
+                        <thead>
+                            <tr>
+                                <th>類別</th>
+                                <th>篩選條件</th>
+                                <th>排序方式</th>
+                            </tr>
+                        </thead>
                         <tbody>
-                            <tr><td>👑 綜合排行榜</td><td>全體前 15 名</td><td>綜合分數 高→低</td></tr>
-                            <tr><td>🏦 外資狂買股</td><td>外資連買 ≥ 3 天</td><td>籌碼分數 高→低</td></tr>
-                            <tr><td>🎯 投信認養股</td><td>投信連買 ≥ 3 天</td><td>籌碼分數 高→低</td></tr>
-                            <tr><td>🔒 籌碼集中股</td><td>融資減 > 500 張 + 法人買超</td><td>籌碼分數 高→低</td></tr>
-                            <tr><td>💎 價值低估股</td><td>P/E &lt; 12 或估值前 30% 低估 + 基本面 ≥ 70</td><td>基本面分數 高→低</td></tr>
-                            <tr><td>📈 成長動能股</td><td>YoY > 15% + PEG &lt; 1.5 + 基本面 ≥ 65</td><td>PEG 低→高（顯示基本面分數）</td></tr>
-                            <tr><td>🚀 技術突破股</td><td>盤勢（強勢多頭/底部轉強）+ 技術 ≥ 55</td><td>技術分數 高→低</td></tr>
-                            <tr><td>📐 趨勢強攻股</td><td>趨勢柱面 ≥ 60 + 非空頭</td><td>趨勢分數 高→低</td></tr>
-                            <tr><td>💥 量能異動股</td><td>量能柱面 ≥ 65 + 非空頭</td><td>量能分數 高→低</td></tr>
-                            <tr><td>🔥 盤勢強攻股</td><td>盤勢為強勢多頭或多頭</td><td>盤勢分數 高→低</td></tr>
-                            <tr><td>🌱 底部轉強股</td><td>盤勢為底部轉強</td><td>盤勢分數 高→低</td></tr>
-                            <tr><td>⚠️ 高檔示警股</td><td>盤勢為高檔轉折或空頭</td><td>盤勢分數 低→高（越危險越前面）</td></tr>
+                            <tr>
+                                <td>👑 綜合排行榜</td>
+                                <td>全體前 15 名</td>
+                                <td>綜合分數 高→低</td>
+                            </tr>
+                            <tr>
+                                <td>🏦 外資狂買股</td>
+                                <td>外資連買 ≥ 3 天</td>
+                                <td>籌碼分數 高→低</td>
+                            </tr>
+                            <tr>
+                                <td>🎯 投信認養股</td>
+                                <td>投信連買 ≥ 3 天</td>
+                                <td>籌碼分數 高→低</td>
+                            </tr>
+                            <tr>
+                                <td>🔒 籌碼集中股</td>
+                                <td>融資減 > 500 張 + 法人買超</td>
+                                <td>籌碼分數 高→低</td>
+                            </tr>
+                            <tr>
+                                <td>💎 價值低估股</td>
+                                <td>P/E &lt; 12 或估值前 30% 低估 + 基本面 ≥ 70</td>
+                                <td>基本面分數 高→低</td>
+                            </tr>
+                            <tr>
+                                <td>📈 成長動能股</td>
+                                <td>YoY > 15% + PEG &lt; 1.5 + 基本面 ≥ 65</td>
+                                <td>PEG 低→高（顯示基本面分數）</td>
+                            </tr>
+                            <tr>
+                                <td>🚀 技術突破股</td>
+                                <td>盤勢（強勢多頭/底部轉強）+ 技術 ≥ 55</td>
+                                <td>技術分數 高→低</td>
+                            </tr>
+                            <tr>
+                                <td>📐 趨勢強攻股</td>
+                                <td>趨勢柱面 ≥ 60 + 非空頭</td>
+                                <td>趨勢分數 高→低</td>
+                            </tr>
+                            <tr>
+                                <td>💥 量能異動股</td>
+                                <td>量能柱面 ≥ 65 + 非空頭</td>
+                                <td>量能分數 高→低</td>
+                            </tr>
+                            <tr>
+                                <td>🔥 盤勢強攻股</td>
+                                <td>盤勢為強勢多頭或多頭</td>
+                                <td>盤勢分數 高→低</td>
+                            </tr>
+                            <tr>
+                                <td>🌱 底部轉強股</td>
+                                <td>盤勢為底部轉強</td>
+                                <td>盤勢分數 高→低</td>
+                            </tr>
+                            <tr>
+                                <td>⚠️ 高檔示警股</td>
+                                <td>盤勢為高檔轉折或空頭</td>
+                                <td>盤勢分數 低→高（越危險越前面）</td>
+                            </tr>
                         </tbody>
                     </table>
                     <p style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">
@@ -755,12 +1051,39 @@
                     <h4>🤖 12. BTC 自動交易策略</h4>
                     <p>系統同時執行 4 組策略，各自獨立持倉與風控：</p>
                     <table class="tutorial-table">
-                        <thead><tr><th>策略</th><th>買進門檻</th><th>含 CryptoFlow</th><th>回測績效</th></tr></thead>
+                        <thead>
+                            <tr>
+                                <th>策略</th>
+                                <th>買進門檻</th>
+                                <th>含 CryptoFlow</th>
+                                <th>回測績效</th>
+                            </tr>
+                        </thead>
                         <tbody>
-                            <tr><td>S1 日線35+Flow</td><td>≥ 35</td><td>✓</td><td>+131.8%｜勝率 52.9%</td></tr>
-                            <tr><td>S2 日線40純技術</td><td>≥ 40</td><td>✗</td><td>+120.0%｜勝率 75.0%</td></tr>
-                            <tr><td>S3 日線40+Flow</td><td>≥ 40</td><td>✓</td><td>+119.7%｜勝率 54.5%</td></tr>
-                            <tr><td>S4 日線35純技術</td><td>≥ 35</td><td>✗</td><td>+116.1%｜勝率 46.7%</td></tr>
+                            <tr>
+                                <td>S1 日線35+Flow</td>
+                                <td>≥ 35</td>
+                                <td>✓</td>
+                                <td>+131.8%｜勝率 52.9%</td>
+                            </tr>
+                            <tr>
+                                <td>S2 日線40純技術</td>
+                                <td>≥ 40</td>
+                                <td>✗</td>
+                                <td>+120.0%｜勝率 75.0%</td>
+                            </tr>
+                            <tr>
+                                <td>S3 日線40+Flow</td>
+                                <td>≥ 40</td>
+                                <td>✓</td>
+                                <td>+119.7%｜勝率 54.5%</td>
+                            </tr>
+                            <tr>
+                                <td>S4 日線35純技術</td>
+                                <td>≥ 35</td>
+                                <td>✗</td>
+                                <td>+116.1%｜勝率 46.7%</td>
+                            </tr>
                         </tbody>
                     </table>
                     <p style="margin-top: 8px;">
@@ -775,7 +1098,13 @@
                 <div class="tutorial-step" id="tut-pros-cons">
                     <h4>⚖️ 13. 各分析系統優缺點</h4>
                     <table class="tutorial-table">
-                        <thead><tr><th>系統</th><th>優點</th><th>缺點 / 限制</th></tr></thead>
+                        <thead>
+                            <tr>
+                                <th>系統</th>
+                                <th>優點</th>
+                                <th>缺點 / 限制</th>
+                            </tr>
+                        </thead>
                         <tbody>
                             <tr>
                                 <td><b>技術面</b></td>
@@ -820,7 +1149,7 @@
         </div>
     </div>
 
-<script src="tooltip.js"></script>
+    <script src="tooltip.js"></script>
 </body>
 
 </html>

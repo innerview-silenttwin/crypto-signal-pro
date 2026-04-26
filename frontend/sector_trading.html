@@ -1,14 +1,17 @@
 <!DOCTYPE html>
 <html lang="zh-TW" data-theme="kawaii">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sector Trading | 台股交易中心</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@500;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script>
-        (function() {
+        (function () {
             var t = localStorage.getItem('csp-theme') || 'kawaii';
             document.documentElement.setAttribute('data-theme', t);
         })();
@@ -23,6 +26,7 @@
             overflow: hidden;
             border: 1.5px solid var(--border-color);
         }
+
         .sector-tab {
             flex: 1;
             padding: 10px 8px 8px;
@@ -30,31 +34,42 @@
             cursor: pointer;
             font-size: 13px;
             font-weight: 700;
-            background: rgba(167,139,250,0.04);
+            background: rgba(167, 139, 250, 0.04);
             color: var(--text-muted);
             border: none;
             transition: all 0.2s;
             font-family: 'Nunito', 'Outfit', sans-serif;
             line-height: 1.3;
         }
+
         .sector-tab:not(:last-child) {
             border-right: 1.5px solid var(--border-color);
         }
+
         .sector-tab:hover {
-            background: rgba(167,139,250,0.1);
+            background: rgba(167, 139, 250, 0.1);
         }
+
         .sector-tab.active {
             background: var(--primary);
             color: #fff;
         }
+
         .sector-tab .tab-indicator {
             display: inline-block;
-            width: 8px; height: 8px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
             margin-right: 6px;
         }
-        .sector-tab .tab-indicator.on { background: #34d399; }
-        .sector-tab .tab-indicator.off { background: #94a3b8; }
+
+        .sector-tab .tab-indicator.on {
+            background: #34d399;
+        }
+
+        .sector-tab .tab-indicator.off {
+            background: #94a3b8;
+        }
 
         /* ── 頁面兩欄佈局（控制列頂端對齊） ── */
         .page-two-col {
@@ -63,26 +78,32 @@
             gap: 0;
             align-items: start;
         }
+
         .page-col-main {
             min-width: 0;
         }
+
         .page-col-side {
             padding: 0 24px 24px 0;
         }
+
         /* ── 左欄主內容間距（取代原 sector-layout 的 padding） ── */
         .sector-main-wrap {
             padding: 0 24px 24px;
         }
+
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(5, 1fr);
             gap: 10px;
             margin-bottom: 14px;
         }
+
         .stat-card {
             padding: 10px 12px;
             text-align: center;
         }
+
         .stat-label {
             font-size: 11px;
             color: var(--text-muted);
@@ -90,36 +111,50 @@
             margin-bottom: 6px;
             font-weight: 700;
         }
+
         .stat-value {
             font-size: 17px;
             font-weight: 800;
             font-family: 'Nunito', 'Outfit';
             color: var(--text-main);
         }
-        .stat-value.positive { color: var(--buy-color, #10b981); }
-        .stat-value.negative { color: var(--sell-color, #ef4444); }
+
+        .stat-value.positive {
+            color: var(--buy-color, #10b981);
+        }
+
+        .stat-value.negative {
+            color: var(--sell-color, #ef4444);
+        }
 
         /* ── 策略卡片 ── */
         .strategy-card {
             padding: 18px;
             margin-bottom: 16px;
         }
+
         .strategy-card h4 {
             font-size: 14px;
             margin-bottom: 10px;
             color: var(--text-main);
         }
+
         .strategy-detail {
             font-size: 12px;
             color: var(--text-muted);
             line-height: 1.8;
         }
-        .strategy-detail strong { color: var(--text-main); }
+
+        .strategy-detail strong {
+            color: var(--text-main);
+        }
+
         .weight-bar {
             display: flex;
             gap: 4px;
             margin-top: 8px;
         }
+
         .weight-segment {
             height: 6px;
             border-radius: 3px;
@@ -133,12 +168,23 @@
             justify-content: space-between;
             align-items: center;
             padding: 10px 0;
-            border-bottom: 1px solid rgba(167,139,250,0.06);
+            border-bottom: 1px solid rgba(167, 139, 250, 0.06);
             font-size: 13px;
         }
-        .holding-item:last-child { border-bottom: none; }
-        .holding-name { font-weight: 700; color: var(--text-main); }
-        .holding-detail { color: var(--text-muted); font-size: 11px; }
+
+        .holding-item:last-child {
+            border-bottom: none;
+        }
+
+        .holding-name {
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .holding-detail {
+            color: var(--text-muted);
+            font-size: 11px;
+        }
 
         /* ── 權益圖表 ── */
         .chart-container {
@@ -155,10 +201,12 @@
             padding: 16px 24px;
             margin-bottom: 16px;
         }
+
         .control-bar .status-text {
             font-size: 13px;
             font-weight: 700;
         }
+
         .btn-toggle {
             padding: 8px 24px;
             border-radius: 12px;
@@ -169,10 +217,12 @@
             font-family: 'Nunito', sans-serif;
             transition: all 0.2s;
         }
+
         .btn-toggle.start {
             background: linear-gradient(135deg, #34d399, #10b981);
             color: #fff;
         }
+
         .btn-toggle.stop {
             background: linear-gradient(135deg, #f87171, #ef4444);
             color: #fff;
@@ -184,17 +234,19 @@
             gap: 10px;
             align-items: center;
             padding: 10px 20px;
-            background: rgba(167,139,250,0.04);
+            background: rgba(167, 139, 250, 0.04);
             border-radius: 16px;
             margin: 0 24px 16px;
             border: 1.5px solid var(--border-color);
         }
+
         .global-control-bar .ctrl-divider {
             width: 1.5px;
             height: 24px;
             background: var(--border-color);
             margin: 0 4px;
         }
+
         .global-control-bar .btn-global {
             padding: 8px 16px;
             border-radius: 12px;
@@ -203,19 +255,22 @@
             border: 1.5px solid var(--border-color);
             cursor: pointer;
             font-family: 'Nunito', sans-serif;
-            background: rgba(255,255,255,0.6);
+            background: rgba(255, 255, 255, 0.6);
             color: var(--text-main);
             transition: all 0.2s;
         }
+
         .global-control-bar .btn-global:hover {
             background: var(--primary);
             color: #fff;
         }
+
         .global-control-bar .btn-global.active-bg {
             background: linear-gradient(135deg, #34d399, #10b981);
             color: #fff;
             border-color: transparent;
         }
+
         .auto-status {
             font-size: 12px;
             color: var(--text-muted);
@@ -223,7 +278,11 @@
         }
 
         /* 歷史表格 */
-        .history-table { width: 100%; border-collapse: collapse; }
+        .history-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
         .history-table th {
             font-size: 11px;
             color: var(--text-muted);
@@ -232,15 +291,29 @@
             padding: 8px 12px;
             border-bottom: 1.5px solid var(--border-color);
         }
+
         .history-table td {
             font-size: 12px;
             padding: 10px 12px;
-            border-bottom: 1px solid rgba(167,139,250,0.05);
+            border-bottom: 1px solid rgba(167, 139, 250, 0.05);
             color: var(--text-main);
         }
-        .history-table .buy-row td:nth-child(3) { color: var(--buy-color, #10b981); font-weight: 700; }
-        .history-table .sell-row td:nth-child(3) { color: var(--sell-color, #ef4444); font-weight: 700; }
-        .history-table th { position: relative; overflow: visible; white-space: nowrap; }
+
+        .history-table .buy-row td:nth-child(3) {
+            color: var(--buy-color, #10b981);
+            font-weight: 700;
+        }
+
+        .history-table .sell-row td:nth-child(3) {
+            color: var(--sell-color, #ef4444);
+            font-weight: 700;
+        }
+
+        .history-table th {
+            position: relative;
+            overflow: visible;
+            white-space: nowrap;
+        }
 
         /* ══ 股票搜尋列 ══ */
         .stock-search-bar {
@@ -248,16 +321,18 @@
             align-items: center;
             gap: 10px;
             padding: 10px 20px;
-            background: rgba(167,139,250,0.04);
+            background: rgba(167, 139, 250, 0.04);
             border-radius: 16px;
             margin: 0 24px 16px;
             border: 1.5px solid var(--border-color);
         }
+
         .stock-search-bar .search-icon {
             font-size: 15px;
             opacity: 0.5;
             flex-shrink: 0;
         }
+
         .stock-search-bar input {
             flex: 1;
             border: none;
@@ -267,7 +342,11 @@
             font-family: 'Inter', sans-serif;
             outline: none;
         }
-        .stock-search-bar input::placeholder { color: var(--text-muted); }
+
+        .stock-search-bar input::placeholder {
+            color: var(--text-muted);
+        }
+
         .btn-search {
             padding: 6px 18px;
             border-radius: 10px;
@@ -281,18 +360,30 @@
             transition: all 0.2s;
             white-space: nowrap;
         }
-        .btn-search:hover { opacity: 0.85; }
-        .btn-search:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .btn-search:hover {
+            opacity: 0.85;
+        }
+
+        .btn-search:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         .search-spinner {
             display: none;
-            width: 16px; height: 16px;
-            border: 2px solid rgba(167,139,250,0.25);
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(167, 139, 250, 0.25);
             border-top-color: var(--primary);
             border-radius: 50%;
             animation: spin 0.7s linear infinite;
             flex-shrink: 0;
         }
-        .search-spinner.visible { display: block; }
+
+        .search-spinner.visible {
+            display: block;
+        }
 
         /* ══ 分析卡展開區 ══ */
         .analysis-result-wrap {
@@ -302,14 +393,16 @@
             opacity: 0;
             transition: max-height 0.4s ease, opacity 0.3s ease;
         }
+
         .analysis-result-wrap.open {
             max-height: 1200px;
             opacity: 1;
         }
+
         .analysis-result-card {
             border-radius: 16px;
             border: 1.5px solid var(--border-color);
-            background: var(--card-bg, rgba(255,255,255,0.03));
+            background: var(--card-bg, rgba(255, 255, 255, 0.03));
             padding: 16px 20px;
             position: relative;
         }
@@ -321,27 +414,31 @@
             gap: 10px;
             margin-bottom: 14px;
         }
+
         .arc-title {
             font-size: 15px;
             font-weight: 800;
             color: var(--text-main);
         }
+
         .arc-subtitle {
             font-size: 11px;
             color: var(--text-muted);
         }
+
         .arc-sector-tag {
             display: inline-block;
             font-size: 10px;
             font-weight: 700;
             padding: 2px 7px;
             border-radius: 6px;
-            background: rgba(167,139,250,0.12);
+            background: rgba(167, 139, 250, 0.12);
             color: var(--primary);
-            border: 1px solid rgba(167,139,250,0.25);
+            border: 1px solid rgba(167, 139, 250, 0.25);
             margin-top: 3px;
             letter-spacing: 0.02em;
         }
+
         .arc-goto {
             margin-left: auto;
             padding: 4px 12px;
@@ -355,7 +452,12 @@
             font-family: 'Nunito', sans-serif;
             transition: all 0.2s;
         }
-        .arc-goto:hover { background: var(--primary); color: #fff; }
+
+        .arc-goto:hover {
+            background: var(--primary);
+            color: #fff;
+        }
+
         .arc-close {
             background: none;
             border: none;
@@ -366,7 +468,10 @@
             padding: 0 4px;
             transition: color 0.2s;
         }
-        .arc-close:hover { color: var(--text-main); }
+
+        .arc-close:hover {
+            color: var(--text-main);
+        }
 
         /* 分數卡片列 */
         .score-grid {
@@ -375,18 +480,21 @@
             gap: 10px;
             margin-bottom: 12px;
         }
+
         .score-card {
             border-radius: 12px;
             padding: 10px 12px;
-            border: 1.5px solid rgba(167,139,250,0.1);
-            background: rgba(167,139,250,0.03);
+            border: 1.5px solid rgba(167, 139, 250, 0.1);
+            background: rgba(167, 139, 250, 0.03);
             display: flex;
             flex-direction: column;
             gap: 4px;
         }
+
         .score-card.composite {
             border: 2px solid;
         }
+
         .sc-label {
             font-size: 10px;
             font-weight: 700;
@@ -394,29 +502,37 @@
             text-transform: uppercase;
             letter-spacing: 0.05em;
         }
+
         .sc-num {
             font-size: 22px;
             font-weight: 800;
             font-family: 'Outfit', sans-serif;
             line-height: 1;
         }
-        .score-card.composite .sc-num { font-size: 28px; }
+
+        .score-card.composite .sc-num {
+            font-size: 28px;
+        }
+
         .sc-tag {
             font-size: 11px;
             font-weight: 700;
         }
+
         .sc-bar-wrap {
             height: 5px;
             border-radius: 3px;
-            background: rgba(167,139,250,0.1);
+            background: rgba(167, 139, 250, 0.1);
             overflow: hidden;
             margin-top: 2px;
         }
+
         .sc-bar-fill {
             height: 100%;
             border-radius: 3px;
             transition: width 0.6s ease;
         }
+
         .sc-detail {
             font-size: 10px;
             color: var(--text-muted);
@@ -433,44 +549,73 @@
             flex-wrap: wrap;
             font-size: 11px;
             color: var(--text-muted);
-            border-top: 1px solid rgba(167,139,250,0.08);
+            border-top: 1px solid rgba(167, 139, 250, 0.08);
             padding-top: 10px;
         }
-        .arc-advice-row .adv-item { display: flex; gap: 4px; align-items: center; }
-        .arc-advice-row .adv-item span:first-child { opacity: 0.6; }
-        .arc-advice-row .adv-item strong { color: var(--text-main); }
+
+        .arc-advice-row .adv-item {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+        }
+
+        .arc-advice-row .adv-item span:first-child {
+            opacity: 0.6;
+        }
+
+        .arc-advice-row .adv-item strong {
+            color: var(--text-main);
+        }
 
         /* 骨架 loading */
         .sc-skeleton {
             animation: skeleton-pulse 1.2s infinite;
         }
+
         @keyframes skeleton-pulse {
-            0%, 100% { opacity: 0.4; }
-            50% { opacity: 0.9; }
+
+            0%,
+            100% {
+                opacity: 0.4;
+            }
+
+            50% {
+                opacity: 0.9;
+            }
         }
-        .sc-skeleton .sc-num { color: rgba(167,139,250,0.2); }
-        .sc-skeleton .sc-tag { color: rgba(167,139,250,0.2); }
+
+        .sc-skeleton .sc-num {
+            color: rgba(167, 139, 250, 0.2);
+        }
+
+        .sc-skeleton .sc-tag {
+            color: rgba(167, 139, 250, 0.2);
+        }
 
         /* 交易信號判定 */
         .trading-signal-box {
             border-radius: 12px;
             padding: 12px 16px;
-            border: 1.5px solid rgba(167,139,250,0.12);
-            background: rgba(167,139,250,0.03);
+            border: 1.5px solid rgba(167, 139, 250, 0.12);
+            background: rgba(167, 139, 250, 0.03);
         }
+
         .trading-signal-box.verdict-buy {
-            border-color: rgba(52,211,153,0.4);
-            background: rgba(52,211,153,0.06);
+            border-color: rgba(52, 211, 153, 0.4);
+            background: rgba(52, 211, 153, 0.06);
         }
+
         .trading-signal-box.verdict-sell {
-            border-color: rgba(239,68,68,0.4);
-            background: rgba(239,68,68,0.06);
+            border-color: rgba(239, 68, 68, 0.4);
+            background: rgba(239, 68, 68, 0.06);
         }
+
         .ts-verdict {
             font-size: 15px;
             font-weight: 800;
             margin-bottom: 8px;
         }
+
         .ts-row {
             display: flex;
             justify-content: space-between;
@@ -478,24 +623,41 @@
             font-size: 12px;
             padding: 3px 0;
         }
-        .ts-label { color: var(--text-muted); font-weight: 600; }
-        .ts-value { font-weight: 700; color: var(--text-main); }
-        .ts-pass { color: #10b981; }
-        .ts-fail { color: #ef4444; }
+
+        .ts-label {
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .ts-value {
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .ts-pass {
+            color: #10b981;
+        }
+
+        .ts-fail {
+            color: #ef4444;
+        }
+
         .ts-bar-track {
             flex: 1;
             height: 6px;
             border-radius: 3px;
-            background: rgba(167,139,250,0.1);
+            background: rgba(167, 139, 250, 0.1);
             margin: 0 10px;
             position: relative;
             overflow: visible;
         }
+
         .ts-bar-fill {
             height: 100%;
             border-radius: 3px;
             transition: width 0.5s ease;
         }
+
         .ts-bar-threshold {
             position: absolute;
             top: -3px;
@@ -505,8 +667,16 @@
             opacity: 0.6;
             border-radius: 1px;
         }
-        .ts-label { min-width: 70px; }
-        .ts-value { min-width: 60px; text-align: right; }
+
+        .ts-label {
+            min-width: 70px;
+        }
+
+        .ts-value {
+            min-width: 60px;
+            text-align: right;
+        }
+
         /* 買入條件 check 標籤 */
         .ts-conditions {
             display: flex;
@@ -514,6 +684,7 @@
             margin-bottom: 8px;
             flex-wrap: wrap;
         }
+
         .ts-cond {
             font-size: 10px;
             font-weight: 700;
@@ -521,62 +692,73 @@
             border-radius: 10px;
             white-space: nowrap;
         }
+
         .ts-cond-pass {
-            background: rgba(16,185,129,0.12);
+            background: rgba(16, 185, 129, 0.12);
             color: #10b981;
-            border: 1px solid rgba(16,185,129,0.3);
+            border: 1px solid rgba(16, 185, 129, 0.3);
         }
+
         .ts-cond-fail {
-            background: rgba(239,68,68,0.12);
+            background: rgba(239, 68, 68, 0.12);
             color: #ef4444;
-            border: 1px solid rgba(239,68,68,0.3);
+            border: 1px solid rgba(239, 68, 68, 0.3);
         }
+
         /* 五維分數拆解 */
         .ts-dims-section {
             margin-top: 10px;
             padding-top: 8px;
-            border-top: 1px solid rgba(255,255,255,0.06);
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
         }
+
         .ts-dims-title {
             font-size: 10px;
             font-weight: 700;
             color: var(--text-muted);
             margin-bottom: 6px;
         }
+
         .ts-dim-row {
             display: flex;
             align-items: center;
             font-size: 11px;
             padding: 2px 0;
         }
+
         .ts-dim-label {
             min-width: 60px;
             color: var(--text-muted);
             font-weight: 600;
         }
+
         .ts-dim-weight {
             font-size: 9px;
             opacity: 0.5;
             margin-left: 2px;
         }
+
         .ts-dim-score {
             min-width: 28px;
             text-align: right;
             font-weight: 800;
             font-size: 12px;
         }
+
         /* Layer 修正明細 */
         .ts-mods-section {
             margin-top: 8px;
             padding-top: 8px;
-            border-top: 1px solid rgba(255,255,255,0.06);
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
         }
+
         .ts-mods-chips {
             display: flex;
             flex-wrap: wrap;
             gap: 4px;
             margin-bottom: 4px;
         }
+
         .ts-mod-chip {
             display: inline-flex;
             gap: 4px;
@@ -584,52 +766,69 @@
             font-size: 10px;
             padding: 2px 8px;
             border-radius: 8px;
-            border: 1px solid rgba(255,255,255,0.1);
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
-        .ts-mod-name { font-weight: 700; }
-        .ts-mod-effect { opacity: 0.8; }
+
+        .ts-mod-name {
+            font-weight: 700;
+        }
+
+        .ts-mod-effect {
+            opacity: 0.8;
+        }
+
         .ts-mod-pos {
-            background: rgba(16,185,129,0.08);
-            border-color: rgba(16,185,129,0.25);
+            background: rgba(16, 185, 129, 0.08);
+            border-color: rgba(16, 185, 129, 0.25);
             color: #10b981;
         }
+
         .ts-mod-neg {
-            background: rgba(245,158,11,0.08);
-            border-color: rgba(245,158,11,0.25);
+            background: rgba(245, 158, 11, 0.08);
+            border-color: rgba(245, 158, 11, 0.25);
             color: #f59e0b;
         }
+
         .ts-mod-veto {
-            background: rgba(239,68,68,0.1);
-            border-color: rgba(239,68,68,0.3);
+            background: rgba(239, 68, 68, 0.1);
+            border-color: rgba(239, 68, 68, 0.3);
             color: #ef4444;
         }
+
         .ts-mod-neutral {
-            background: rgba(148,163,184,0.08);
+            background: rgba(148, 163, 184, 0.08);
             color: var(--text-muted);
         }
+
         .ts-mods-reasons {
             font-size: 10px;
             color: var(--text-muted);
             line-height: 1.6;
         }
-        .ts-mod-reason { opacity: 0.8; }
+
+        .ts-mod-reason {
+            opacity: 0.8;
+        }
 
         /* ── 超選入榜區塊 ── */
         .screener-ranks-section {
             border-top: 1px solid var(--border-color);
             padding-top: 10px;
         }
+
         .sr-header {
             font-size: 12px;
             font-weight: 700;
             color: var(--text-main);
             margin-bottom: 8px;
         }
+
         .sr-chips {
             display: flex;
             flex-wrap: wrap;
             gap: 6px;
         }
+
         .sr-chip {
             display: inline-flex;
             align-items: center;
@@ -637,36 +836,46 @@
             padding: 4px 10px;
             border-radius: 20px;
             font-size: 11px;
-            background: rgba(167,139,250,0.08);
-            border: 1px solid rgba(167,139,250,0.25);
+            background: rgba(167, 139, 250, 0.08);
+            border: 1px solid rgba(167, 139, 250, 0.25);
             color: var(--text-main);
             transition: all 0.15s;
             cursor: default;
         }
+
         .sr-chip:hover {
-            background: rgba(167,139,250,0.16);
+            background: rgba(167, 139, 250, 0.16);
             transform: translateY(-1px);
         }
+
         .sr-chip-warn {
-            background: rgba(239,68,68,0.08);
-            border-color: rgba(239,68,68,0.3);
+            background: rgba(239, 68, 68, 0.08);
+            border-color: rgba(239, 68, 68, 0.3);
         }
+
         .sr-chip-warn:hover {
-            background: rgba(239,68,68,0.15);
+            background: rgba(239, 68, 68, 0.15);
         }
-        .sr-icon { font-size: 13px; }
+
+        .sr-icon {
+            font-size: 13px;
+        }
+
         .sr-name {
             font-weight: 600;
             white-space: nowrap;
         }
+
         .sr-rank {
             font-weight: 800;
             color: var(--primary);
             font-size: 12px;
         }
+
         .sr-chip-warn .sr-rank {
             color: #ef4444;
         }
+
         .sr-score {
             font-size: 10px;
             color: var(--text-muted);
@@ -674,6 +883,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="app-container">
         <aside class="sidebar glass-panel">
@@ -692,11 +902,14 @@
                 <a href="trading.html" class="nav-item">幣圈交易中心</a>
                 <a href="sector_trading.html" class="nav-item active">台股交易中心</a>
                 <a href="signal_performance.html" class="nav-item">信號績效統計</a>
+                <a href="backtest.html" class="nav-item">📊 回測中心</a>
                 <a href="settings.html" class="nav-item">⚙️ 後台設定</a>
             </nav>
-            <div class="market-panel" style="margin-top:auto; background:rgba(167,139,250,0.05); padding:16px; border-radius:14px; border:1.5px solid rgba(167,139,250,0.1)">
+            <div class="market-panel"
+                style="margin-top:auto; background:rgba(167,139,250,0.05); padding:16px; border-radius:14px; border:1.5px solid rgba(167,139,250,0.1)">
                 <div style="font-size:11px; color:var(--text-muted); margin-bottom:8px; font-weight:700">類股自動交易</div>
-                <div style="font-size:13px; font-weight:600">背景引擎: <span id="sidebar-auto-status" class="status-badge inactive">未啟動</span></div>
+                <div style="font-size:13px; font-weight:600">背景引擎: <span id="sidebar-auto-status"
+                        class="status-badge inactive">未啟動</span></div>
             </div>
         </aside>
 
@@ -710,347 +923,370 @@
 
             <!-- 頁面兩欄佈局 -->
             <div class="page-two-col">
-            <div class="page-col-main">
+                <div class="page-col-main">
 
-            <!-- 全域控制列 -->
-            <div class="global-control-bar glass-panel">
-                <button id="btn-start-auto" class="btn-global">啟動背景交易引擎</button>
-                <button id="btn-stop-auto" class="btn-global">停止</button>
-                <button id="btn-run-once" class="btn-global">手動執行一次</button>
-                <div class="ctrl-divider"></div>
-                <button id="btn-toggle-sector" class="btn-toggle start" style="padding:8px 20px; font-size:13px">開啟交易</button>
-                <div class="auto-status">
-                    <span id="auto-status-text">引擎狀態: 未啟動</span>
-                    <span style="margin-left:12px" id="auto-last-run">上次執行: --</span>
-                </div>
-            </div>
-
-            <!-- 股票搜尋列 -->
-            <div class="stock-search-bar glass-panel" style="margin-top:0">
-                <span class="search-icon">🔍</span>
-                <input id="stock-search-input" type="text"
-                    placeholder="輸入股票代碼或名稱查詢策略分數（如：2330 或台積電）"
-                    autocomplete="off" autocorrect="off" spellcheck="false"
-                />
-                <div class="search-spinner" id="search-spinner"></div>
-                <button id="btn-search-stock" class="btn-search">查詢分數</button>
-            </div>
-
-            <!-- 分析結果卡片（展開式） -->
-            <div class="analysis-result-wrap" id="analysis-result-wrap">
-                <div class="analysis-result-card glass-panel">
-                    <div class="arc-header">
-                        <div>
-                            <div class="arc-title" id="arc-title">-- ----</div>
-                            <span class="arc-sector-tag" id="arc-sector-tag" style="display:none"></span>
-                            <div class="arc-subtitle" id="arc-subtitle">五維策略分數評估</div>
+                    <!-- 全域控制列 -->
+                    <div class="global-control-bar glass-panel">
+                        <button id="btn-start-auto" class="btn-global">啟動背景交易引擎</button>
+                        <button id="btn-stop-auto" class="btn-global">停止</button>
+                        <button id="btn-run-once" class="btn-global">手動執行一次</button>
+                        <div class="ctrl-divider"></div>
+                        <button id="btn-toggle-sector" class="btn-toggle start"
+                            style="padding:8px 20px; font-size:13px">開啟交易</button>
+                        <div class="auto-status">
+                            <span id="auto-status-text">引擎狀態: 未啟動</span>
+                            <span style="margin-left:12px" id="auto-last-run">上次執行: --</span>
                         </div>
-                        <button class="arc-goto" id="arc-goto-btn">前往儀表板分析 ↗</button>
-                        <button class="arc-close" id="arc-close-btn" title="關閉">✕</button>
                     </div>
-                    <div class="score-grid" id="score-grid">
-                        <!-- JS 動態生成 -->
-                    </div>
-                    <div class="arc-advice-row" id="arc-advice-row">
-                        <!-- JS 動態生成 -->
-                    </div>
-                    <div id="arc-trading-signal" style="margin-top:12px">
-                        <!-- JS 動態生成：交易信號判定 -->
-                    </div>
-                    <div id="arc-screener-ranks" style="margin-top:12px">
-                        <!-- JS 動態生成：超選入榜 -->
-                    </div>
-                </div>
-            </div>
 
-            <!-- 各類股損益長條圖 -->
-            <div class="glass-panel" style="margin: 0 24px 16px; padding: 12px 20px 8px">
-                <div style="font-size:11px; color:var(--text-muted); margin-bottom:6px; font-weight:700">各類股損益比較</div>
-                <div style="height:150px; position:relative">
-                    <canvas id="sector-bar-chart"></canvas>
-                </div>
-            </div>
+                    <!-- 股票搜尋列 -->
+                    <div class="stock-search-bar glass-panel" style="margin-top:0">
+                        <span class="search-icon">🔍</span>
+                        <input id="stock-search-input" type="text" placeholder="輸入股票代碼或名稱查詢策略分數（如：2330 或台積電）"
+                            autocomplete="off" autocorrect="off" spellcheck="false" />
+                        <div class="search-spinner" id="search-spinner"></div>
+                        <button id="btn-search-stock" class="btn-search">查詢分數</button>
+                    </div>
 
-            <!-- 類股 Tab -->
-            <div class="sector-tabs" style="margin: 0 24px 16px" id="sector-tabs">
-                <!-- 動態生成 -->
-            </div>
-
-            <!-- 類股內容 -->
-            <div id="sector-content">
-                <!-- 隱藏元素，供 JS 更新用（不顯示） -->
-                <span id="sector-title" style="display:none"></span>
-                <span id="sector-desc" style="display:none"></span>
-
-                <div class="sector-main-wrap">
-                        <!-- 數據卡片 -->
-                        <div class="stats-grid">
-                            <div class="stat-card glass-panel" style="border-top: 2px solid var(--primary)">
-                                <div class="stat-label">四類總損益</div>
-                                <div class="stat-value" id="g-pl">--</div>
+                    <!-- 分析結果卡片（展開式） -->
+                    <div class="analysis-result-wrap" id="analysis-result-wrap">
+                        <div class="analysis-result-card glass-panel">
+                            <div class="arc-header">
+                                <div>
+                                    <div class="arc-title" id="arc-title">-- ----</div>
+                                    <span class="arc-sector-tag" id="arc-sector-tag" style="display:none"></span>
+                                    <div class="arc-subtitle" id="arc-subtitle">五維策略分數評估</div>
+                                </div>
+                                <button class="arc-goto" id="arc-goto-btn">前往儀表板分析 ↗</button>
+                                <button class="arc-close" id="arc-close-btn" title="關閉">✕</button>
                             </div>
-                            <div class="stat-card glass-panel" style="border-top: 2px solid var(--primary)">
-                                <div class="stat-label">四類總投報率</div>
-                                <div class="stat-value" id="g-roi">--</div>
+                            <div class="score-grid" id="score-grid">
+                                <!-- JS 動態生成 -->
                             </div>
-                            <div class="stat-card glass-panel">
-                                <div class="stat-label">當前類股淨值</div>
-                                <div class="stat-value" id="s-equity">--</div>
+                            <div class="arc-advice-row" id="arc-advice-row">
+                                <!-- JS 動態生成 -->
                             </div>
-                            <div class="stat-card glass-panel" id="s-pl-card">
-                                <div class="stat-label">當前類股損益</div>
-                                <div class="stat-value" id="s-pl">--</div>
+                            <div id="arc-trading-signal" style="margin-top:12px">
+                                <!-- JS 動態生成：交易信號判定 -->
                             </div>
-                            <div class="stat-card glass-panel">
-                                <div class="stat-label">當前類股勝率</div>
-                                <div class="stat-value" id="s-winrate">--</div>
+                            <div id="arc-screener-ranks" style="margin-top:12px">
+                                <!-- JS 動態生成：超選入榜 -->
                             </div>
                         </div>
+                    </div>
 
-                        <!-- 交易歷史 -->
-                        <div class="card glass-panel" style="padding:20px">
-                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px">
-                                <h3 style="font-size:14px; color:var(--text-main)">交易歷史</h3>
-                                <div style="display:flex; gap:8px">
-                                    <button id="btn-prev" class="btn-global" style="padding:4px 12px; font-size:11px">上一頁</button>
-                                    <span id="page-info" style="font-size:11px; align-self:center; color:var(--text-muted)">1</span>
-                                    <button id="btn-next" class="btn-global" style="padding:4px 12px; font-size:11px">下一頁</button>
+                    <!-- 各類股損益長條圖 -->
+                    <div class="glass-panel" style="margin: 0 24px 16px; padding: 12px 20px 8px">
+                        <div style="font-size:11px; color:var(--text-muted); margin-bottom:6px; font-weight:700">各類股損益比較
+                        </div>
+                        <div style="height:150px; position:relative">
+                            <canvas id="sector-bar-chart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- 類股 Tab -->
+                    <div class="sector-tabs" style="margin: 0 24px 16px" id="sector-tabs">
+                        <!-- 動態生成 -->
+                    </div>
+
+                    <!-- 類股內容 -->
+                    <div id="sector-content">
+                        <!-- 隱藏元素，供 JS 更新用（不顯示） -->
+                        <span id="sector-title" style="display:none"></span>
+                        <span id="sector-desc" style="display:none"></span>
+
+                        <div class="sector-main-wrap">
+                            <!-- 數據卡片 -->
+                            <div class="stats-grid">
+                                <div class="stat-card glass-panel" style="border-top: 2px solid var(--primary)">
+                                    <div class="stat-label">四類總損益</div>
+                                    <div class="stat-value" id="g-pl">--</div>
+                                </div>
+                                <div class="stat-card glass-panel" style="border-top: 2px solid var(--primary)">
+                                    <div class="stat-label">四類總投報率</div>
+                                    <div class="stat-value" id="g-roi">--</div>
+                                </div>
+                                <div class="stat-card glass-panel">
+                                    <div class="stat-label">當前類股淨值</div>
+                                    <div class="stat-value" id="s-equity">--</div>
+                                </div>
+                                <div class="stat-card glass-panel" id="s-pl-card">
+                                    <div class="stat-label">當前類股損益</div>
+                                    <div class="stat-value" id="s-pl">--</div>
+                                </div>
+                                <div class="stat-card glass-panel">
+                                    <div class="stat-label">當前類股勝率</div>
+                                    <div class="stat-value" id="s-winrate">--</div>
                                 </div>
                             </div>
-                            <div style="overflow-x:auto; padding-bottom:10px;">
-                                <table class="history-table">
-                                    <thead>
-                                        <tr>
-                                            <th>時間</th>
-                                            <th>標的</th>
-                                            <th>操作</th>
-                                            <th>成交價</th>
-                                            <th>數量 <span class="info-tooltip" data-tip="交易股數。每次買入投入帳戶餘額的 20%，依成交價換算股數。"><i>i</i></span></th>
-                                            <th>損益 <span class="info-tooltip" data-tip="買進：若已賣出顯示已實現損益，若仍持有顯示未實現損益（依最新價計算），部分賣出則合計顯示。賣出：顯示已實現損益。所有損益皆已扣除手續費+證交稅。"><i>i</i></span></th>
-                                            <th>信號 <span class="info-tooltip" data-tip="記錄交易當下的分數，非現在即時分數。格式：(技術XX, 綜合XX, 強度) [盤勢]。技術分=指標經各層修正後的信號分，決定進出場時機。綜合分=五維加權平均(籌碼+技術+基本面+盤勢+消息)，決定標的品質。買入需：技術分≥門檻 且 綜合分≥50。賣出/停損僅看技術分。"><i>i</i></span></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="history-body"></tbody>
-                                </table>
+
+                            <!-- 交易歷史 -->
+                            <div class="card glass-panel" style="padding:20px">
+                                <div
+                                    style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px">
+                                    <h3 style="font-size:14px; color:var(--text-main)">交易歷史</h3>
+                                    <div style="display:flex; gap:8px">
+                                        <button id="btn-prev" class="btn-global"
+                                            style="padding:4px 12px; font-size:11px">上一頁</button>
+                                        <span id="page-info"
+                                            style="font-size:11px; align-self:center; color:var(--text-muted)">1</span>
+                                        <button id="btn-next" class="btn-global"
+                                            style="padding:4px 12px; font-size:11px">下一頁</button>
+                                    </div>
+                                </div>
+                                <div style="overflow-x:auto; padding-bottom:10px;">
+                                    <table class="history-table">
+                                        <thead>
+                                            <tr>
+                                                <th>時間</th>
+                                                <th>標的</th>
+                                                <th>操作</th>
+                                                <th>成交價</th>
+                                                <th>數量 <span class="info-tooltip"
+                                                        data-tip="交易股數。每次買入投入帳戶餘額的 20%，依成交價換算股數。"><i>i</i></span></th>
+                                                <th>損益 <span class="info-tooltip"
+                                                        data-tip="買進：若已賣出顯示已實現損益，若仍持有顯示未實現損益（依最新價計算），部分賣出則合計顯示。賣出：顯示已實現損益。所有損益皆已扣除手續費+證交稅。"><i>i</i></span>
+                                                </th>
+                                                <th>信號 <span class="info-tooltip"
+                                                        data-tip="記錄交易當下的分數，非現在即時分數。格式：(技術XX, 綜合XX, 強度) [盤勢]。技術分=指標經各層修正後的信號分，決定進出場時機。綜合分=五維加權平均(籌碼+技術+基本面+盤勢+消息)，決定標的品質。買入需：技術分≥門檻 且 綜合分≥50。賣出/停損僅看技術分。"><i>i</i></span>
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="history-body"></tbody>
+                                    </table>
+                                </div>
                             </div>
-                        </div>
-                </div><!-- /.sector-main-wrap -->
-            </div><!-- /#sector-content -->
-            </div><!-- /.page-col-main -->
+                        </div><!-- /.sector-main-wrap -->
+                    </div><!-- /#sector-content -->
+                </div><!-- /.page-col-main -->
 
-            <!-- 右側欄 -->
-            <div class="page-col-side">
-                <!-- 策略設定 -->
-                <div class="strategy-card card glass-panel">
-                    <h4>交易策略 <span class="info-tooltip" data-tip="每個類股有各自的策略權重，由回測結果決定最佳組合。10 項技術指標（EMA交叉、ADX、MACD、RSI、成交量、VolumeReversal、PullbackSupport、StochRSI、布林、MFI）各有權重，加總＝100 分。買入門檻：技術信號分數須達此分數才觸發買入。賣出門檻：技術信號分數達此分數觸發賣出。停損/停利：持倉損益達設定百分比時自動平倉。"><i>i</i></span></h4>
-                    <div class="strategy-detail" id="strategy-info">--</div>
-                    <div class="weight-bar" id="weight-bar"></div>
-                </div>
-
-                <!-- 盤勢辨識 -->
-                <div class="card glass-panel" style="padding:18px; margin-bottom:16px">
-                    <h4 style="font-size:14px; margin-bottom:10px; color:var(--text-main)">盤勢辨識 <span class="info-tooltip" data-tip="分析每檔標的的市場趨勢狀態，共 6 種判定：強勢多頭（均線多排+量增，買入×1.3）、多頭（趨勢向上，買入×1.15）、底部轉強（底部訊號，買入×1.4+加分10）、盤整（方向不明，買賣信號皆×0.6）、高檔轉折（頭部警告，否決買入，賣出×1.5）、空頭（趨勢向下，否決買入，賣出×1.3）。判斷依據：趨勢方向（頭頭高底底高）、均線排列（5/10/20/60MA）、K線型態、量價分析、ADX趨勢強度。"><i>i</i></span></h4>
-                    <div id="regime-list" style="font-size:12px; color:var(--text-muted)">載入中...</div>
-                </div>
-
-                <!-- 基本面分析 -->
-                <div class="card glass-panel" style="padding:18px; margin-bottom:16px">
-                    <h4 style="font-size:14px; margin-bottom:10px; color:var(--text-main)">基本面分析 <span class="info-tooltip" data-tip="從 TWSE 公開資料取得本益比(P/E)、殖利率、股價淨值比(P/B)、營收月增率(MoM)及年增率(YoY)。將個股 P/E 與同類股比較，計算百分位排名：低估（P/E 偏低）加分、高估（P/E 偏高）減分。營收成長也會影響分數。此分數納入五維綜合分數的「基本面」維度。"><i>i</i></span></h4>
-                    <div id="fundamental-list" style="font-size:12px; color:var(--text-muted)">載入中...</div>
-                </div>
-
-                <!-- 持倉 -->
-                <div class="card glass-panel" style="padding:18px; margin-bottom:16px">
-                    <h4 style="font-size:14px; margin-bottom:10px; color:var(--text-main)">當前持倉 <span class="info-tooltip" data-tip="顯示該類股目前持有的標的。每檔顯示股數、買入均價、市值及未實現損益。損益計算已扣除買進手續費（0.1425%），賣出時另扣手續費＋證交稅（0.3%）。"><i>i</i></span></h4>
-                    <div id="holdings-list">
-                        <div style="font-size:12px; color:var(--text-muted)">目前無持倉</div>
+                <!-- 右側欄 -->
+                <div class="page-col-side">
+                    <!-- 策略設定 -->
+                    <div class="strategy-card card glass-panel">
+                        <h4>交易策略 <span class="info-tooltip"
+                                data-tip="每個類股有各自的策略權重，由回測結果決定最佳組合。10 項技術指標（EMA交叉、ADX、MACD、RSI、成交量、VolumeReversal、PullbackSupport、StochRSI、布林、MFI）各有權重，加總＝100 分。買入門檻：技術信號分數須達此分數才觸發買入。賣出門檻：技術信號分數達此分數觸發賣出。停損/停利：持倉損益達設定百分比時自動平倉。"><i>i</i></span>
+                        </h4>
+                        <div class="strategy-detail" id="strategy-info">--</div>
+                        <div class="weight-bar" id="weight-bar"></div>
                     </div>
-                </div>
 
-                <!-- 績效統計 -->
-                <div class="card glass-panel" style="padding:18px">
-                    <h4 style="font-size:14px; margin-bottom:10px; color:var(--text-main)">績效統計 <span class="info-tooltip" data-tip="統計該類股所有已完成（已平倉）的交易。勝＝賣出淨收入 > 買進總成本。勝率＝勝的次數 / 總交易次數。已實現損益＝所有已平倉交易的實際盈虧加總（已扣手續費＋證交稅）。"><i>i</i></span></h4>
-                    <div class="strategy-detail" id="perf-stats">--</div>
-                </div>
-            </div><!-- /.page-col-side -->
+                    <!-- 盤勢辨識 -->
+                    <div class="card glass-panel" style="padding:18px; margin-bottom:16px">
+                        <h4 style="font-size:14px; margin-bottom:10px; color:var(--text-main)">盤勢辨識 <span
+                                class="info-tooltip"
+                                data-tip="分析每檔標的的市場趨勢狀態，共 6 種判定：強勢多頭（均線多排+量增，買入×1.3）、多頭（趨勢向上，買入×1.15）、底部轉強（底部訊號，買入×1.4+加分10）、盤整（方向不明，買賣信號皆×0.6）、高檔轉折（頭部警告，否決買入，賣出×1.5）、空頭（趨勢向下，否決買入，賣出×1.3）。判斷依據：趨勢方向（頭頭高底底高）、均線排列（5/10/20/60MA）、K線型態、量價分析、ADX趨勢強度。"><i>i</i></span>
+                        </h4>
+                        <div id="regime-list" style="font-size:12px; color:var(--text-muted)">載入中...</div>
+                    </div>
+
+                    <!-- 基本面分析 -->
+                    <div class="card glass-panel" style="padding:18px; margin-bottom:16px">
+                        <h4 style="font-size:14px; margin-bottom:10px; color:var(--text-main)">基本面分析 <span
+                                class="info-tooltip"
+                                data-tip="從 TWSE 公開資料取得本益比(P/E)、殖利率、股價淨值比(P/B)、營收月增率(MoM)及年增率(YoY)。將個股 P/E 與同類股比較，計算百分位排名：低估（P/E 偏低）加分、高估（P/E 偏高）減分。營收成長也會影響分數。此分數納入五維綜合分數的「基本面」維度。"><i>i</i></span>
+                        </h4>
+                        <div id="fundamental-list" style="font-size:12px; color:var(--text-muted)">載入中...</div>
+                    </div>
+
+                    <!-- 持倉 -->
+                    <div class="card glass-panel" style="padding:18px; margin-bottom:16px">
+                        <h4 style="font-size:14px; margin-bottom:10px; color:var(--text-main)">當前持倉 <span
+                                class="info-tooltip"
+                                data-tip="顯示該類股目前持有的標的。每檔顯示股數、買入均價、市值及未實現損益。損益計算已扣除買進手續費（0.1425%），賣出時另扣手續費＋證交稅（0.3%）。"><i>i</i></span>
+                        </h4>
+                        <div id="holdings-list">
+                            <div style="font-size:12px; color:var(--text-muted)">目前無持倉</div>
+                        </div>
+                    </div>
+
+                    <!-- 績效統計 -->
+                    <div class="card glass-panel" style="padding:18px">
+                        <h4 style="font-size:14px; margin-bottom:10px; color:var(--text-main)">績效統計 <span
+                                class="info-tooltip"
+                                data-tip="統計該類股所有已完成（已平倉）的交易。勝＝賣出淨收入 > 買進總成本。勝率＝勝的次數 / 總交易次數。已實現損益＝所有已平倉交易的實際盈虧加總（已扣手續費＋證交稅）。"><i>i</i></span>
+                        </h4>
+                        <div class="strategy-detail" id="perf-stats">--</div>
+                    </div>
+                </div><!-- /.page-col-side -->
 
             </div><!-- /.page-two-col -->
         </main>
     </div>
 
     <script>
-    (function() {
-        const API = '';
-        const SECTORS = ['semiconductor', 'electronics', 'finance', 'traditional', 'precision'];
-        const SECTOR_LABELS = {
-            semiconductor: '半導體', electronics: '電子代工/零組件',
-            finance: '金融', traditional: '傳產/航運/電信',
-            precision: '精密機械/工業'
-        };
-        const WEIGHT_NAMES = {
-            rsi: 'RSI', macd: 'MACD', bollinger: 'BB',
-            mfi: 'MFI', ema_cross: 'EMA', volume: 'Vol', adx: 'ADX',
-            stoch_rsi: 'StochRSI', volume_reversal: 'VR', pullback_support: 'PS'
-        };
-        const WEIGHT_COLORS = [
-            '#a78bfa','#34d399','#f59e0b','#60a5fa','#f472b6','#fb923c','#38bdf8',
-            '#e879f9','#4ade80','#fbbf24'
-        ];
+        (function () {
+            const API = '';
+            const SECTORS = ['semiconductor', 'electronics', 'finance', 'traditional', 'precision'];
+            const SECTOR_LABELS = {
+                semiconductor: '半導體', electronics: '電子代工/零組件',
+                finance: '金融', traditional: '傳產/航運/電信',
+                precision: '精密機械/工業'
+            };
+            const WEIGHT_NAMES = {
+                rsi: 'RSI', macd: 'MACD', bollinger: 'BB',
+                mfi: 'MFI', ema_cross: 'EMA', volume: 'Vol', adx: 'ADX',
+                stoch_rsi: 'StochRSI', volume_reversal: 'VR', pullback_support: 'PS'
+            };
+            const WEIGHT_COLORS = [
+                '#a78bfa', '#34d399', '#f59e0b', '#60a5fa', '#f472b6', '#fb923c', '#38bdf8',
+                '#e879f9', '#4ade80', '#fbbf24'
+            ];
 
-        let currentSector = SECTORS[0];
-        let sectorsData = {};
-        let historyPage = 1;
-        let sectorBarChart = null;
+            let currentSector = SECTORS[0];
+            let sectorsData = {};
+            let historyPage = 1;
+            let sectorBarChart = null;
 
-        // ── Init ──
-        async function init() {
-            // 先綁定按鈕事件（確保即使 API 失敗按鈕仍可用）
-            document.getElementById('btn-start-auto').onclick = startAutoTrader;
-            document.getElementById('btn-stop-auto').onclick = stopAutoTrader;
-            document.getElementById('btn-run-once').onclick = runOnce;
-            document.getElementById('btn-toggle-sector').onclick = toggleSector;
-            document.getElementById('btn-prev').onclick = () => { historyPage = Math.max(1, historyPage - 1); refreshHistory(); };
-            document.getElementById('btn-next').onclick = () => { historyPage++; refreshHistory(); };
+            // ── Init ──
+            async function init() {
+                // 先綁定按鈕事件（確保即使 API 失敗按鈕仍可用）
+                document.getElementById('btn-start-auto').onclick = startAutoTrader;
+                document.getElementById('btn-stop-auto').onclick = stopAutoTrader;
+                document.getElementById('btn-run-once').onclick = runOnce;
+                document.getElementById('btn-toggle-sector').onclick = toggleSector;
+                document.getElementById('btn-prev').onclick = () => { historyPage = Math.max(1, historyPage - 1); refreshHistory(); };
+                document.getElementById('btn-next').onclick = () => { historyPage++; refreshHistory(); };
 
-            buildTabs();
-            await refreshAll();
-            setInterval(refreshAll, 15000);
-        }
+                buildTabs();
+                await refreshAll();
+                setInterval(refreshAll, 15000);
+            }
 
-        function buildTabs() {
-            const container = document.getElementById('sector-tabs');
-            container.innerHTML = SECTORS.map(id =>
-                `<button class="sector-tab ${id === currentSector ? 'active' : ''}" data-sector="${id}">
+            function buildTabs() {
+                const container = document.getElementById('sector-tabs');
+                container.innerHTML = SECTORS.map(id =>
+                    `<button class="sector-tab ${id === currentSector ? 'active' : ''}" data-sector="${id}">
                     <span class="tab-indicator off" id="tab-ind-${id}"></span>
                     ${SECTOR_LABELS[id]}
                 </button>`
-            ).join('');
-            container.querySelectorAll('.sector-tab').forEach(btn => {
-                btn.onclick = () => {
-                    currentSector = btn.dataset.sector;
-                    historyPage = 1;
-                    document.querySelectorAll('.sector-tab').forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    renderSector();
-                    refreshHistory();
-                };
-            });
-        }
-
-        // ── Data ──
-        async function refreshAll() {
-            try {
-                const res = await fetch(API + '/api/sector-trading/sectors');
-                const data = await res.json();
-                data.forEach(s => { sectorsData[s.sector_id] = s; });
-
-                // Update tab indicators
-                SECTORS.forEach(id => {
-                    const ind = document.getElementById('tab-ind-' + id);
-                    if (ind) {
-                        const d = sectorsData[id];
-                        ind.className = 'tab-indicator ' + (d && d.is_active ? 'on' : 'off');
-                    }
+                ).join('');
+                container.querySelectorAll('.sector-tab').forEach(btn => {
+                    btn.onclick = () => {
+                        currentSector = btn.dataset.sector;
+                        historyPage = 1;
+                        document.querySelectorAll('.sector-tab').forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        renderSector();
+                        refreshHistory();
+                    };
                 });
-
-                renderSector();
-                renderGlobalStats();
-                refreshAutoStatus();
-                refreshHistory();
-                refreshRegime();
-                refreshFundamental();
-                document.getElementById('last-refresh').textContent = '最後更新: ' + new Date().toLocaleTimeString();
-            } catch (e) {
-                console.error('refresh error', e);
             }
-        }
 
-        async function refreshHistory() {
-            try {
-                const res = await fetch(API + `/api/sector-trading/${currentSector}/history?page=${historyPage}&pageSize=15`);
-                const data = await res.json();
-                renderHistory(data);
-            } catch(e) {}
-        }
+            // ── Data ──
+            async function refreshAll() {
+                try {
+                    const res = await fetch(API + '/api/sector-trading/sectors');
+                    const data = await res.json();
+                    data.forEach(s => { sectorsData[s.sector_id] = s; });
 
-        async function refreshAutoStatus() {
-            try {
-                const res = await fetch(API + '/api/sector-trading/auto-trader/status');
-                const data = await res.json();
-                const statusEl = document.getElementById('auto-status-text');
-                const lastRunEl = document.getElementById('auto-last-run');
-                const sidebarEl = document.getElementById('sidebar-auto-status');
-                const startBtn = document.getElementById('btn-start-auto');
-                const stopBtn = document.getElementById('btn-stop-auto');
+                    // Update tab indicators
+                    SECTORS.forEach(id => {
+                        const ind = document.getElementById('tab-ind-' + id);
+                        if (ind) {
+                            const d = sectorsData[id];
+                            ind.className = 'tab-indicator ' + (d && d.is_active ? 'on' : 'off');
+                        }
+                    });
 
-                if (data.is_running) {
-                    statusEl.textContent = '引擎狀態: ✅ 運行中';
-                    statusEl.style.color = 'var(--buy-color, #10b981)';
-                    sidebarEl.textContent = '運行中';
-                    sidebarEl.className = 'status-badge active';
-                    startBtn.classList.add('active-bg');
-                    startBtn.textContent = '✅ 引擎運行中';
-                    stopBtn.style.display = '';
-                } else {
-                    statusEl.textContent = '引擎狀態: 未啟動';
-                    statusEl.style.color = '';
-                    sidebarEl.textContent = '未啟動';
-                    sidebarEl.className = 'status-badge inactive';
-                    startBtn.classList.remove('active-bg');
-                    startBtn.textContent = '啟動背景交易引擎';
-                    stopBtn.style.display = '';
+                    renderSector();
+                    renderGlobalStats();
+                    refreshAutoStatus();
+                    refreshHistory();
+                    refreshRegime();
+                    refreshFundamental();
+                    document.getElementById('last-refresh').textContent = '最後更新: ' + new Date().toLocaleTimeString();
+                } catch (e) {
+                    console.error('refresh error', e);
                 }
-                lastRunEl.textContent = '上次執行: ' + (data.last_run_time || '--');
-            } catch(e) {
-                console.error('refreshAutoStatus error:', e);
             }
-        }
 
-        async function refreshRegime() {
-            try {
-                const res = await fetch(API + `/api/sector-trading/${currentSector}/regime`);
-                const data = await res.json();
-                renderRegime(data);
-            } catch(e) {
-                console.error('refreshRegime error:', e);
+            async function refreshHistory() {
+                try {
+                    const res = await fetch(API + `/api/sector-trading/${currentSector}/history?page=${historyPage}&pageSize=15`);
+                    const data = await res.json();
+                    renderHistory(data);
+                } catch (e) { }
             }
-        }
 
-        const REGIME_STYLES = {
-            '強勢多頭': { color: '#10b981', icon: '🚀', bg: 'rgba(16,185,129,0.08)' },
-            '多頭':     { color: '#34d399', icon: '📈', bg: 'rgba(52,211,153,0.08)' },
-            '盤整':     { color: '#f59e0b', icon: '↔️', bg: 'rgba(245,158,11,0.08)' },
-            '空頭':     { color: '#ef4444', icon: '📉', bg: 'rgba(239,68,68,0.08)' },
-            '高檔轉折': { color: '#f87171', icon: '⚠️', bg: 'rgba(248,113,113,0.08)' },
-            '底部轉強': { color: '#60a5fa', icon: '💎', bg: 'rgba(96,165,250,0.08)' },
-        };
+            async function refreshAutoStatus() {
+                try {
+                    const res = await fetch(API + '/api/sector-trading/auto-trader/status');
+                    const data = await res.json();
+                    const statusEl = document.getElementById('auto-status-text');
+                    const lastRunEl = document.getElementById('auto-last-run');
+                    const sidebarEl = document.getElementById('sidebar-auto-status');
+                    const startBtn = document.getElementById('btn-start-auto');
+                    const stopBtn = document.getElementById('btn-stop-auto');
 
-        window.goToStock = function(symbol) {
-            const sym = symbol.includes('.') ? symbol : symbol + '.TW';
-            localStorage.setItem('csp-pending-symbol', sym);
-            localStorage.setItem('csp-pending-market', 'stock');
-            window.location.href = 'index.html';
-        };
-
-        function renderRegime(data) {
-            const el = document.getElementById('regime-list');
-            if (!data || !data.stocks) {
-                el.innerHTML = '<div style="color:var(--text-muted)">無數據</div>';
-                return;
+                    if (data.is_running) {
+                        statusEl.textContent = '引擎狀態: ✅ 運行中';
+                        statusEl.style.color = 'var(--buy-color, #10b981)';
+                        sidebarEl.textContent = '運行中';
+                        sidebarEl.className = 'status-badge active';
+                        startBtn.classList.add('active-bg');
+                        startBtn.textContent = '✅ 引擎運行中';
+                        stopBtn.style.display = '';
+                    } else {
+                        statusEl.textContent = '引擎狀態: 未啟動';
+                        statusEl.style.color = '';
+                        sidebarEl.textContent = '未啟動';
+                        sidebarEl.className = 'status-badge inactive';
+                        startBtn.classList.remove('active-bg');
+                        startBtn.textContent = '啟動背景交易引擎';
+                        stopBtn.style.display = '';
+                    }
+                    lastRunEl.textContent = '上次執行: ' + (data.last_run_time || '--');
+                } catch (e) {
+                    console.error('refreshAutoStatus error:', e);
+                }
             }
-            const stocks = data.stocks;
-            const keys = Object.keys(stocks);
-            if (keys.length === 0) {
-                el.innerHTML = '<div style="color:var(--text-muted)">無數據</div>';
-                return;
+
+            async function refreshRegime() {
+                try {
+                    const res = await fetch(API + `/api/sector-trading/${currentSector}/regime`);
+                    const data = await res.json();
+                    renderRegime(data);
+                } catch (e) {
+                    console.error('refreshRegime error:', e);
+                }
             }
-            el.innerHTML = keys.map(sym => {
-                const s = stocks[sym];
-                const style = REGIME_STYLES[s.regime] || { color: '#94a3b8', icon: '⚪', bg: 'rgba(148,163,184,0.08)' };
-                const details = s.details || {};
-                const pos = details.position ? `位階:${details.position.percentile}%` : '';
-                const ma = details.ma_alignment ? `均線:${details.ma_alignment.score}/6` : '';
-                return `<div style="padding:6px 8px; margin-bottom:4px; border-radius:8px; background:${style.bg}; display:flex; justify-content:space-between; align-items:center">
+
+            const REGIME_STYLES = {
+                '強勢多頭': { color: '#10b981', icon: '🚀', bg: 'rgba(16,185,129,0.08)' },
+                '多頭': { color: '#34d399', icon: '📈', bg: 'rgba(52,211,153,0.08)' },
+                '盤整': { color: '#f59e0b', icon: '↔️', bg: 'rgba(245,158,11,0.08)' },
+                '空頭': { color: '#ef4444', icon: '📉', bg: 'rgba(239,68,68,0.08)' },
+                '高檔轉折': { color: '#f87171', icon: '⚠️', bg: 'rgba(248,113,113,0.08)' },
+                '底部轉強': { color: '#60a5fa', icon: '💎', bg: 'rgba(96,165,250,0.08)' },
+            };
+
+            window.goToStock = function (symbol) {
+                const sym = symbol.includes('.') ? symbol : symbol + '.TW';
+                localStorage.setItem('csp-pending-symbol', sym);
+                localStorage.setItem('csp-pending-market', 'stock');
+                window.location.href = 'index.html';
+            };
+
+            function renderRegime(data) {
+                const el = document.getElementById('regime-list');
+                if (!data || !data.stocks) {
+                    el.innerHTML = '<div style="color:var(--text-muted)">無數據</div>';
+                    return;
+                }
+                const stocks = data.stocks;
+                const keys = Object.keys(stocks);
+                if (keys.length === 0) {
+                    el.innerHTML = '<div style="color:var(--text-muted)">無數據</div>';
+                    return;
+                }
+                el.innerHTML = keys.map(sym => {
+                    const s = stocks[sym];
+                    const style = REGIME_STYLES[s.regime] || { color: '#94a3b8', icon: '⚪', bg: 'rgba(148,163,184,0.08)' };
+                    const details = s.details || {};
+                    const pos = details.position ? `位階:${details.position.percentile}%` : '';
+                    const ma = details.ma_alignment ? `均線:${details.ma_alignment.score}/6` : '';
+                    return `<div style="padding:6px 8px; margin-bottom:4px; border-radius:8px; background:${style.bg}; display:flex; justify-content:space-between; align-items:center">
                     <div>
                         <span style="font-weight:700; color:var(--text-main); font-size:12px; cursor:pointer; text-decoration:underline dotted" onclick="window.goToStock('${sym}')" title="前往主頁">${s.name || sym}</span>
                         <span style="font-size:10px; color:var(--text-muted); margin-left:4px">${pos} ${ma}</span>
@@ -1060,50 +1296,50 @@
                         <span style="font-size:9px; color:var(--text-muted)">${s.buy_score}/${s.sell_score}</span>
                     </div>
                 </div>`;
-            }).join('');
-        }
-
-        // ── Fundamental ──
-        const VALUATION_STYLES = {
-            '明顯低估': { color: '#10b981', icon: '💰', bg: 'rgba(16,185,129,0.08)' },
-            '偏低估':   { color: '#34d399', icon: '📗', bg: 'rgba(52,211,153,0.08)' },
-            '合理':     { color: '#f59e0b', icon: '📊', bg: 'rgba(245,158,11,0.08)' },
-            '偏高估':   { color: '#f87171', icon: '📕', bg: 'rgba(248,113,113,0.08)' },
-            '明顯高估': { color: '#ef4444', icon: '⚠️', bg: 'rgba(239,68,68,0.08)' },
-            '無數據':   { color: '#94a3b8', icon: '—',  bg: 'rgba(148,163,184,0.05)' },
-        };
-
-        async function refreshFundamental() {
-            try {
-                const res = await fetch(API + `/api/sector-trading/${currentSector}/fundamental`);
-                const data = await res.json();
-                renderFundamental(data);
-            } catch(e) {
-                console.error('refreshFundamental error:', e);
+                }).join('');
             }
-        }
 
-        function renderFundamental(data) {
-            const el = document.getElementById('fundamental-list');
-            if (!data || !data.stocks) {
-                el.innerHTML = '<div style="color:var(--text-muted)">無數據</div>';
-                return;
+            // ── Fundamental ──
+            const VALUATION_STYLES = {
+                '明顯低估': { color: '#10b981', icon: '💰', bg: 'rgba(16,185,129,0.08)' },
+                '偏低估': { color: '#34d399', icon: '📗', bg: 'rgba(52,211,153,0.08)' },
+                '合理': { color: '#f59e0b', icon: '📊', bg: 'rgba(245,158,11,0.08)' },
+                '偏高估': { color: '#f87171', icon: '📕', bg: 'rgba(248,113,113,0.08)' },
+                '明顯高估': { color: '#ef4444', icon: '⚠️', bg: 'rgba(239,68,68,0.08)' },
+                '無數據': { color: '#94a3b8', icon: '—', bg: 'rgba(148,163,184,0.05)' },
+            };
+
+            async function refreshFundamental() {
+                try {
+                    const res = await fetch(API + `/api/sector-trading/${currentSector}/fundamental`);
+                    const data = await res.json();
+                    renderFundamental(data);
+                } catch (e) {
+                    console.error('refreshFundamental error:', e);
+                }
             }
-            const stocks = data.stocks;
-            const keys = Object.keys(stocks);
-            if (keys.length === 0) {
-                el.innerHTML = '<div style="color:var(--text-muted)">無數據</div>';
-                return;
-            }
-            el.innerHTML = keys.map(sym => {
-                const s = stocks[sym];
-                const valuation = s.valuation || '無數據';
-                const style = VALUATION_STYLES[valuation] || VALUATION_STYLES['無數據'];
-                const pe = s.pe != null ? `P/E:${s.pe.toFixed(1)}` : 'P/E:--';
-                const dy = s.dy != null ? `殖利率:${s.dy.toFixed(1)}%` : '';
-                const pb = s.pb != null ? `P/B:${s.pb.toFixed(2)}` : '';
-                const median = s.sector_median_pe != null ? `(類股中位:${s.sector_median_pe})` : '';
-                return `<div style="padding:6px 8px; margin-bottom:4px; border-radius:8px; background:${style.bg}; display:flex; justify-content:space-between; align-items:center">
+
+            function renderFundamental(data) {
+                const el = document.getElementById('fundamental-list');
+                if (!data || !data.stocks) {
+                    el.innerHTML = '<div style="color:var(--text-muted)">無數據</div>';
+                    return;
+                }
+                const stocks = data.stocks;
+                const keys = Object.keys(stocks);
+                if (keys.length === 0) {
+                    el.innerHTML = '<div style="color:var(--text-muted)">無數據</div>';
+                    return;
+                }
+                el.innerHTML = keys.map(sym => {
+                    const s = stocks[sym];
+                    const valuation = s.valuation || '無數據';
+                    const style = VALUATION_STYLES[valuation] || VALUATION_STYLES['無數據'];
+                    const pe = s.pe != null ? `P/E:${s.pe.toFixed(1)}` : 'P/E:--';
+                    const dy = s.dy != null ? `殖利率:${s.dy.toFixed(1)}%` : '';
+                    const pb = s.pb != null ? `P/B:${s.pb.toFixed(2)}` : '';
+                    const median = s.sector_median_pe != null ? `(類股中位:${s.sector_median_pe})` : '';
+                    return `<div style="padding:6px 8px; margin-bottom:4px; border-radius:8px; background:${style.bg}; display:flex; justify-content:space-between; align-items:center">
                     <div>
                         <span style="font-weight:700; color:var(--text-main); font-size:12px; cursor:pointer; text-decoration:underline dotted" onclick="window.goToStock('${sym}')" title="前往主頁">${s.name || sym}</span>
                         <span style="font-size:10px; color:var(--text-muted); margin-left:4px">${pe} ${median}</span>
@@ -1113,168 +1349,168 @@
                         <span style="font-size:9px; color:var(--text-muted)">${dy} ${pb}</span>
                     </div>
                 </div>`;
-            }).join('');
-        }
+                }).join('');
+            }
 
-        // ── Actions ──
-        async function startAutoTrader() {
-            const btn = document.getElementById('btn-start-auto');
-            btn.textContent = '啟動中...';
-            btn.disabled = true;
-            try {
-                const res = await fetch(API + '/api/sector-trading/auto-trader/start', { method: 'POST' });
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                const data = await res.json();
-                console.log('Auto trader start response:', data);
-                await refreshAutoStatus();
-            } catch (e) {
-                console.error('啟動背景交易引擎失敗:', e);
-                alert('啟動失敗: ' + e.message + '\n請確認後端伺服器正在運行');
-            } finally {
-                btn.textContent = '啟動背景交易引擎';
-                btn.disabled = false;
+            // ── Actions ──
+            async function startAutoTrader() {
+                const btn = document.getElementById('btn-start-auto');
+                btn.textContent = '啟動中...';
+                btn.disabled = true;
+                try {
+                    const res = await fetch(API + '/api/sector-trading/auto-trader/start', { method: 'POST' });
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    const data = await res.json();
+                    console.log('Auto trader start response:', data);
+                    await refreshAutoStatus();
+                } catch (e) {
+                    console.error('啟動背景交易引擎失敗:', e);
+                    alert('啟動失敗: ' + e.message + '\n請確認後端伺服器正在運行');
+                } finally {
+                    btn.textContent = '啟動背景交易引擎';
+                    btn.disabled = false;
+                }
             }
-        }
-        async function stopAutoTrader() {
-            const btn = document.getElementById('btn-stop-auto');
-            btn.textContent = '停止中...';
-            btn.disabled = true;
-            try {
-                const res = await fetch(API + '/api/sector-trading/auto-trader/stop', { method: 'POST' });
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                await refreshAutoStatus();
-            } catch (e) {
-                console.error('停止背景交易引擎失敗:', e);
-                alert('停止失敗: ' + e.message);
-            } finally {
-                btn.textContent = '停止';
-                btn.disabled = false;
+            async function stopAutoTrader() {
+                const btn = document.getElementById('btn-stop-auto');
+                btn.textContent = '停止中...';
+                btn.disabled = true;
+                try {
+                    const res = await fetch(API + '/api/sector-trading/auto-trader/stop', { method: 'POST' });
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    await refreshAutoStatus();
+                } catch (e) {
+                    console.error('停止背景交易引擎失敗:', e);
+                    alert('停止失敗: ' + e.message);
+                } finally {
+                    btn.textContent = '停止';
+                    btn.disabled = false;
+                }
             }
-        }
-        async function runOnce() {
-            const btn = document.getElementById('btn-run-once');
-            btn.textContent = '執行中...';
-            btn.disabled = true;
-            try {
-                const res = await fetch(API + '/api/sector-trading/auto-trader/run-once', { method: 'POST' });
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                setTimeout(() => {
+            async function runOnce() {
+                const btn = document.getElementById('btn-run-once');
+                btn.textContent = '執行中...';
+                btn.disabled = true;
+                try {
+                    const res = await fetch(API + '/api/sector-trading/auto-trader/run-once', { method: 'POST' });
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    setTimeout(() => {
+                        btn.textContent = '手動執行一次';
+                        btn.disabled = false;
+                        refreshAll();
+                    }, 5000);
+                } catch (e) {
+                    console.error('手動執行失敗:', e);
+                    alert('手動執行失敗: ' + e.message);
                     btn.textContent = '手動執行一次';
                     btn.disabled = false;
-                    refreshAll();
-                }, 5000);
-            } catch (e) {
-                console.error('手動執行失敗:', e);
-                alert('手動執行失敗: ' + e.message);
-                btn.textContent = '手動執行一次';
-                btn.disabled = false;
+                }
             }
-        }
-        async function toggleSector() {
-            const btn = document.getElementById('btn-toggle-sector');
-            btn.disabled = true;
-            try {
+            async function toggleSector() {
+                const btn = document.getElementById('btn-toggle-sector');
+                btn.disabled = true;
+                try {
+                    const d = sectorsData[currentSector];
+                    const next = !(d && d.is_active);
+                    const res = await fetch(API + `/api/sector-trading/${currentSector}/toggle?active=${next}`, { method: 'POST' });
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    await refreshAll();
+                } catch (e) {
+                    console.error('切換類股交易失敗:', e);
+                    alert('操作失敗: ' + e.message);
+                } finally {
+                    btn.disabled = false;
+                }
+            }
+
+            // ── 四類彙總統計 ──
+            function renderGlobalStats() {
+                const all = Object.values(sectorsData);
+                if (!all.length) return;
+                const INITIAL_TOTAL = all.reduce((s, d) => s + (d.initial_balance || 1000000), 0);
+                const totalPl = all.reduce((s, d) => s + (d.total_pl || 0), 0);
+                const totalRoi = INITIAL_TOTAL > 0 ? (totalPl / INITIAL_TOTAL * 100) : 0;
+                const roiStr = (totalRoi >= 0 ? '+' : '') + totalRoi.toFixed(2) + '%';
+                const plStr = (totalPl >= 0 ? '+' : '') + totalPl.toLocaleString(undefined, { maximumFractionDigits: 0 });
+
+                const gPl = document.getElementById('g-pl');
+                gPl.textContent = plStr;
+                gPl.className = 'stat-value ' + (totalPl >= 0 ? 'positive' : 'negative');
+
+                const gRoi = document.getElementById('g-roi');
+                gRoi.textContent = roiStr;
+                gRoi.className = 'stat-value ' + (totalRoi >= 0 ? 'positive' : 'negative');
+
+                renderSectorBarChart();
+            }
+
+            // ── Render ──
+            function renderSector() {
                 const d = sectorsData[currentSector];
-                const next = !(d && d.is_active);
-                const res = await fetch(API + `/api/sector-trading/${currentSector}/toggle?active=${next}`, { method: 'POST' });
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                await refreshAll();
-            } catch (e) {
-                console.error('切換類股交易失敗:', e);
-                alert('操作失敗: ' + e.message);
-            } finally {
-                btn.disabled = false;
-            }
-        }
+                if (!d) return;
 
-        // ── 四類彙總統計 ──
-        function renderGlobalStats() {
-            const all = Object.values(sectorsData);
-            if (!all.length) return;
-            const INITIAL_TOTAL = all.reduce((s, d) => s + (d.initial_balance || 1000000), 0);
-            const totalPl = all.reduce((s, d) => s + (d.total_pl || 0), 0);
-            const totalRoi = INITIAL_TOTAL > 0 ? (totalPl / INITIAL_TOTAL * 100) : 0;
-            const roiStr = (totalRoi >= 0 ? '+' : '') + totalRoi.toFixed(2) + '%';
-            const plStr = (totalPl >= 0 ? '+' : '') + totalPl.toLocaleString(undefined, {maximumFractionDigits: 0});
+                // Title
+                document.getElementById('sector-title').textContent = d.sector_name;
+                document.getElementById('sector-desc').textContent = '';
 
-            const gPl = document.getElementById('g-pl');
-            gPl.textContent = plStr;
-            gPl.className = 'stat-value ' + (totalPl >= 0 ? 'positive' : 'negative');
+                // Toggle button
+                const toggleBtn = document.getElementById('btn-toggle-sector');
+                if (d.is_active) {
+                    toggleBtn.textContent = '停止交易';
+                    toggleBtn.className = 'btn-toggle stop';
+                } else {
+                    toggleBtn.textContent = '開啟交易';
+                    toggleBtn.className = 'btn-toggle start';
+                }
 
-            const gRoi = document.getElementById('g-roi');
-            gRoi.textContent = roiStr;
-            gRoi.className = 'stat-value ' + (totalRoi >= 0 ? 'positive' : 'negative');
+                // Stats
+                document.getElementById('s-equity').textContent = d.equity.toLocaleString();
+                const plEl = document.getElementById('s-pl');
+                const plPct = d.total_pl_pct;
+                plEl.textContent = (d.total_pl >= 0 ? '+' : '') + d.total_pl.toLocaleString() + ` (${plPct >= 0 ? '+' : ''}${plPct}%)`;
+                plEl.className = 'stat-value ' + (d.total_pl >= 0 ? 'positive' : 'negative');
 
-            renderSectorBarChart();
-        }
+                const wrEl = document.getElementById('s-winrate');
+                wrEl.textContent = d.stats.total_trades > 0 ? d.stats.win_rate + '%' : '--';
 
-        // ── Render ──
-        function renderSector() {
-            const d = sectorsData[currentSector];
-            if (!d) return;
-
-            // Title
-            document.getElementById('sector-title').textContent = d.sector_name;
-            document.getElementById('sector-desc').textContent = '';
-
-            // Toggle button
-            const toggleBtn = document.getElementById('btn-toggle-sector');
-            if (d.is_active) {
-                toggleBtn.textContent = '停止交易';
-                toggleBtn.className = 'btn-toggle stop';
-            } else {
-                toggleBtn.textContent = '開啟交易';
-                toggleBtn.className = 'btn-toggle start';
-            }
-
-            // Stats
-            document.getElementById('s-equity').textContent = d.equity.toLocaleString();
-            const plEl = document.getElementById('s-pl');
-            const plPct = d.total_pl_pct;
-            plEl.textContent = (d.total_pl >= 0 ? '+' : '') + d.total_pl.toLocaleString() + ` (${plPct >= 0 ? '+' : ''}${plPct}%)`;
-            plEl.className = 'stat-value ' + (d.total_pl >= 0 ? 'positive' : 'negative');
-
-            const wrEl = document.getElementById('s-winrate');
-            wrEl.textContent = d.stats.total_trades > 0 ? d.stats.win_rate + '%' : '--';
-
-            // Strategy
-            const st = d.strategy;
-            const stEl = document.getElementById('strategy-info');
-            stEl.innerHTML = `
+                // Strategy
+                const st = d.strategy;
+                const stEl = document.getElementById('strategy-info');
+                stEl.innerHTML = `
                 <strong>${st.name}</strong> (${st.param_preset})<br>
                 買入門檻: <strong>${st.buy_threshold}分</strong> | 賣出門檻: <strong>${st.sell_threshold}分</strong><br>
                 停損: <strong>${st.stop_loss_pct}%</strong> | 停利: <strong>${st.take_profit_pct}%</strong><br>
                 <span style="font-size:11px; color:var(--text-muted); margin-top:6px; display:block">${st.description || ''}</span>
             `;
 
-            // Weight bar
-            const wb = document.getElementById('weight-bar');
-            const keys = Object.keys(st.weights).sort((a,b) => st.weights[b] - st.weights[a]);
-            wb.innerHTML = keys.map((k, i) =>
-                `<div class="weight-segment" style="flex:${st.weights[k]}; background:${WEIGHT_COLORS[i % WEIGHT_COLORS.length]}" title="${WEIGHT_NAMES[k] || k}: ${st.weights[k]}"></div>`
-            ).join('');
-            wb.innerHTML += '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; width:100%">' +
-                keys.map((k, i) =>
-                    `<span style="font-size:10px; color:${WEIGHT_COLORS[i % WEIGHT_COLORS.length]}; font-weight:700">${WEIGHT_NAMES[k] || k}:${st.weights[k]}</span>`
-                ).join('') + '</div>';
+                // Weight bar
+                const wb = document.getElementById('weight-bar');
+                const keys = Object.keys(st.weights).sort((a, b) => st.weights[b] - st.weights[a]);
+                wb.innerHTML = keys.map((k, i) =>
+                    `<div class="weight-segment" style="flex:${st.weights[k]}; background:${WEIGHT_COLORS[i % WEIGHT_COLORS.length]}" title="${WEIGHT_NAMES[k] || k}: ${st.weights[k]}"></div>`
+                ).join('');
+                wb.innerHTML += '<div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; width:100%">' +
+                    keys.map((k, i) =>
+                        `<span style="font-size:10px; color:${WEIGHT_COLORS[i % WEIGHT_COLORS.length]}; font-weight:700">${WEIGHT_NAMES[k] || k}:${st.weights[k]}</span>`
+                    ).join('') + '</div>';
 
-            // Holdings
-            const hl = document.getElementById('holdings-list');
-            const holdings = d.holdings;
-            const hKeys = Object.keys(holdings);
-            if (hKeys.length === 0) {
-                hl.innerHTML = '<div style="font-size:12px; color:var(--text-muted)">目前無持倉</div>';
-            } else {
-                hl.innerHTML = hKeys.map(sym => {
-                    const h = holdings[sym];
-                    const pl = h.unrealized_pl;
-                    const plClass = pl > 0 ? 'positive' : pl < 0 ? 'negative' : '';
-                    const noPrice = Math.abs(pl) < 1 && h.current_price === h.avg_price;
-                    const plText = noPrice ? '<span style="color:var(--text-muted);font-size:11px">待更新</span>'
-                        : `<span class="${plClass}">${pl >= 0 ? '+' : ''}${Math.round(pl).toLocaleString()}</span>`;
-                    const plPct = h.avg_price > 0 ? ((h.current_price - h.avg_price) / h.avg_price * 100).toFixed(2) : 0;
-                    const pctText = noPrice ? '' : ` <span style="font-size:10px">(${plPct >= 0 ? '+' : ''}${plPct}%)</span>`;
-                    return `<div class="holding-item">
+                // Holdings
+                const hl = document.getElementById('holdings-list');
+                const holdings = d.holdings;
+                const hKeys = Object.keys(holdings);
+                if (hKeys.length === 0) {
+                    hl.innerHTML = '<div style="font-size:12px; color:var(--text-muted)">目前無持倉</div>';
+                } else {
+                    hl.innerHTML = hKeys.map(sym => {
+                        const h = holdings[sym];
+                        const pl = h.unrealized_pl;
+                        const plClass = pl > 0 ? 'positive' : pl < 0 ? 'negative' : '';
+                        const noPrice = Math.abs(pl) < 1 && h.current_price === h.avg_price;
+                        const plText = noPrice ? '<span style="color:var(--text-muted);font-size:11px">待更新</span>'
+                            : `<span class="${plClass}">${pl >= 0 ? '+' : ''}${Math.round(pl).toLocaleString()}</span>`;
+                        const plPct = h.avg_price > 0 ? ((h.current_price - h.avg_price) / h.avg_price * 100).toFixed(2) : 0;
+                        const pctText = noPrice ? '' : ` <span style="font-size:10px">(${plPct >= 0 ? '+' : ''}${plPct}%)</span>`;
+                        return `<div class="holding-item">
                         <div>
                             <div class="holding-name" style="cursor:pointer;text-decoration:underline dotted" onclick="window.goToStock('${sym}')" title="前往主頁查看 ${h.name || sym}">${h.name || sym}</div>
                             <div class="holding-detail">${h.qty.toLocaleString()} 股 @ ${h.avg_price}</div>
@@ -1286,12 +1522,12 @@
                             <div class="holding-detail">市值 ${h.market_value.toLocaleString()}</div>
                         </div>
                     </div>`;
-                }).join('');
-            }
+                    }).join('');
+                }
 
-            // Performance stats
-            const ps = document.getElementById('perf-stats');
-            ps.innerHTML = `
+                // Performance stats
+                const ps = document.getElementById('perf-stats');
+                ps.innerHTML = `
                 已完成交易: <strong>${d.stats.total_trades}</strong><br>
                 勝: <strong style="color:var(--buy-color)">${d.stats.wins}</strong> /
                 敗: <strong style="color:var(--sell-color)">${d.stats.losses}</strong><br>
@@ -1300,212 +1536,212 @@
                     ${d.stats.realized_profit >= 0 ? '+' : ''}${d.stats.realized_profit.toLocaleString()}</strong>
             `;
 
-        }
+            }
 
-        function renderHistory(data) {
-            const body = document.getElementById('history-body');
-            if (!data.data || data.data.length === 0) {
-                body.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:30px">暫無交易紀錄</td></tr>';
-            } else {
-                body.innerHTML = data.data.map(h => {
-                    const isBuy = h.type === 'BUY';
-                    let plText;
-                    if (isBuy) {
-                        if (h.pnl_status && h.pnl_status !== 'realized') {
-                            const pnl = h.pnl || 0;
-                            const color = pnl >= 0 ? 'var(--buy-color)' : 'var(--sell-color)';
-                            const label = h.pnl_status === 'partial' ? '部分實現' : '未實現';
-                            plText = `<span style="color:${color}; font-weight:700">${pnl >= 0 ? '+' : ''}${Math.round(pnl).toLocaleString()}</span> <small style="color:var(--text-muted)">${label}</small>`;
+            function renderHistory(data) {
+                const body = document.getElementById('history-body');
+                if (!data.data || data.data.length === 0) {
+                    body.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:30px">暫無交易紀錄</td></tr>';
+                } else {
+                    body.innerHTML = data.data.map(h => {
+                        const isBuy = h.type === 'BUY';
+                        let plText;
+                        if (isBuy) {
+                            if (h.pnl_status && h.pnl_status !== 'realized') {
+                                const pnl = h.pnl || 0;
+                                const color = pnl >= 0 ? 'var(--buy-color)' : 'var(--sell-color)';
+                                const label = h.pnl_status === 'partial' ? '部分實現' : '未實現';
+                                plText = `<span style="color:${color}; font-weight:700">${pnl >= 0 ? '+' : ''}${Math.round(pnl).toLocaleString()}</span> <small style="color:var(--text-muted)">${label}</small>`;
+                            } else {
+                                plText = `<span style="color:var(--text-muted)">—</span>`;
+                            }
                         } else {
-                            plText = `<span style="color:var(--text-muted)">—</span>`;
+                            plText = `<span style="color:${h.profit >= 0 ? 'var(--buy-color)' : 'var(--sell-color)'}; font-weight:700">${h.profit >= 0 ? '+' : ''}${(h.profit || 0).toLocaleString()}</span> <small style="color:var(--text-muted)">已實現</small>`;
                         }
-                    } else {
-                        plText = `<span style="color:${h.profit >= 0 ? 'var(--buy-color)' : 'var(--sell-color)'}; font-weight:700">${h.profit >= 0 ? '+' : ''}${(h.profit||0).toLocaleString()}</span> <small style="color:var(--text-muted)">已實現</small>`;
-                    }
-                    return `<tr class="${isBuy ? 'buy-row' : 'sell-row'}">
+                        return `<tr class="${isBuy ? 'buy-row' : 'sell-row'}">
                         <td>${h.time}</td>
-                        <td style="cursor:pointer;text-decoration:underline dotted" onclick="window.goToStock('${h.symbol}')" title="前往主頁查看">${h.name || h.symbol} <small style="color:var(--text-muted);font-weight:400">${h.symbol.replace('.TW','')}</small></td>
+                        <td style="cursor:pointer;text-decoration:underline dotted" onclick="window.goToStock('${h.symbol}')" title="前往主頁查看">${h.name || h.symbol} <small style="color:var(--text-muted);font-weight:400">${h.symbol.replace('.TW', '')}</small></td>
                         <td>${isBuy ? '買進' : '賣出'}</td>
                         <td>${h.price.toLocaleString()}</td>
                         <td>${h.qty.toLocaleString()}</td>
                         <td>${plText}</td>
                         <td style="font-size:11px; min-width:160px; white-space:normal; line-height:1.5">${h.signal || ''}</td>
                     </tr>`;
-                }).join('');
-            }
-            document.getElementById('page-info').textContent = `${historyPage} / ${Math.max(1, Math.ceil(data.total / 15))}`;
-        }
-
-        function renderSectorBarChart() {
-            const ctx = document.getElementById('sector-bar-chart');
-            if (!ctx) return;
-
-            const realizedProfit = [], unrealizedProfit = [];
-            const realizedLoss = [], unrealizedLoss = [];
-
-            SECTORS.forEach(id => {
-                const d = sectorsData[id];
-                const s = d ? d.stats : {};
-                realizedProfit.push(s.realized_gain || 0);
-                realizedLoss.push(s.realized_loss || 0);
-                unrealizedProfit.push(s.unrealized_gain || 0);
-                unrealizedLoss.push(s.unrealized_loss || 0);
-            });
-
-            if (sectorBarChart) {
-                sectorBarChart.data.datasets[0].data = realizedLoss;
-                sectorBarChart.data.datasets[1].data = unrealizedLoss;
-                sectorBarChart.data.datasets[2].data = realizedProfit;
-                sectorBarChart.data.datasets[3].data = unrealizedProfit;
-                sectorBarChart.update('none');
-                return;
+                    }).join('');
+                }
+                document.getElementById('page-info').textContent = `${historyPage} / ${Math.max(1, Math.ceil(data.total / 15))}`;
             }
 
-            sectorBarChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: SECTORS.map(id => SECTOR_LABELS[id]),
-                    datasets: [
-                        {
-                            label: '已實現虧損',
-                            data: realizedLoss,
-                            backgroundColor: 'rgba(239,68,68,0.85)',
-                            borderColor: '#dc2626',
-                            borderWidth: 1,
-                            borderRadius: 4,
-                            stack: 'loss',
+            function renderSectorBarChart() {
+                const ctx = document.getElementById('sector-bar-chart');
+                if (!ctx) return;
+
+                const realizedProfit = [], unrealizedProfit = [];
+                const realizedLoss = [], unrealizedLoss = [];
+
+                SECTORS.forEach(id => {
+                    const d = sectorsData[id];
+                    const s = d ? d.stats : {};
+                    realizedProfit.push(s.realized_gain || 0);
+                    realizedLoss.push(s.realized_loss || 0);
+                    unrealizedProfit.push(s.unrealized_gain || 0);
+                    unrealizedLoss.push(s.unrealized_loss || 0);
+                });
+
+                if (sectorBarChart) {
+                    sectorBarChart.data.datasets[0].data = realizedLoss;
+                    sectorBarChart.data.datasets[1].data = unrealizedLoss;
+                    sectorBarChart.data.datasets[2].data = realizedProfit;
+                    sectorBarChart.data.datasets[3].data = unrealizedProfit;
+                    sectorBarChart.update('none');
+                    return;
+                }
+
+                sectorBarChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: SECTORS.map(id => SECTOR_LABELS[id]),
+                        datasets: [
+                            {
+                                label: '已實現虧損',
+                                data: realizedLoss,
+                                backgroundColor: 'rgba(239,68,68,0.85)',
+                                borderColor: '#dc2626',
+                                borderWidth: 1,
+                                borderRadius: 4,
+                                stack: 'loss',
+                            },
+                            {
+                                label: '未實現虧損',
+                                data: unrealizedLoss,
+                                backgroundColor: 'rgba(239,68,68,0.35)',
+                                borderColor: '#dc2626',
+                                borderWidth: 1,
+                                borderRadius: 4,
+                                stack: 'loss',
+                            },
+                            {
+                                label: '已實現獲利',
+                                data: realizedProfit,
+                                backgroundColor: 'rgba(52,211,153,0.85)',
+                                borderColor: '#10b981',
+                                borderWidth: 1,
+                                borderRadius: 4,
+                                stack: 'profit',
+                            },
+                            {
+                                label: '未實現獲利',
+                                data: unrealizedProfit,
+                                backgroundColor: 'rgba(52,211,153,0.35)',
+                                borderColor: '#10b981',
+                                borderWidth: 1,
+                                borderRadius: 4,
+                                stack: 'profit',
+                            },
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: true,
+                                position: 'bottom',
+                                labels: { font: { size: 10 }, color: '#94a3b8', boxWidth: 12, padding: 8 }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: item => ' ' + item.dataset.label + ': ' + Math.round(item.raw).toLocaleString() + ' 元'
+                                }
+                            }
                         },
-                        {
-                            label: '未實現虧損',
-                            data: unrealizedLoss,
-                            backgroundColor: 'rgba(239,68,68,0.35)',
-                            borderColor: '#dc2626',
-                            borderWidth: 1,
-                            borderRadius: 4,
-                            stack: 'loss',
-                        },
-                        {
-                            label: '已實現獲利',
-                            data: realizedProfit,
-                            backgroundColor: 'rgba(52,211,153,0.85)',
-                            borderColor: '#10b981',
-                            borderWidth: 1,
-                            borderRadius: 4,
-                            stack: 'profit',
-                        },
-                        {
-                            label: '未實現獲利',
-                            data: unrealizedProfit,
-                            backgroundColor: 'rgba(52,211,153,0.35)',
-                            borderColor: '#10b981',
-                            borderWidth: 1,
-                            borderRadius: 4,
-                            stack: 'profit',
-                        },
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: {
-                            display: true,
-                            position: 'bottom',
-                            labels: { font: { size: 10 }, color: '#94a3b8', boxWidth: 12, padding: 8 }
-                        },
-                        tooltip: {
-                            callbacks: {
-                                label: item => ' ' + item.dataset.label + ': ' + Math.round(item.raw).toLocaleString() + ' 元'
+                        scales: {
+                            x: {
+                                stacked: true,
+                                ticks: { font: { size: 11 }, color: '#94a3b8' },
+                                grid: { display: false },
+                            },
+                            y: {
+                                stacked: true,
+                                ticks: {
+                                    font: { size: 10 }, color: '#94a3b8',
+                                    callback: v => Math.abs(v) >= 1000 ? (v / 1000).toFixed(0) + 'K' : v
+                                },
+                                grid: { color: 'rgba(167,139,250,0.06)' }
                             }
                         }
-                    },
-                    scales: {
-                        x: {
-                            stacked: true,
-                            ticks: { font: { size: 11 }, color: '#94a3b8' },
-                            grid: { display: false },
-                        },
-                        y: {
-                            stacked: true,
-                            ticks: {
-                                font: { size: 10 }, color: '#94a3b8',
-                                callback: v => Math.abs(v) >= 1000 ? (v/1000).toFixed(0)+'K' : v
-                            },
-                            grid: { color: 'rgba(167,139,250,0.06)' }
-                        }
                     }
+                });
+            }
+
+            // ── Theme ──
+            (function () {
+                var currentTheme = localStorage.getItem('csp-theme') || 'kawaii';
+                var btns = document.querySelectorAll('.theme-btn');
+                function setActiveBtn(theme) {
+                    btns.forEach(b => b.classList.toggle('active', b.getAttribute('data-theme-value') === theme));
                 }
-            });
-        }
+                function applyTheme(theme) {
+                    document.documentElement.setAttribute('data-theme', theme);
+                    localStorage.setItem('csp-theme', theme);
+                    setActiveBtn(theme);
+                }
+                setActiveBtn(currentTheme);
+                btns.forEach(btn => btn.addEventListener('click', function () { applyTheme(this.getAttribute('data-theme-value')); }));
+            })();
 
-        // ── Theme ──
-        (function() {
-            var currentTheme = localStorage.getItem('csp-theme') || 'kawaii';
-            var btns = document.querySelectorAll('.theme-btn');
-            function setActiveBtn(theme) {
-                btns.forEach(b => b.classList.toggle('active', b.getAttribute('data-theme-value') === theme));
-            }
-            function applyTheme(theme) {
-                document.documentElement.setAttribute('data-theme', theme);
-                localStorage.setItem('csp-theme', theme);
-                setActiveBtn(theme);
-            }
-            setActiveBtn(currentTheme);
-            btns.forEach(btn => btn.addEventListener('click', function() { applyTheme(this.getAttribute('data-theme-value')); }));
+            init();
         })();
-
-        init();
-    })();
     </script>
 
     <script>
-    // ════════════════════════════════════════
-    // 個股搜尋 & 五維策略分數
-    // ════════════════════════════════════════
-    (function() {
-        const scoreColors = [
-            { min: 75, color: '#10b981', bg: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.3)' },
-            { min: 60, color: '#3b82f6', bg: 'rgba(59,130,246,0.08)', border: 'rgba(59,130,246,0.3)' },
-            { min: 45, color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.3)' },
-            { min: 0,  color: '#ef4444', bg: 'rgba(239,68,68,0.08)',  border: 'rgba(239,68,68,0.3)'  },
-        ];
-        function getScoreStyle(score) {
-            if (score == null) return { color: '#94a3b8', bg: 'rgba(148,163,184,0.08)', border: 'rgba(148,163,184,0.2)' };
-            return scoreColors.find(s => score >= s.min) || scoreColors[scoreColors.length - 1];
-        }
+        // ════════════════════════════════════════
+        // 個股搜尋 & 五維策略分數
+        // ════════════════════════════════════════
+        (function () {
+            const scoreColors = [
+                { min: 75, color: '#10b981', bg: 'rgba(16,185,129,0.08)', border: 'rgba(16,185,129,0.3)' },
+                { min: 60, color: '#3b82f6', bg: 'rgba(59,130,246,0.08)', border: 'rgba(59,130,246,0.3)' },
+                { min: 45, color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.3)' },
+                { min: 0, color: '#ef4444', bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.3)' },
+            ];
+            function getScoreStyle(score) {
+                if (score == null) return { color: '#94a3b8', bg: 'rgba(148,163,184,0.08)', border: 'rgba(148,163,184,0.2)' };
+                return scoreColors.find(s => score >= s.min) || scoreColors[scoreColors.length - 1];
+            }
 
-        const COMPOSITE_LABELS = {
-            strong_buy: { text: '積極買進 🚀', color: '#10b981' },
-            buy:        { text: '建議買進 📈', color: '#3b82f6' },
-            neutral:    { text: '中性觀望 ↔️', color: '#f59e0b' },
-            weak:       { text: '偏空觀望 ⚠️', color: '#f87171' },
-            avoid:      { text: '不建議進場 ❌', color: '#ef4444' },
-        };
+            const COMPOSITE_LABELS = {
+                strong_buy: { text: '積極買進 🚀', color: '#10b981' },
+                buy: { text: '建議買進 📈', color: '#3b82f6' },
+                neutral: { text: '中性觀望 ↔️', color: '#f59e0b' },
+                weak: { text: '偏空觀望 ⚠️', color: '#f87171' },
+                avoid: { text: '不建議進場 ❌', color: '#ef4444' },
+            };
 
-        let lastSymbol = '';
+            let lastSymbol = '';
 
-        function normalizeSymbol(input) {
-            input = input.trim().toUpperCase();
-            // 純數字 → 加 .TW
-            if (/^\d+$/.test(input)) return input + '.TW';
-            // 已有 .TW / .TWO → 直接用
-            if (input.endsWith('.TW') || input.endsWith('.TWO')) return input;
-            // 含中文字元 → 回傳 null，由 doSearch 走 lookup API
-            if (/[\u4e00-\u9fff]/.test(input)) return null;
-            return input + '.TW';
-        }
+            function normalizeSymbol(input) {
+                input = input.trim().toUpperCase();
+                // 純數字 → 加 .TW
+                if (/^\d+$/.test(input)) return input + '.TW';
+                // 已有 .TW / .TWO → 直接用
+                if (input.endsWith('.TW') || input.endsWith('.TWO')) return input;
+                // 含中文字元 → 回傳 null，由 doSearch 走 lookup API
+                if (/[\u4e00-\u9fff]/.test(input)) return null;
+                return input + '.TW';
+            }
 
-        async function lookupByName(query) {
-            const res = await fetch('/api/stock-lookup?q=' + encodeURIComponent(query));
-            if (!res.ok) return null;
-            const list = await res.json();
-            return list.length > 0 ? list[0] : null;
-        }
+            async function lookupByName(query) {
+                const res = await fetch('/api/stock-lookup?q=' + encodeURIComponent(query));
+                if (!res.ok) return null;
+                const list = await res.json();
+                return list.length > 0 ? list[0] : null;
+            }
 
-        function showSkeleton() {
-            const grid = document.getElementById('score-grid');
-            const dims = ['綜合建議', '技術面', '基本面', '盤勢', '籌碼面', '消息面'];
-            grid.innerHTML = dims.map((label, i) => `
+            function showSkeleton() {
+                const grid = document.getElementById('score-grid');
+                const dims = ['綜合建議', '技術面', '基本面', '盤勢', '籌碼面', '消息面'];
+                grid.innerHTML = dims.map((label, i) => `
                 <div class="score-card sc-skeleton ${i === 0 ? 'composite' : ''}">
                     <div class="sc-label">${label}</div>
                     <div class="sc-num">--</div>
@@ -1513,17 +1749,17 @@
                     <div class="sc-bar-wrap"><div class="sc-bar-fill" style="width:0%;background:#a78bfa"></div></div>
                 </div>
             `).join('');
-            document.getElementById('arc-advice-row').innerHTML = '';
-            document.getElementById('arc-trading-signal').innerHTML = '';
-            document.getElementById('arc-screener-ranks').innerHTML = '';
-        }
+                document.getElementById('arc-advice-row').innerHTML = '';
+                document.getElementById('arc-trading-signal').innerHTML = '';
+                document.getElementById('arc-screener-ranks').innerHTML = '';
+            }
 
-        function renderScoreCard(label, score, tag, detail, isComposite) {
-            const st = getScoreStyle(score);
-            const pct = score != null ? Math.max(0, Math.min(100, score)) : 0;
-            const cls = isComposite ? 'score-card composite' : 'score-card';
-            const extra = isComposite ? ` style="border-color:${st.border}; background:${st.bg}"` : '';
-            return `
+            function renderScoreCard(label, score, tag, detail, isComposite) {
+                const st = getScoreStyle(score);
+                const pct = score != null ? Math.max(0, Math.min(100, score)) : 0;
+                const cls = isComposite ? 'score-card composite' : 'score-card';
+                const extra = isComposite ? ` style="border-color:${st.border}; background:${st.bg}"` : '';
+                return `
                 <div class="${cls}"${extra}>
                     <div class="sc-label">${label}</div>
                     <div class="sc-num" style="color:${score != null ? st.color : '#94a3b8'}">${score != null ? score.toFixed(score >= 10 ? 1 : 1) : '--'}</div>
@@ -1531,103 +1767,103 @@
                     <div class="sc-bar-wrap">
                         <div class="sc-bar-fill" style="width:${pct}%;background:${st.color}"></div>
                     </div>
-                    ${ detail ? `<div class="sc-detail" title="${detail}">${detail}</div>` : '' }
+                    ${detail ? `<div class="sc-detail" title="${detail}">${detail}</div>` : ''}
                 </div>
             `;
-        }
-
-        function renderResult(data, sym) {
-            // 標題
-            const name = (data.fundamental && data.fundamental.name) || sym.replace('.TW','');
-            document.getElementById('arc-title').textContent = sym.replace('.TW','') + ' ' + name;
-            document.getElementById('arc-subtitle').textContent = '五維策略分數 · ' + new Date().toLocaleDateString('zh-TW');
-
-            // 分類標籤
-            const sectorTag = document.getElementById('arc-sector-tag');
-            const sector = (data.fundamental && data.fundamental.sector) || '';
-            if (sectorTag) {
-                if (sector) {
-                    sectorTag.textContent = sector;
-                    sectorTag.style.display = 'inline-block';
-                } else {
-                    sectorTag.style.display = 'none';
-                }
             }
 
-            // 跳轉按鈕
-            document.getElementById('arc-goto-btn').onclick = () => {
-                localStorage.setItem('csp-pending-symbol', sym);
-                localStorage.setItem('csp-pending-market', 'stock');
-                window.location.href = 'index.html';
-            };
+            function renderResult(data, sym) {
+                // 標題
+                const name = (data.fundamental && data.fundamental.name) || sym.replace('.TW', '');
+                document.getElementById('arc-title').textContent = sym.replace('.TW', '') + ' ' + name;
+                document.getElementById('arc-subtitle').textContent = '五維策略分數 · ' + new Date().toLocaleDateString('zh-TW');
 
-            const rec = data.recommendation || {};
-            const tech = data.technical || {};
-            const fund = data.fundamental || {};
-            const reg = data.regime || {};
-            const chip = data.chipflow || {};
-            const sent = data.sentiment || {};
+                // 分類標籤
+                const sectorTag = document.getElementById('arc-sector-tag');
+                const sector = (data.fundamental && data.fundamental.sector) || '';
+                if (sectorTag) {
+                    if (sector) {
+                        sectorTag.textContent = sector;
+                        sectorTag.style.display = 'inline-block';
+                    } else {
+                        sectorTag.style.display = 'none';
+                    }
+                }
 
-            const compScore = rec.composite_score;
-            const compLabel = (COMPOSITE_LABELS[rec.action_class] || { text: rec.action || '--', color: '#94a3b8' });
+                // 跳轉按鈕
+                document.getElementById('arc-goto-btn').onclick = () => {
+                    localStorage.setItem('csp-pending-symbol', sym);
+                    localStorage.setItem('csp-pending-market', 'stock');
+                    window.location.href = 'index.html';
+                };
 
-            // 技術標籤
-            const techTag = tech.direction === 'BUY' ? `⬆ 買進 (${tech.confidence || ''}%)` :
-                            tech.direction === 'SELL' ? `⬇ 賣出 (${tech.confidence || ''}%)` : '中性';
-            // 基本面標籤
-            const fundTag = fund.valuation || '--';
-            const fundDetail = fund.pe != null ? `P/E ${fund.pe?.toFixed(1)} 殖利率${fund.dy?.toFixed(1)}%` : '';
-            // 盤勢標籤
-            const regTag = reg.state ? `${reg.state}` : '--';
-            const REGIME_ICONS = { '強勢多頭':'🚀','多頭':'📈','底部轉強':'💎','盤整':'↔️','高檔轉折':'⚠️','空頭':'📉' };
-            const regIcon = REGIME_ICONS[reg.state] || '';
-            // 籌碼標籤
-            const chipTag = chip.label || '--';
-            const chipDetail = chip.foreign_text ? `外資${chip.foreign_text} 投信${chip.trust_text || '--'}` : '';
-            // 消息標籤
-            const sentTag = sent.label || '--';
-            const sentDetail = sent.total_related != null ? `相關新聞 ${sent.total_related} 則` : '';
+                const rec = data.recommendation || {};
+                const tech = data.technical || {};
+                const fund = data.fundamental || {};
+                const reg = data.regime || {};
+                const chip = data.chipflow || {};
+                const sent = data.sentiment || {};
 
-            const grid = document.getElementById('score-grid');
-            grid.innerHTML = [
-                renderScoreCard('綜合建議', compScore, compLabel.text, `${rec.sector || ''}`, true),
-                renderScoreCard('技術面',   tech.buy_score, techTag, tech.advice || '', false),
-                renderScoreCard('基本面',   fund.buy_score, fundTag, fundDetail, false),
-                renderScoreCard('盤勢',     reg.buy_score,  regIcon + ' ' + regTag, reg.advice || '', false),
-                renderScoreCard('籌碼面',   chip.buy_score, chipTag, chipDetail, false),
-                renderScoreCard('消息面',   sent.buy_score, sentTag, sentDetail, false),
-            ].join('');
+                const compScore = rec.composite_score;
+                const compLabel = (COMPOSITE_LABELS[rec.action_class] || { text: rec.action || '--', color: '#94a3b8' });
 
-            // 建議文字列
-            const advRow = document.getElementById('arc-advice-row');
-            const advItems = [
-                tech.advice   && `<div class="adv-item"><span>技術</span> <strong>${tech.advice}</strong></div>`,
-                reg.advice    && `<div class="adv-item"><span>盤勢</span> <strong>${reg.advice}</strong></div>`,
-                fund.advice   && `<div class="adv-item"><span>基本面</span> <strong>${fund.advice}</strong></div>`,
-                chip.advice   && `<div class="adv-item"><span>籌碼</span> <strong>${chip.advice}</strong></div>`,
-            ].filter(Boolean);
-            advRow.innerHTML = advItems.length ? advItems.join('') : '<span style="opacity:0.5">無建議文字</span>';
+                // 技術標籤
+                const techTag = tech.direction === 'BUY' ? `⬆ 買進 (${tech.confidence || ''}%)` :
+                    tech.direction === 'SELL' ? `⬇ 賣出 (${tech.confidence || ''}%)` : '中性';
+                // 基本面標籤
+                const fundTag = fund.valuation || '--';
+                const fundDetail = fund.pe != null ? `P/E ${fund.pe?.toFixed(1)} 殖利率${fund.dy?.toFixed(1)}%` : '';
+                // 盤勢標籤
+                const regTag = reg.state ? `${reg.state}` : '--';
+                const REGIME_ICONS = { '強勢多頭': '🚀', '多頭': '📈', '底部轉強': '💎', '盤整': '↔️', '高檔轉折': '⚠️', '空頭': '📉' };
+                const regIcon = REGIME_ICONS[reg.state] || '';
+                // 籌碼標籤
+                const chipTag = chip.label || '--';
+                const chipDetail = chip.foreign_text ? `外資${chip.foreign_text} 投信${chip.trust_text || '--'}` : '';
+                // 消息標籤
+                const sentTag = sent.label || '--';
+                const sentDetail = sent.total_related != null ? `相關新聞 ${sent.total_related} 則` : '';
 
-            // ── 交易信號判定 ──
-            const tsBox = document.getElementById('arc-trading-signal');
-            const ts = data.trading_signal;
-            if (ts) {
-                const verdictColors = { buy: '#10b981', sell: '#ef4444', neutral: '#f59e0b' };
-                const verdictCls = ts.verdict_class === 'buy' ? 'verdict-buy' : ts.verdict_class === 'sell' ? 'verdict-sell' : '';
-                const vc = verdictColors[ts.verdict_class] || '#94a3b8';
+                const grid = document.getElementById('score-grid');
+                grid.innerHTML = [
+                    renderScoreCard('綜合建議', compScore, compLabel.text, `${rec.sector || ''}`, true),
+                    renderScoreCard('技術面', tech.buy_score, techTag, tech.advice || '', false),
+                    renderScoreCard('基本面', fund.buy_score, fundTag, fundDetail, false),
+                    renderScoreCard('盤勢', reg.buy_score, regIcon + ' ' + regTag, reg.advice || '', false),
+                    renderScoreCard('籌碼面', chip.buy_score, chipTag, chipDetail, false),
+                    renderScoreCard('消息面', sent.buy_score, sentTag, sentDetail, false),
+                ].join('');
 
-                function tsBarHTML(label, score, threshold, max, extra) {
-                    if (score == null) return '';
-                    max = max || 100;
-                    const pct = Math.min(100, Math.max(0, score / max * 100));
-                    const thPct = threshold != null ? Math.min(100, threshold / max * 100) : null;
-                    const pass = threshold != null ? score >= threshold : null;
-                    const barColor = pass === null ? '#6366f1' : pass ? '#10b981' : '#ef4444';
-                    const thLine = thPct != null ? `<div class="ts-bar-threshold" style="left:${thPct}%" title="門檻 ${threshold}"></div>` : '';
-                    const thText = threshold != null ? ` <span style="opacity:0.5;font-size:10px">/ ${threshold}</span>` : '';
-                    const extraText = extra ? ` <span style="opacity:0.4;font-size:9px">${extra}</span>` : '';
-                    const passCls = pass === null ? '' : pass ? 'ts-pass' : 'ts-fail';
-                    return `
+                // 建議文字列
+                const advRow = document.getElementById('arc-advice-row');
+                const advItems = [
+                    tech.advice && `<div class="adv-item"><span>技術</span> <strong>${tech.advice}</strong></div>`,
+                    reg.advice && `<div class="adv-item"><span>盤勢</span> <strong>${reg.advice}</strong></div>`,
+                    fund.advice && `<div class="adv-item"><span>基本面</span> <strong>${fund.advice}</strong></div>`,
+                    chip.advice && `<div class="adv-item"><span>籌碼</span> <strong>${chip.advice}</strong></div>`,
+                ].filter(Boolean);
+                advRow.innerHTML = advItems.length ? advItems.join('') : '<span style="opacity:0.5">無建議文字</span>';
+
+                // ── 交易信號判定 ──
+                const tsBox = document.getElementById('arc-trading-signal');
+                const ts = data.trading_signal;
+                if (ts) {
+                    const verdictColors = { buy: '#10b981', sell: '#ef4444', neutral: '#f59e0b' };
+                    const verdictCls = ts.verdict_class === 'buy' ? 'verdict-buy' : ts.verdict_class === 'sell' ? 'verdict-sell' : '';
+                    const vc = verdictColors[ts.verdict_class] || '#94a3b8';
+
+                    function tsBarHTML(label, score, threshold, max, extra) {
+                        if (score == null) return '';
+                        max = max || 100;
+                        const pct = Math.min(100, Math.max(0, score / max * 100));
+                        const thPct = threshold != null ? Math.min(100, threshold / max * 100) : null;
+                        const pass = threshold != null ? score >= threshold : null;
+                        const barColor = pass === null ? '#6366f1' : pass ? '#10b981' : '#ef4444';
+                        const thLine = thPct != null ? `<div class="ts-bar-threshold" style="left:${thPct}%" title="門檻 ${threshold}"></div>` : '';
+                        const thText = threshold != null ? ` <span style="opacity:0.5;font-size:10px">/ ${threshold}</span>` : '';
+                        const extraText = extra ? ` <span style="opacity:0.4;font-size:9px">${extra}</span>` : '';
+                        const passCls = pass === null ? '' : pass ? 'ts-pass' : 'ts-fail';
+                        return `
                         <div class="ts-row">
                             <span class="ts-label">${label}</span>
                             <div class="ts-bar-track">
@@ -1636,74 +1872,74 @@
                             </div>
                             <span class="ts-value ${passCls}">${score.toFixed(1)}${thText}${extraText}</span>
                         </div>`;
-                }
+                    }
 
-                // 買入條件逐項 check
-                const dirOk = ts.direction === 'BUY';
-                const buyScoreOk = ts.tech_buy_score != null && ts.tech_buy_score >= ts.buy_threshold;
-                const compOk = ts.composite_score != null && ts.composite_score >= ts.composite_threshold;
-                const conditionsHtml = `
+                    // 買入條件逐項 check
+                    const dirOk = ts.direction === 'BUY';
+                    const buyScoreOk = ts.tech_buy_score != null && ts.tech_buy_score >= ts.buy_threshold;
+                    const compOk = ts.composite_score != null && ts.composite_score >= ts.composite_threshold;
+                    const conditionsHtml = `
                     <div class="ts-conditions">
                         <span class="ts-cond ${dirOk ? 'ts-cond-pass' : 'ts-cond-fail'}" title="信號方向須為 BUY">方向${ts.direction || '--'} ${dirOk ? '✓' : '✗'}</span>
                         <span class="ts-cond ${buyScoreOk ? 'ts-cond-pass' : 'ts-cond-fail'}" title="技術買分須 ≥ ${ts.buy_threshold}">買分≥${ts.buy_threshold} ${buyScoreOk ? '✓' : '✗'}</span>
                         <span class="ts-cond ${compOk ? 'ts-cond-pass' : 'ts-cond-fail'}" title="綜合分須 ≥ ${ts.composite_threshold}">綜合≥${ts.composite_threshold} ${compOk ? '✓' : '✗'}</span>
                     </div>`;
 
-                // 五維分數拆解
-                const dims = ts.dimensions || [];
-                const dimsHtml = dims.length > 0 ? `
+                    // 五維分數拆解
+                    const dims = ts.dimensions || [];
+                    const dimsHtml = dims.length > 0 ? `
                     <div class="ts-dims-section">
                         <div class="ts-dims-title">五維綜合分數拆解</div>
                         ${dims.filter(d => d.score != null).map(d => {
-                            const pct = Math.min(100, Math.max(0, d.score));
-                            const w = Math.round(d.weight * 100);
-                            const c = d.score >= 65 ? '#10b981' : d.score >= 45 ? '#f59e0b' : '#ef4444';
-                            return `<div class="ts-dim-row">
+                        const pct = Math.min(100, Math.max(0, d.score));
+                        const w = Math.round(d.weight * 100);
+                        const c = d.score >= 65 ? '#10b981' : d.score >= 45 ? '#f59e0b' : '#ef4444';
+                        return `<div class="ts-dim-row">
                                 <span class="ts-dim-label">${d.label}<span class="ts-dim-weight">${w}%</span></span>
                                 <div class="ts-bar-track">
                                     <div class="ts-bar-fill" style="width:${pct}%;background:${c}"></div>
                                 </div>
                                 <span class="ts-dim-score" style="color:${c}">${d.score.toFixed(0)}</span>
                             </div>`;
-                        }).join('')}
+                    }).join('')}
                     </div>` : '';
 
-                // Layer 修正明細
-                const mods = ts.layer_modifiers || [];
-                const modsHtml = mods.length > 0 ? `
+                    // Layer 修正明細
+                    const mods = ts.layer_modifiers || [];
+                    const modsHtml = mods.length > 0 ? `
                     <div class="ts-mods-section">
                         <div class="ts-dims-title">分析層修正</div>
                         <div class="ts-mods-chips">
                             ${mods.map(m => {
-                                const parts = [];
-                                if (m.buy_mult !== 1.0) parts.push(`買×${m.buy_mult}`);
-                                if (m.sell_mult !== 1.0) parts.push(`賣×${m.sell_mult}`);
-                                if (m.buy_offset) parts.push(`買${m.buy_offset > 0 ? '+' : ''}${m.buy_offset}`);
-                                if (m.veto_buy) parts.push('封鎖買入');
-                                const effect = parts.join(' ');
-                                const isNeg = m.buy_mult < 1.0 || m.veto_buy;
-                                const isPos = m.buy_mult > 1.0 || m.buy_offset > 0;
-                                const cls = m.veto_buy ? 'ts-mod-veto' : isNeg ? 'ts-mod-neg' : isPos ? 'ts-mod-pos' : 'ts-mod-neutral';
-                                return `<div class="ts-mod-chip ${cls}" title="${m.reason}">
+                        const parts = [];
+                        if (m.buy_mult !== 1.0) parts.push(`買×${m.buy_mult}`);
+                        if (m.sell_mult !== 1.0) parts.push(`賣×${m.sell_mult}`);
+                        if (m.buy_offset) parts.push(`買${m.buy_offset > 0 ? '+' : ''}${m.buy_offset}`);
+                        if (m.veto_buy) parts.push('封鎖買入');
+                        const effect = parts.join(' ');
+                        const isNeg = m.buy_mult < 1.0 || m.veto_buy;
+                        const isPos = m.buy_mult > 1.0 || m.buy_offset > 0;
+                        const cls = m.veto_buy ? 'ts-mod-veto' : isNeg ? 'ts-mod-neg' : isPos ? 'ts-mod-pos' : 'ts-mod-neutral';
+                        return `<div class="ts-mod-chip ${cls}" title="${m.reason}">
                                     <span class="ts-mod-name">${m.label}</span>
                                     <span class="ts-mod-effect">${effect || '無修正'}</span>
                                 </div>`;
-                            }).join('')}
+                    }).join('')}
                         </div>
                         <div class="ts-mods-reasons">
                             ${mods.filter(m => m.reason).map(m =>
-                                `<div class="ts-mod-reason">· ${m.reason}</div>`
-                            ).join('')}
+                        `<div class="ts-mod-reason">· ${m.reason}</div>`
+                    ).join('')}
                         </div>
                     </div>` : '';
 
-                // 原始 vs 修正分數對比
-                const rawVsAdj = (ts.raw_buy_score != null && ts.tech_buy_score != null
-                    && Math.abs(ts.raw_buy_score - ts.tech_buy_score) > 0.5)
-                    ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px;opacity:0.7">原始買分 ${ts.raw_buy_score.toFixed(1)} → 經修正後 ${ts.tech_buy_score.toFixed(1)}</div>`
-                    : '';
+                    // 原始 vs 修正分數對比
+                    const rawVsAdj = (ts.raw_buy_score != null && ts.tech_buy_score != null
+                        && Math.abs(ts.raw_buy_score - ts.tech_buy_score) > 0.5)
+                        ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px;opacity:0.7">原始買分 ${ts.raw_buy_score.toFixed(1)} → 經修正後 ${ts.tech_buy_score.toFixed(1)}</div>`
+                        : '';
 
-                tsBox.innerHTML = `
+                    tsBox.innerHTML = `
                     <div class="trading-signal-box ${verdictCls}">
                         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
                             <div class="ts-verdict" style="color:${vc}">${ts.verdict}</div>
@@ -1719,99 +1955,100 @@
                         ${dimsHtml}
                         ${modsHtml}
                     </div>`;
-            } else {
-                tsBox.innerHTML = `<div style="font-size:11px;color:var(--text-muted);padding:8px 0">此股票不在交易中心追蹤範圍內</div>`;
-            }
+                } else {
+                    tsBox.innerHTML = `<div style="font-size:11px;color:var(--text-muted);padding:8px 0">此股票不在交易中心追蹤範圍內</div>`;
+                }
 
-            // ── 超選入榜 ──
-            const ranksBox = document.getElementById('arc-screener-ranks');
-            const ranks = data.screener_ranks || [];
-            if (ranks.length > 0) {
-                const chipsHtml = ranks.map(r => {
-                    const isWarning = r.id === 'regime_warning';
-                    const chipCls = isWarning ? 'sr-chip sr-chip-warn' : 'sr-chip';
-                    const scoreText = r.display_score != null ? `${r.score_label}${Math.round(r.display_score)}` : '';
-                    return `<span class="${chipCls}" title="${r.name}：第 ${r.rank}/${r.total} 名（${r.score_label}${r.display_score != null ? Math.round(r.display_score) : '--'}分，綜合${r.composite_score}分）">` +
-                        `<span class="sr-icon">${r.icon}</span>` +
-                        `<span class="sr-name">${r.name}</span>` +
-                        `<span class="sr-rank">#${r.rank}</span>` +
-                        (scoreText ? `<span class="sr-score">${scoreText}</span>` : '') +
-                        `</span>`;
-                }).join('');
-                ranksBox.innerHTML = `
+                // ── 超選入榜 ──
+                const ranksBox = document.getElementById('arc-screener-ranks');
+                const ranks = data.screener_ranks || [];
+                if (ranks.length > 0) {
+                    const chipsHtml = ranks.map(r => {
+                        const isWarning = r.id === 'regime_warning';
+                        const chipCls = isWarning ? 'sr-chip sr-chip-warn' : 'sr-chip';
+                        const scoreText = r.display_score != null ? `${r.score_label}${Math.round(r.display_score)}` : '';
+                        return `<span class="${chipCls}" title="${r.name}：第 ${r.rank}/${r.total} 名（${r.score_label}${r.display_score != null ? Math.round(r.display_score) : '--'}分，綜合${r.composite_score}分）">` +
+                            `<span class="sr-icon">${r.icon}</span>` +
+                            `<span class="sr-name">${r.name}</span>` +
+                            `<span class="sr-rank">#${r.rank}</span>` +
+                            (scoreText ? `<span class="sr-score">${scoreText}</span>` : '') +
+                            `</span>`;
+                    }).join('');
+                    ranksBox.innerHTML = `
                     <div class="screener-ranks-section">
                         <div class="sr-header">🔍 超選入榜</div>
                         <div class="sr-chips">${chipsHtml}</div>
                     </div>`;
-            } else {
-                ranksBox.innerHTML = `
+                } else {
+                    ranksBox.innerHTML = `
                     <div class="screener-ranks-section">
                         <div class="sr-header">🔍 超選入榜</div>
                         <div style="font-size:11px;color:var(--text-muted);padding:4px 0">目前未入榜任何超選類別</div>
                     </div>`;
-            }
-        }
-
-        async function doSearch() {
-            const raw = document.getElementById('stock-search-input').value;
-            if (!raw.trim()) return;
-
-            const btn = document.getElementById('btn-search-stock');
-            const spinner = document.getElementById('search-spinner');
-            const wrap = document.getElementById('analysis-result-wrap');
-
-            btn.disabled = true;
-            btn.textContent = '查詢中...';
-            spinner.classList.add('visible');
-
-            // 展開卡片，顯示 skeleton
-            wrap.classList.add('open');
-            showSkeleton();
-            document.getElementById('arc-title').textContent = raw.trim() + ' 載入中...';
-            document.getElementById('arc-subtitle').textContent = '五維策略分數 · 計算中，請稍候';
-            document.getElementById('arc-goto-btn').onclick = null;
-
-            try {
-                // 解析 symbol：中文走 lookup API，數字/英文直接 normalize
-                let sym = normalizeSymbol(raw);
-                if (sym === null) {
-                    const match = await lookupByName(raw.trim());
-                    if (!match) throw new Error('找不到「' + raw.trim() + '」對應的股票');
-                    sym = match.symbol;
-                    // 更新輸入框顯示代碼
-                    document.getElementById('stock-search-input').value = sym.replace('.TW','') + ' ' + match.name;
                 }
-
-                lastSymbol = sym;
-                const res = await fetch('/api/stock-analysis?symbol=' + encodeURIComponent(sym));
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                const data = await res.json();
-                if (sym === lastSymbol) renderResult(data, sym);
-            } catch(e) {
-                document.getElementById('arc-title').textContent = '查詢失敗';
-                document.getElementById('arc-subtitle').textContent = e.message;
-                document.getElementById('score-grid').innerHTML = `<div style="color:var(--text-muted);font-size:12px;grid-column:1/-1">${e.message}</div>`;
-            } finally {
-                btn.disabled = false;
-                btn.textContent = '查詢分數';
-                spinner.classList.remove('visible');
             }
-        }
 
-        // 關閉按鈕
-        document.getElementById('arc-close-btn').addEventListener('click', () => {
-            document.getElementById('analysis-result-wrap').classList.remove('open');
-        });
+            async function doSearch() {
+                const raw = document.getElementById('stock-search-input').value;
+                if (!raw.trim()) return;
 
-        // 查詢按鈕
-        document.getElementById('btn-search-stock').addEventListener('click', doSearch);
+                const btn = document.getElementById('btn-search-stock');
+                const spinner = document.getElementById('search-spinner');
+                const wrap = document.getElementById('analysis-result-wrap');
 
-        // Enter 鍵觸發
-        document.getElementById('stock-search-input').addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') doSearch();
-        });
-    })();
+                btn.disabled = true;
+                btn.textContent = '查詢中...';
+                spinner.classList.add('visible');
+
+                // 展開卡片，顯示 skeleton
+                wrap.classList.add('open');
+                showSkeleton();
+                document.getElementById('arc-title').textContent = raw.trim() + ' 載入中...';
+                document.getElementById('arc-subtitle').textContent = '五維策略分數 · 計算中，請稍候';
+                document.getElementById('arc-goto-btn').onclick = null;
+
+                try {
+                    // 解析 symbol：中文走 lookup API，數字/英文直接 normalize
+                    let sym = normalizeSymbol(raw);
+                    if (sym === null) {
+                        const match = await lookupByName(raw.trim());
+                        if (!match) throw new Error('找不到「' + raw.trim() + '」對應的股票');
+                        sym = match.symbol;
+                        // 更新輸入框顯示代碼
+                        document.getElementById('stock-search-input').value = sym.replace('.TW', '') + ' ' + match.name;
+                    }
+
+                    lastSymbol = sym;
+                    const res = await fetch('/api/stock-analysis?symbol=' + encodeURIComponent(sym));
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    const data = await res.json();
+                    if (sym === lastSymbol) renderResult(data, sym);
+                } catch (e) {
+                    document.getElementById('arc-title').textContent = '查詢失敗';
+                    document.getElementById('arc-subtitle').textContent = e.message;
+                    document.getElementById('score-grid').innerHTML = `<div style="color:var(--text-muted);font-size:12px;grid-column:1/-1">${e.message}</div>`;
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = '查詢分數';
+                    spinner.classList.remove('visible');
+                }
+            }
+
+            // 關閉按鈕
+            document.getElementById('arc-close-btn').addEventListener('click', () => {
+                document.getElementById('analysis-result-wrap').classList.remove('open');
+            });
+
+            // 查詢按鈕
+            document.getElementById('btn-search-stock').addEventListener('click', doSearch);
+
+            // Enter 鍵觸發
+            document.getElementById('stock-search-input').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') doSearch();
+            });
+        })();
     </script>
     <script src="tooltip.js"></script>
 </body>
+
 </html>

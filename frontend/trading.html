@@ -1,13 +1,16 @@
 <!DOCTYPE html>
 <html lang="zh-TW" data-theme="kawaii">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BTC Trading | 幣圈交易中心</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@500;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script>
-        (function() {
+        (function () {
             var t = localStorage.getItem('csp-theme') || 'kawaii';
             document.documentElement.setAttribute('data-theme', t);
         })();
@@ -19,16 +22,19 @@
             gap: 24px;
             padding: 24px;
         }
+
         .main-stats-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
             gap: 16px;
             margin-bottom: 24px;
         }
+
         .stat-card {
             padding: 20px;
             text-align: center;
         }
+
         .stat-label {
             font-size: 11px;
             color: var(--text-muted);
@@ -36,16 +42,22 @@
             margin-bottom: 6px;
             font-weight: 700;
         }
+
         .stat-value {
             font-size: 24px;
             font-weight: 800;
             font-family: 'Nunito', 'Outfit';
             color: var(--text-main);
         }
-        .stat-value.small { font-size: 18px; }
+
+        .stat-value.small {
+            font-size: 18px;
+        }
+
         .history-section {
             grid-column: span 1;
         }
+
         .trading-controls-hero {
             background: rgba(52, 211, 153, 0.06);
             border: 1.5px solid rgba(52, 211, 153, 0.2);
@@ -54,31 +66,36 @@
             text-align: center;
             margin-bottom: 24px;
         }
+
         .hero-title {
             font-size: 20px;
             margin-bottom: 10px;
             color: var(--text-main);
         }
+
         .btn-hero {
             font-size: 18px;
             padding: 14px 40px;
             border-radius: 16px;
         }
+
         .strategy-card {
             padding: 14px 16px;
             border-radius: 14px;
             margin-bottom: 10px;
-            border: 1.5px solid rgba(167,139,250,0.12);
-            background: rgba(167,139,250,0.03);
+            border: 1.5px solid rgba(167, 139, 250, 0.12);
+            background: rgba(167, 139, 250, 0.03);
             transition: all 0.2s;
         }
+
         .strategy-card.triggered {
             border-color: rgba(52, 211, 153, 0.4);
             background: rgba(52, 211, 153, 0.06);
         }
+
         .strategy-id {
             display: inline-block;
-            background: rgba(167,139,250,0.15);
+            background: rgba(167, 139, 250, 0.15);
             color: var(--primary);
             font-size: 11px;
             font-weight: 800;
@@ -86,23 +103,27 @@
             border-radius: 6px;
             margin-right: 6px;
         }
+
         .strategy-name {
             font-size: 14px;
             font-weight: 700;
             color: var(--text-main);
         }
+
         .strategy-meta {
             font-size: 11px;
             color: var(--text-muted);
             font-weight: 600;
             margin-top: 4px;
         }
+
         .strategy-backtest {
             font-size: 11px;
             color: var(--buy-color);
             font-weight: 700;
             margin-top: 3px;
         }
+
         .fng-bar {
             height: 8px;
             border-radius: 4px;
@@ -110,6 +131,7 @@
             position: relative;
             margin-top: 8px;
         }
+
         .fng-marker {
             position: absolute;
             top: -4px;
@@ -119,20 +141,33 @@
             background: var(--text-main);
             border: 2px solid white;
             transform: translateX(-50%);
-            box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
         }
+
         .hold-detail {
             display: flex;
             justify-content: space-between;
             padding: 6px 0;
             font-size: 13px;
-            border-bottom: 1px solid rgba(167,139,250,0.06);
+            border-bottom: 1px solid rgba(167, 139, 250, 0.06);
         }
-        .hold-detail:last-child { border-bottom: none; }
-        .hold-label { color: var(--text-muted); font-weight: 600; }
-        .hold-value { font-weight: 700; color: var(--text-main); }
+
+        .hold-detail:last-child {
+            border-bottom: none;
+        }
+
+        .hold-label {
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .hold-value {
+            font-weight: 700;
+            color: var(--text-main);
+        }
     </style>
 </head>
+
 <body>
     <div class="app-container">
         <!-- 側邊欄 -->
@@ -154,12 +189,15 @@
                 <a href="trading.html" class="nav-item active">幣圈交易中心</a>
                 <a href="sector_trading.html" class="nav-item">台股交易中心</a>
                 <a href="signal_performance.html" class="nav-item">信號績效統計</a>
+                <a href="backtest.html" class="nav-item">📊 回測中心</a>
                 <a href="settings.html" class="nav-item">⚙️ 後台設定</a>
             </nav>
 
-            <div class="market-panel" style="margin-top:auto; background:rgba(167,139,250,0.05); padding:16px; border-radius:14px; border:1.5px solid rgba(167,139,250,0.1)">
+            <div class="market-panel"
+                style="margin-top:auto; background:rgba(167,139,250,0.05); padding:16px; border-radius:14px; border:1.5px solid rgba(167,139,250,0.1)">
                 <div style="font-size:11px; color:var(--text-muted); margin-bottom:8px; font-weight:700">BTC 自動交易</div>
-                <div style="font-size:13px; font-weight:600">狀態: <span id="sidebar-status" class="status-badge inactive">未啟動</span></div>
+                <div style="font-size:13px; font-weight:600">狀態: <span id="sidebar-status"
+                        class="status-badge inactive">未啟動</span></div>
             </div>
         </aside>
 
@@ -174,20 +212,26 @@
             <div class="trading-layout">
                 <div class="trading-main-area">
                     <!-- 狀態控制 -->
-                    <div class="global-control-bar glass-panel" id="status-hero" style="margin: 0 0 24px 0; display:flex; justify-content:space-between; align-items:center; padding:12px 20px; border-radius:16px; border:1.5px solid rgba(52, 211, 153, 0.2); background:rgba(52, 211, 153, 0.06)">
+                    <div class="global-control-bar glass-panel" id="status-hero"
+                        style="margin: 0 0 24px 0; display:flex; justify-content:space-between; align-items:center; padding:12px 20px; border-radius:16px; border:1.5px solid rgba(52, 211, 153, 0.2); background:rgba(52, 211, 153, 0.06)">
                         <div style="display:flex; align-items:center; gap:12px">
                             <h2 style="font-size:16px; margin:0; color:var(--text-main)">BTC 四策略獨立交易</h2>
-                            <button id="btn-toggle-trading-hero" class="btn-start" style="padding:8px 20px; border-radius:12px; font-size:13px; font-weight:700; border:none; cursor:pointer; font-family:'Nunito',sans-serif">開啟自動交易</button>
-                            <button id="btn-run-once" class="btn-global" style="padding:8px 16px; border-radius:12px; font-size:13px; font-weight:700; border:1.5px solid var(--border-color); background:rgba(255,255,255,0.6); color:var(--text-main); cursor:pointer; font-family:'Nunito',sans-serif">手動檢查一次</button>
+                            <button id="btn-toggle-trading-hero" class="btn-start"
+                                style="padding:8px 20px; border-radius:12px; font-size:13px; font-weight:700; border:none; cursor:pointer; font-family:'Nunito',sans-serif">開啟自動交易</button>
+                            <button id="btn-run-once" class="btn-global"
+                                style="padding:8px 16px; border-radius:12px; font-size:13px; font-weight:700; border:1.5px solid var(--border-color); background:rgba(255,255,255,0.6); color:var(--text-main); cursor:pointer; font-family:'Nunito',sans-serif">手動檢查一次</button>
                         </div>
                         <div style="font-size:12px; color:var(--text-muted)">
-                            <span class="info-tooltip" data-tip="四組回測驗證的策略分別監控日線信號。各策略完全獨立運作，擁有專屬的持倉與動用金（上限為本金 25%）。任一策略達買入門檻即觸發該策略買入；達賣出門檻只賣出該策略的倉位。完全杜絕策略間衝突造成的過度交易。"><i>i</i> 系統說明</span>
+                            <span class="info-tooltip"
+                                data-tip="四組回測驗證的策略分別監控日線信號。各策略完全獨立運作，擁有專屬的持倉與動用金（上限為本金 25%）。任一策略達買入門檻即觸發該策略買入；達賣出門檻只賣出該策略的倉位。完全杜絕策略間衝突造成的過度交易。"><i>i</i>
+                                系統說明</span>
                         </div>
                     </div>
-                    
+
                     <!-- 各策略損益長條圖 -->
                     <div class="glass-panel" style="margin-bottom: 24px; padding: 16px 20px">
-                        <div style="font-size:12px; color:var(--text-muted); margin-bottom:8px; font-weight:700">各策略損益比較</div>
+                        <div style="font-size:12px; color:var(--text-muted); margin-bottom:8px; font-weight:700">各策略損益比較
+                        </div>
                         <div style="height:150px; position:relative">
                             <canvas id="strategy-bar-chart"></canvas>
                         </div>
@@ -196,7 +240,9 @@
                     <!-- 帳戶數據 -->
                     <div class="main-stats-grid">
                         <div class="stat-card glass-panel">
-                            <div class="stat-label">BTC 即時價格 <span class="info-tooltip" data-tip="資料來源：Binance 現貨 REST API（api.binance.com/api/v3/ticker/price，交易對 BTCUSDT）。每 15 秒自動刷新一次，無需 API Key。"><i>i</i></span></div>
+                            <div class="stat-label">BTC 即時價格 <span class="info-tooltip"
+                                    data-tip="資料來源：Binance 現貨 REST API（api.binance.com/api/v3/ticker/price，交易對 BTCUSDT）。每 15 秒自動刷新一次，無需 API Key。"><i>i</i></span>
+                            </div>
                             <div id="btc-price" class="stat-value small">--</div>
                         </div>
                         <div class="stat-card glass-panel">
@@ -204,11 +250,15 @@
                             <div id="initial-balance" class="stat-value small">100,000</div>
                         </div>
                         <div class="stat-card glass-panel highlight">
-                            <div class="stat-label">當前淨值 <span class="info-tooltip" data-tip="淨值 = 現金餘額 + 持倉市值。持倉市值 = 持有 BTC 數量 × BTC 即時價格。初始本金為 100,000 USDT 虛擬資金。"><i>i</i></span></div>
+                            <div class="stat-label">當前淨值 <span class="info-tooltip"
+                                    data-tip="淨值 = 現金餘額 + 持倉市值。持倉市值 = 持有 BTC 數量 × BTC 即時價格。初始本金為 100,000 USDT 虛擬資金。"><i>i</i></span>
+                            </div>
                             <div id="trade-equity" class="stat-value small">--</div>
                         </div>
                         <div class="stat-card glass-panel" id="pl-card">
-                            <div class="stat-label">總損益 <span class="info-tooltip" data-tip="總損益 = 當前淨值 - 初始本金。含已實現（已賣出）和未實現（持倉中）損益。金額及百分比同時顯示，格式對齊台股交易中心。所有交易已扣除 0.1% 手續費。"><i>i</i></span></div>
+                            <div class="stat-label">總損益 <span class="info-tooltip"
+                                    data-tip="總損益 = 當前淨值 - 初始本金。含已實現（已賣出）和未實現（持倉中）損益。金額及百分比同時顯示，格式對齊台股交易中心。所有交易已扣除 0.1% 手續費。"><i>i</i></span>
+                            </div>
                             <div id="trade-pl" class="stat-value small">--</div>
                         </div>
                     </div>
@@ -216,8 +266,11 @@
                     <!-- 交易歷史 -->
                     <div class="history-section card glass-panel">
                         <div class="card-header">
-                            <h2>交易歷史 <span class="info-tooltip" data-tip="記錄所有已執行的虛擬交易。系統將交易拆分到個別策略。買入：單一策略買入上限為初始本金 25%。賣出：策略賣出僅平倉該策略擁有的部位。損益格式對齊台股：買入行顯示未實現損益，賣出行顯示已實現損益+報酬率。"><i>i</i></span></h2>
-                            <span id="trade-count" style="font-size:12px; color:var(--text-muted); font-weight:600">0 筆交易</span>
+                            <h2>交易歷史 <span class="info-tooltip"
+                                    data-tip="記錄所有已執行的虛擬交易。系統將交易拆分到個別策略。買入：單一策略買入上限為初始本金 25%。賣出：策略賣出僅平倉該策略擁有的部位。損益格式對齊台股：買入行顯示未實現損益，賣出行顯示已實現損益+報酬率。"><i>i</i></span>
+                            </h2>
+                            <span id="trade-count" style="font-size:12px; color:var(--text-muted); font-weight:600">0
+                                筆交易</span>
                         </div>
                         <div class="history-table-container" style="max-height:500px; min-height:200px;">
                             <table class="history-table">
@@ -228,8 +281,11 @@
                                         <th>價格</th>
                                         <th>數量 (BTC)</th>
                                         <th>金額 (USDT)</th>
-                                        <th>損益 <span class="info-tooltip" data-tip="買進：若仍持有顯示未實現損益（依 BTC 即時價計算）。賣出：顯示已實現損益＋報酬率(%)＋持倉天數。格式對齊台股交易中心。"><i>i</i></span></th>
-                                        <th>信號 <span class="info-tooltip" data-tip="記錄交易當下的分數與觸發的策略。各策略獨立交易，互不干涉。"><i>i</i></span></th>
+                                        <th>損益 <span class="info-tooltip"
+                                                data-tip="買進：若仍持有顯示未實現損益（依 BTC 即時價計算）。賣出：顯示已實現損益＋報酬率(%)＋持倉天數。格式對齊台股交易中心。"><i>i</i></span>
+                                        </th>
+                                        <th>信號 <span class="info-tooltip"
+                                                data-tip="記錄交易當下的分數與觸發的策略。各策略獨立交易，互不干涉。"><i>i</i></span></th>
                                     </tr>
                                 </thead>
                                 <tbody id="trade-history-body">
@@ -243,36 +299,49 @@
                 <div class="trading-side-area">
                     <!-- 持倉資訊 -->
                     <div class="card glass-panel" style="padding:20px; margin-bottom:16px">
-                        <h3 style="margin-bottom:15px; font-size:16px; color:var(--text-main)">當前持倉 <span class="info-tooltip" data-tip="顯示目前各策略獨立持有的 BTC 部位。由於各策略條件不同，可能出現 S1 持倉而 S2 空手的情況。"><i>i</i></span></h3>
+                        <h3 style="margin-bottom:15px; font-size:16px; color:var(--text-main)">當前持倉 <span
+                                class="info-tooltip"
+                                data-tip="顯示目前各策略獨立持有的 BTC 部位。由於各策略條件不同，可能出現 S1 持倉而 S2 空手的情況。"><i>i</i></span></h3>
                         <div id="holdings-display">
-                            <div style="text-align:center; padding:20px; color:var(--text-muted); font-size:13px; font-weight:600">無持倉</div>
+                            <div
+                                style="text-align:center; padding:20px; color:var(--text-muted); font-size:13px; font-weight:600">
+                                無持倉</div>
                         </div>
                     </div>
 
                     <!-- 恐懼貪婪指數 -->
                     <div class="card glass-panel" style="padding:20px; margin-bottom:16px">
-                        <h3 style="margin-bottom:12px; font-size:16px; color:var(--text-main)">市場情緒 <span class="info-tooltip" data-tip="CryptoFlowLayer 結合兩個指標做逆向判斷：(1) 恐懼貪婪指數（0-100）：來源 alternative.me/crypto/fear-and-greed-index，綜合波動率、市場動量、社群媒體、問卷、佔比、趨勢等 6 維度計算。0-25=極度恐懼、25-45=恐懼、45-55=中性、55-75=貪婪、75-100=極度貪婪。(2) 資金費率百分位：來源 Binance Futures API（fapi.binance.com），每 8 小時結算一次。百分位表示目前費率在近 90 天中的相對高低。費率高=多方付費給空方（多方過度槓桿）。逆向邏輯：極度恐懼+低費率→加強買入（市場過度悲觀）；極度貪婪+高費率→加強賣出（市場過度樂觀）。"><i>i</i></span></h3>
+                        <h3 style="margin-bottom:12px; font-size:16px; color:var(--text-main)">市場情緒 <span
+                                class="info-tooltip"
+                                data-tip="CryptoFlowLayer 結合兩個指標做逆向判斷：(1) 恐懼貪婪指數（0-100）：來源 alternative.me/crypto/fear-and-greed-index，綜合波動率、市場動量、社群媒體、問卷、佔比、趨勢等 6 維度計算。0-25=極度恐懼、25-45=恐懼、45-55=中性、55-75=貪婪、75-100=極度貪婪。(2) 資金費率百分位：來源 Binance Futures API（fapi.binance.com），每 8 小時結算一次。百分位表示目前費率在近 90 天中的相對高低。費率高=多方付費給空方（多方過度槓桿）。逆向邏輯：極度恐懼+低費率→加強買入（市場過度悲觀）；極度貪婪+高費率→加強賣出（市場過度樂觀）。"><i>i</i></span>
+                        </h3>
                         <div style="text-align:center; margin-bottom:6px">
-                            <span id="fng-value" style="font-size:36px; font-weight:800; color:var(--text-main)">--</span>
-                            <span id="fng-label" style="display:block; font-size:13px; font-weight:700; color:var(--text-muted)">--</span>
+                            <span id="fng-value"
+                                style="font-size:36px; font-weight:800; color:var(--text-main)">--</span>
+                            <span id="fng-label"
+                                style="display:block; font-size:13px; font-weight:700; color:var(--text-muted)">--</span>
                         </div>
                         <div class="fng-bar">
                             <div id="fng-marker" class="fng-marker" style="left:50%"></div>
                         </div>
-                        <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-muted); margin-top:4px; font-weight:600">
+                        <div
+                            style="display:flex; justify-content:space-between; font-size:10px; color:var(--text-muted); margin-top:4px; font-weight:600">
                             <span>極度恐懼</span>
                             <span>中性</span>
                             <span>極度貪婪</span>
                         </div>
                         <div style="margin-top:12px; font-size:12px; color:var(--text-muted); font-weight:600">
                             資金費率百分位: <span id="fr-pct" style="color:var(--text-main); font-weight:700">--</span>
-                            <span class="info-tooltip" data-tip="目前 Binance BTCUSDT 永續合約資金費率在近 90 天的百分位排名。>75%=偏高（多方槓桿偏重，逆向偏空）、<25%=偏低（空方主導，逆向偏多）。資料來源：Binance Futures API /fapi/v1/fundingRate。"><i>i</i></span>
+                            <span class="info-tooltip"
+                                data-tip="目前 Binance BTCUSDT 永續合約資金費率在近 90 天的百分位排名。>75%=偏高（多方槓桿偏重，逆向偏空）、<25%=偏低（空方主導，逆向偏多）。資料來源：Binance Futures API /fapi/v1/fundingRate。"><i>i</i></span>
                         </div>
                     </div>
 
                     <!-- 四策略監控 -->
                     <div class="card glass-panel" style="padding:20px; margin-bottom:16px">
-                        <h3 style="margin-bottom:12px; font-size:16px; color:var(--text-main)">四策略監控 <span class="info-tooltip" data-tip="各策略買賣完全獨立，自己看多買入，自己看空賣出，不受其他策略影響。這消除了策略之間搶奪部位導致的過度交易。"><i>i</i></span></h3>
+                        <h3 style="margin-bottom:12px; font-size:16px; color:var(--text-main)">四策略監控 <span
+                                class="info-tooltip"
+                                data-tip="各策略買賣完全獨立，自己看多買入，自己看空賣出，不受其他策略影響。這消除了策略之間搶奪部位導致的過度交易。"><i>i</i></span></h3>
                         <div id="strategies-list">
                             <!-- JS 動態生成 -->
                         </div>
@@ -280,7 +349,8 @@
 
                     <!-- 風控參數 -->
                     <div class="card glass-panel" style="padding:20px">
-                        <h3 style="margin-bottom:12px; font-size:16px; color:var(--text-main)">風控參數 <span class="info-tooltip" data-tip="停損停利針對單一策略部位計算。"><i>i</i></span></h3>
+                        <h3 style="margin-bottom:12px; font-size:16px; color:var(--text-main)">風控參數 <span
+                                class="info-tooltip" data-tip="停損停利針對單一策略部位計算。"><i>i</i></span></h3>
                         <div class="hold-detail">
                             <span class="hold-label">時間框架</span>
                             <span class="hold-value">日線 (1D)</span>
@@ -316,12 +386,12 @@
     <script src="trading_app.js"></script>
     <script>
         // Theme Switcher Logic
-        (function() {
+        (function () {
             var currentTheme = localStorage.getItem('csp-theme') || 'kawaii';
             var btns = document.querySelectorAll('.theme-btn');
 
             function setActiveBtn(theme) {
-                btns.forEach(function(b) {
+                btns.forEach(function (b) {
                     b.classList.toggle('active', b.getAttribute('data-theme-value') === theme);
                 });
             }
@@ -335,12 +405,13 @@
 
             setActiveBtn(currentTheme);
 
-            btns.forEach(function(btn) {
-                btn.addEventListener('click', function() {
+            btns.forEach(function (btn) {
+                btn.addEventListener('click', function () {
                     applyTheme(this.getAttribute('data-theme-value'));
                 });
             });
         })();
     </script>
 </body>
+
 </html>
