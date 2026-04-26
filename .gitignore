@@ -39,3 +39,18 @@ data/stocks/
 backend/data/settings.json
 backend/data/custom_stocks.json
 
+# Auto-generated cache (regenerated each run)
+backend/data/screener_cache.json
+backend/data/screener_rank_history.json
+backend/data/tw_rate_state.json
+backend/data/signal_performance_cache*.json
+backend/data/threshold_backtest.json
+backend/data/backtest/
+
+# Auto-fetched external market data (refreshed via API)
+data/btc_fear_greed.csv
+data/btc_funding_rate.csv
+
+# BTC trading account state (backed up separately via scripts/backup_state.sh)
+data/btc_trading_account.json
+
