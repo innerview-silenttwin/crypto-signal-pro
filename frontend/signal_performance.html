@@ -1,93 +1,197 @@
 <!DOCTYPE html>
 <html lang="zh-TW" data-theme="kawaii">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Signal Performance | 台股信號績效總覽</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Outfit:wght@500;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script>
-        (function() {
+        (function () {
             var t = localStorage.getItem('csp-theme') || 'kawaii';
             document.documentElement.setAttribute('data-theme', t);
         })();
     </script>
     <style>
         /* ── 頁面 ── */
-        .perf-content { padding: 0 20px 24px; }
+        .perf-content {
+            padding: 0 20px 24px;
+        }
 
         /* ── 概覽列 ── */
         .perf-overview {
-            display: flex; gap: 12px; margin-bottom: 18px; flex-wrap: wrap;
+            display: flex;
+            gap: 12px;
+            margin-bottom: 18px;
+            flex-wrap: wrap;
         }
+
         .ov-chip {
-            padding: 6px 14px; border-radius: 10px; font-size: 12px; font-weight: 700;
-            background: rgba(167,139,250,0.08); border: 1px solid var(--border-color);
+            padding: 6px 14px;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 700;
+            background: rgba(167, 139, 250, 0.08);
+            border: 1px solid var(--border-color);
         }
-        .ov-chip .ov-val { color: var(--primary); margin-left: 4px; }
+
+        .ov-chip .ov-val {
+            color: var(--primary);
+            margin-left: 4px;
+        }
 
         /* ── 控制列 ── */
         .ctrl-row {
-            display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 14px;
+            flex-wrap: wrap;
         }
-        .ctrl-row select, .ctrl-row input {
-            padding: 7px 12px; border-radius: 8px; font-size: 12px;
-            border: 1.5px solid var(--border-color); background: var(--card-bg); color: var(--text-primary);
+
+        .ctrl-row select,
+        .ctrl-row input {
+            padding: 7px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            border: 1.5px solid var(--border-color);
+            background: var(--card-bg);
+            color: var(--text-primary);
         }
-        .ctrl-row input { width: 180px; }
+
+        .ctrl-row input {
+            width: 180px;
+        }
 
         /* ── 大表格 ── */
         .stock-table-wrap {
-            overflow-x: auto; border-radius: 14px;
+            overflow-x: auto;
+            border-radius: 14px;
             border: 1.5px solid var(--border-color);
-            background: var(--card-bg, rgba(255,255,255,0.02));
+            background: var(--card-bg, rgba(255, 255, 255, 0.02));
         }
+
         .stock-table {
-            width: 100%; border-collapse: collapse; font-size: 12px;
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
             white-space: nowrap;
         }
+
         .stock-table th {
-            position: sticky; top: 0; z-index: 2;
-            background: rgba(167,139,250,0.1); backdrop-filter: blur(4px);
-            padding: 10px 10px; text-align: left; font-weight: 700; font-size: 11px;
-            color: var(--text-muted); border-bottom: 2px solid var(--border-color);
-            cursor: pointer; user-select: none;
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: rgba(167, 139, 250, 0.1);
+            backdrop-filter: blur(4px);
+            padding: 10px 10px;
+            text-align: left;
+            font-weight: 700;
+            font-size: 11px;
+            color: var(--text-muted);
+            border-bottom: 2px solid var(--border-color);
+            cursor: pointer;
+            user-select: none;
         }
-        .stock-table th:hover { background: rgba(167,139,250,0.18); }
-        .stock-table th.sort-asc::after { content: ' \u25B2'; font-size: 9px; }
-        .stock-table th.sort-desc::after { content: ' \u25BC'; font-size: 9px; }
+
+        .stock-table th:hover {
+            background: rgba(167, 139, 250, 0.18);
+        }
+
+        .stock-table th.sort-asc::after {
+            content: ' \u25B2';
+            font-size: 9px;
+        }
+
+        .stock-table th.sort-desc::after {
+            content: ' \u25BC';
+            font-size: 9px;
+        }
+
         .stock-table td {
-            padding: 8px 10px; border-bottom: 1px solid rgba(167,139,250,0.06);
+            padding: 8px 10px;
+            border-bottom: 1px solid rgba(167, 139, 250, 0.06);
             vertical-align: middle;
         }
-        .stock-table tr:hover { background: rgba(167,139,250,0.05); }
-        .stock-table .num { text-align: right; font-variant-numeric: tabular-nums; }
-        .stock-table .pos { color: var(--buy-color, #10b981); font-weight: 600; }
-        .stock-table .neg { color: var(--sell-color, #ef4444); font-weight: 600; }
+
+        .stock-table tr:hover {
+            background: rgba(167, 139, 250, 0.05);
+        }
+
+        .stock-table .num {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .stock-table .pos {
+            color: var(--buy-color, #10b981);
+            font-weight: 600;
+        }
+
+        .stock-table .neg {
+            color: var(--sell-color, #ef4444);
+            font-weight: 600;
+        }
 
         /* ── Sparkline (inline canvas) ── */
-        .spark-cell { position: relative; width: 90px; height: 32px; }
-        .spark-cell canvas { width: 90px !important; height: 32px !important; }
+        .spark-cell {
+            position: relative;
+            width: 90px;
+            height: 32px;
+        }
+
+        .spark-cell canvas {
+            width: 90px !important;
+            height: 32px !important;
+        }
 
         /* ── 信號標記 ── */
         .sig-badge {
-            display: inline-block; padding: 2px 8px; border-radius: 6px;
-            font-size: 11px; font-weight: 700; cursor: pointer;
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
         }
-        .sig-badge.buy { background: rgba(16,185,129,0.15); color: #10b981; }
-        .sig-badge.sell { background: rgba(239,68,68,0.15); color: #ef4444; }
-        .sig-badge.chip { background: rgba(59,130,246,0.15); color: #3b82f6; }
-        .sig-badge.regime { background: rgba(245,158,11,0.15); color: #f59e0b; }
-        .sig-badge.zero { opacity: 0.35; cursor: default; }
+
+        .sig-badge.buy {
+            background: rgba(16, 185, 129, 0.15);
+            color: #10b981;
+        }
+
+        .sig-badge.sell {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+        }
+
+        .sig-badge.chip {
+            background: rgba(59, 130, 246, 0.15);
+            color: #3b82f6;
+        }
+
+        .sig-badge.regime {
+            background: rgba(245, 158, 11, 0.15);
+            color: #f59e0b;
+        }
+
+        .sig-badge.zero {
+            opacity: 0.35;
+            cursor: default;
+        }
 
         /* ── Stock link ── */
         .stock-link {
             color: var(--primary, #a78bfa);
             text-decoration: none;
-            border-bottom: 1px dashed rgba(167,139,250,0.4);
+            border-bottom: 1px dashed rgba(167, 139, 250, 0.4);
             transition: all 0.15s;
         }
+
         .stock-link:hover {
             color: #c4b5fd;
             border-bottom-color: #c4b5fd;
@@ -96,64 +200,149 @@
         /* ── Tooltip (信號日期清單) ── */
         /* 改為 fixed 定位讓 JS 動態計算位置，不被 overflow 截斷 */
         #sig-floating-tip {
-            display: none; position: fixed; z-index: 9999;
-            background: var(--card-bg, #1e1e2e); border: 1.5px solid var(--border-color);
-            border-radius: 10px; padding: 10px 14px; min-width: 160px; max-width: 220px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.4); font-size: 11px;
-            white-space: normal; max-height: 240px; overflow-y: auto;
+            display: none;
+            position: fixed;
+            z-index: 9999;
+            background: var(--card-bg, #1e1e2e);
+            border: 1.5px solid var(--border-color);
+            border-radius: 10px;
+            padding: 10px 14px;
+            min-width: 160px;
+            max-width: 220px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+            font-size: 11px;
+            white-space: normal;
+            max-height: 240px;
+            overflow-y: auto;
             pointer-events: none;
         }
-        #sig-floating-tip .tt-title { font-weight: 700; margin-bottom: 6px; color: var(--text-primary); }
-        #sig-floating-tip .tt-item { padding: 2px 0; color: var(--text-muted); }
-        #sig-floating-tip .tt-item span { color: var(--text-primary); font-weight: 600; }
+
+        #sig-floating-tip .tt-title {
+            font-weight: 700;
+            margin-bottom: 6px;
+            color: var(--text-primary);
+        }
+
+        #sig-floating-tip .tt-item {
+            padding: 2px 0;
+            color: var(--text-muted);
+        }
+
+        #sig-floating-tip .tt-item span {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
 
         /* ── Sparkline hover 大圖 ── */
         .spark-overlay {
-            display: none; position: fixed; z-index: 9998;
-            background: var(--card-bg, #1e1e2e); border: 1.5px solid var(--border-color);
-            border-radius: 14px; padding: 16px; width: 360px; height: 200px;
-            box-shadow: 0 12px 40px rgba(0,0,0,0.4);
+            display: none;
+            position: fixed;
+            z-index: 9998;
+            background: var(--card-bg, #1e1e2e);
+            border: 1.5px solid var(--border-color);
+            border-radius: 14px;
+            padding: 16px;
+            width: 360px;
+            height: 200px;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
             pointer-events: none;
         }
-        .spark-overlay canvas { width: 100% !important; height: 100% !important; }
+
+        .spark-overlay canvas {
+            width: 100% !important;
+            height: 100% !important;
+        }
+
         .spark-overlay .so-title {
-            font-size: 13px; font-weight: 700; margin-bottom: 8px;
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 8px;
         }
 
         /* ── 盤勢 tag ── */
         .regime-tag {
-            display: inline-block; padding: 2px 8px; border-radius: 6px;
-            font-size: 10px; font-weight: 700;
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 10px;
+            font-weight: 700;
         }
-        .regime-tag.bull { background: rgba(16,185,129,0.15); color: #10b981; }
-        .regime-tag.bear { background: rgba(239,68,68,0.15); color: #ef4444; }
-        .regime-tag.neutral { background: rgba(148,163,184,0.15); color: #94a3b8; }
+
+        .regime-tag.bull {
+            background: rgba(16, 185, 129, 0.15);
+            color: #10b981;
+        }
+
+        .regime-tag.bear {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+        }
+
+        .regime-tag.neutral {
+            background: rgba(148, 163, 184, 0.15);
+            color: #94a3b8;
+        }
 
         /* ── Loading ── */
         .perf-loading {
-            text-align: center; padding: 80px 20px; color: var(--text-muted);
+            text-align: center;
+            padding: 80px 20px;
+            color: var(--text-muted);
         }
+
         .perf-loading .spinner {
-            width: 40px; height: 40px;
-            border: 3px solid rgba(167,139,250,0.2);
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(167, 139, 250, 0.2);
             border-top: 3px solid var(--primary);
-            border-radius: 50%; animation: spin 0.8s linear infinite;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
             margin: 0 auto 16px;
         }
-        @keyframes spin { to { transform: rotate(360deg); } }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
 
         /* ── 產業 tag ── */
         .sector-tag {
-            display: inline-block; padding: 1px 6px; border-radius: 4px;
-            font-size: 10px; font-weight: 700; opacity: 0.8;
+            display: inline-block;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 700;
+            opacity: 0.8;
         }
-        .sector-tag.semiconductor { background: rgba(167,139,250,0.2); color: #a78bfa; }
-        .sector-tag.electronics { background: rgba(59,130,246,0.2); color: #60a5fa; }
-        .sector-tag.finance { background: rgba(245,158,11,0.2); color: #fbbf24; }
-        .sector-tag.traditional { background: rgba(148,163,184,0.2); color: #94a3b8; }
-        .sector-tag.default { background: rgba(236,72,153,0.2); color: #f472b6; }
+
+        .sector-tag.semiconductor {
+            background: rgba(167, 139, 250, 0.2);
+            color: #a78bfa;
+        }
+
+        .sector-tag.electronics {
+            background: rgba(59, 130, 246, 0.2);
+            color: #60a5fa;
+        }
+
+        .sector-tag.finance {
+            background: rgba(245, 158, 11, 0.2);
+            color: #fbbf24;
+        }
+
+        .sector-tag.traditional {
+            background: rgba(148, 163, 184, 0.2);
+            color: #94a3b8;
+        }
+
+        .sector-tag.default {
+            background: rgba(236, 72, 153, 0.2);
+            color: #f472b6;
+        }
     </style>
 </head>
+
 <body>
     <div class="app-container">
         <aside class="sidebar glass-panel">
@@ -172,6 +361,7 @@
                 <a href="trading.html" class="nav-item">幣圈交易中心</a>
                 <a href="sector_trading.html" class="nav-item">台股交易中心</a>
                 <a href="signal_performance.html" class="nav-item active">信號績效總覽</a>
+                <a href="backtest.html" class="nav-item">📊 回測中心</a>
                 <a href="settings.html" class="nav-item">⚙️ 後台設定</a>
             </nav>
         </aside>
@@ -180,7 +370,14 @@
             <header class="top-bar">
                 <h1>台股信號績效總覽</h1>
                 <div class="top-bar-right">
-                    <button id="btn-refresh" class="btn-global" style="padding:6px 16px; font-size:12px">重新計算</button>
+                    <label style="font-size:12px; color:var(--text-muted); margin-right:6px">回測期間</label>
+                    <select id="filter-period" style="padding:5px 8px; font-size:12px; border-radius:6px; background:var(--bg-card); color:var(--text-primary); border:1px solid var(--border)">
+                        <option value="6mo">近 6 個月</option>
+                        <option value="1y">近 1 年</option>
+                        <option value="3y">近 3 年</option>
+                        <option value="5y">近 5 年</option>
+                    </select>
+                    <button id="btn-refresh" class="btn-global" style="padding:6px 16px; font-size:12px; margin-left:8px">重新計算</button>
                     <span id="last-update" style="font-size:12px; color:var(--text-muted); margin-left:12px">--</span>
                 </div>
             </header>
@@ -203,9 +400,10 @@
                         <option value="">全部產業</option>
                         <option value="semiconductor">半導體</option>
                         <option value="electronics">電子</option>
+                        <option value="precision">精密機械</option>
                         <option value="finance">金融</option>
                         <option value="traditional">傳產</option>
-                        <option value="default">其他/ETF</option>
+                        <option value="default">ETF/其他</option>
                     </select>
                     <input id="filter-search" type="text" placeholder="搜尋代碼或名稱...">
                     <span style="font-size:11px; color:var(--text-muted)" id="result-count"></span>
@@ -249,4 +447,5 @@
         });
     </script>
 </body>
+
 </html>

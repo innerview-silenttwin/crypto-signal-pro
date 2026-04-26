@@ -22,25 +22,45 @@ const COLUMNS = [
     { key: 'max_drawdown',       label: '最大回撤%',  sort: 'max_drawdown',    type: 'dd' },
     { key: 'end_price',          label: '現價',       sort: 'end_price',       type: 'price' },
     { key: 'spark_price',        label: '股價走勢',   sort: null,              type: 'spark', dim: 'close' },
-    { key: 'spark_tech',         label: '技術面',     sort: 'last_tech',       type: 'spark', dim: 'tech' },
-    { key: 'spark_regime',       label: '盤勢層',     sort: 'last_regime',     type: 'spark', dim: 'regime' },
-    { key: 'spark_chip',         label: '籌碼面',     sort: 'last_chip',       type: 'spark', dim: 'chip' },
+    { key: 'spark_tech',         label: '技術面',     sort: 'last_tech',       type: 'spark', dim: 'tech',
+      tip: '技術買入分數 (buy_score) 走勢。顏色閾值依回測校準：≥45 強買(綠)、40-44 弱買(藍)、30-39 觀察(黃)、<30 無訊號(灰)。買分計算來自 RSI/MACD/MFI/EMA/ADX/Volume 等 10 個指標加總。' },
+    { key: 'spark_regime',       label: '盤勢層',     sort: 'last_regime',     type: 'spark', dim: 'regime',
+      tip: '盤勢分數對照：強勢多頭=90、多頭=75、底部轉強=70、盤整=50、高檔轉折=25、空頭=15。' },
+    { key: 'spark_chip',         label: '籌碼面',     sort: 'last_chip',       type: 'spark', dim: 'chip',
+      tip: '籌碼分數=50 + 投信連買天數×8 + 外資連買天數×6（投信加重，因回測投信訊號 +32d 平均 +10%，勝率 60.5%，比外資略強）。' },
     { key: 'last_regime_state',  label: '盤勢狀態',   sort: 'last_regime',     type: 'regime_tag' },
-    { key: 'buy_count',          label: '技術買入',   sort: 'buy_count',       type: 'signal', sig: 'buy_triggers', cls: 'buy' },
-    { key: 'strong_buy_count',   label: '技術強買',   sort: 'strong_buy_count', type: 'signal', sig: 'strong_buy_triggers', cls: 'buy' },
-    { key: 'sell_count',         label: '技術賣出',   sort: 'sell_count',      type: 'signal', sig: 'sell_triggers', cls: 'sell' },
-    { key: 'foreign_buy_count',  label: '外資連買',   sort: 'foreign_buy_count', type: 'signal', sig: 'foreign_buy', cls: 'chip' },
-    { key: 'trust_buy_count',    label: '投信連買',   sort: 'trust_buy_count', type: 'signal', sig: 'trust_buy', cls: 'chip' },
-    { key: 'regime_bull_count',  label: '多頭次數',   sort: 'regime_bull_count', type: 'signal', sig: 'regime_bull', cls: 'regime' },
-    { key: 'regime_bottom_count', label: '底部轉強',  sort: 'regime_bottom_count', type: 'signal', sig: 'regime_bottom', cls: 'regime' },
+    { key: 'buy_count',          label: '技術買入',   sort: 'buy_count',       type: 'signal', sig: 'buy_triggers', cls: 'buy',
+      tip: 'buy_score ≥40 觸發次數（弱買）。回測 +10d 平均 +4.72%、勝率 60.4%。' },
+    { key: 'strong_buy_count',   label: '技術強買',   sort: 'strong_buy_count', type: 'signal', sig: 'strong_buy_triggers', cls: 'buy',
+      tip: 'buy_score ≥45 觸發次數（黃金門檻）。回測最佳甜蜜點：+10d 平均 +5.90%、+20d 平均 +7.66%、勝率 59.1%。注意：>=60 反而是過熱反指標，故廢棄高門檻。' },
+    { key: 'sell_count',         label: '技術賣出',   sort: 'sell_count',      type: 'signal', sig: 'sell_triggers', cls: 'sell',
+      tip: 'sell_score ≥50 觸發次數。多頭市場下信號偏弱（樣本期間 2026 為多頭）。' },
+    { key: 'foreign_buy_count',  label: '外資連買',   sort: 'foreign_buy_count', type: 'signal', sig: 'foreign_buy', cls: 'chip',
+      tip: '外資連買 ≥3 天觸發次數。回測 +32d 平均 +7.5%、勝率 59.3%。' },
+    { key: 'trust_buy_count',    label: '投信連買',   sort: 'trust_buy_count', type: 'signal', sig: 'trust_buy', cls: 'chip',
+      tip: '投信連買 ≥3 天觸發次數。最強籌碼訊號：+8d 勝率 64.1%、+32d 平均 +10%。建議優先參考。' },
+    { key: 'regime_bull_count',  label: '多頭次數',   sort: 'regime_bull_count', type: 'signal', sig: 'regime_bull', cls: 'regime',
+      tip: '盤勢翻多頭/強勢多頭次數。買入訊號在多頭下勝率達 65.8%，是黃金組合。' },
+    { key: 'regime_bottom_count', label: '底部轉強',  sort: 'regime_bottom_count', type: 'signal', sig: 'regime_bottom', cls: 'regime',
+      tip: '底部轉強次數。需通過「均線非空頭排列 + 60MA 不下彎」過濾，避免接刀子。+10d 平均 +2.44%。' },
 ];
 
 // ── Init ──
+
+let currentPeriod = '6mo';
 
 async function init() {
     document.getElementById('btn-refresh').addEventListener('click', triggerRefresh);
     document.getElementById('filter-sector').addEventListener('change', renderTable);
     document.getElementById('filter-search').addEventListener('input', renderTable);
+    const periodSel = document.getElementById('filter-period');
+    if (periodSel) {
+        periodSel.value = currentPeriod;
+        periodSel.addEventListener('change', async (e) => {
+            currentPeriod = e.target.value;
+            await loadData();
+        });
+    }
     setupFloatingTip();
     await loadData();
 }
@@ -54,7 +74,7 @@ async function loadData() {
     mainEl.style.display = 'none';
 
     try {
-        const res = await fetch('/api/signal-performance');
+        const res = await fetch(`/api/signal-performance?period=${currentPeriod}`);
         const data = await res.json();
 
         if (data.status === 'computing' || data.computing) {
@@ -63,8 +83,8 @@ async function loadData() {
             return;
         }
         if (data.status === 'no_cache') {
-            msgEl.textContent = '首次計算中，約需 3-5 分鐘...';
-            await fetch('/api/signal-performance/refresh', { method: 'POST' });
+            msgEl.textContent = `首次計算中（${currentPeriod}），長期間約需 3-10 分鐘...`;
+            await fetch(`/api/signal-performance/refresh?period=${currentPeriod}`, { method: 'POST' });
             setTimeout(loadData, 8000);
             return;
         }
@@ -84,7 +104,7 @@ async function triggerRefresh() {
     btn.textContent = '計算中...';
     btn.disabled = true;
     try {
-        await fetch('/api/signal-performance/refresh', { method: 'POST' });
+        await fetch(`/api/signal-performance/refresh?period=${currentPeriod}`, { method: 'POST' });
         setTimeout(async () => {
             await loadData();
             btn.textContent = '重新計算';
@@ -148,7 +168,8 @@ function renderTable() {
     const thead = document.getElementById('main-thead');
     thead.innerHTML = '<tr>' + COLUMNS.map(c => {
         const cls = c.sort === sortCol ? (sortAsc ? 'sort-asc' : 'sort-desc') : '';
-        return `<th class="${cls}" data-sort="${c.sort || ''}">${c.label}</th>`;
+        const tipAttr = c.tip ? ` title="${c.tip.replace(/"/g, '&quot;')}"` : '';
+        return `<th class="${cls}" data-sort="${c.sort || ''}"${tipAttr}>${c.label}</th>`;
     }).join('') + '</tr>';
 
     thead.querySelectorAll('th').forEach(th => {
@@ -313,7 +334,9 @@ function sparkColor(dim, values) {
         return values[values.length - 1] >= values[0] ? 'rgb(16,185,129)' : 'rgb(239,68,68)';
     }
     const last = values[values.length - 1];
-    if (dim === 'tech') return last >= 60 ? 'rgb(16,185,129)' : last >= 40 ? 'rgb(245,158,11)' : 'rgb(239,68,68)';
+    // tech 顏色閾值依回測校準：>=45 強買最佳甜蜜點、>=40 弱買、>=30 觀察、<30 無訊號
+    if (dim === 'tech') return last >= 45 ? 'rgb(16,185,129)' : last >= 40 ? 'rgb(59,130,246)' : last >= 30 ? 'rgb(245,158,11)' : 'rgb(148,163,184)';
+    // regime 顏色：多頭/強勢多頭=綠、底部轉強/盤整=黃、空頭/高檔轉折=紅
     if (dim === 'regime') return last >= 70 ? 'rgb(16,185,129)' : last >= 50 ? 'rgb(245,158,11)' : 'rgb(239,68,68)';
     if (dim === 'chip') return last >= 65 ? 'rgb(59,130,246)' : 'rgb(148,163,184)';
     return 'rgb(167,139,250)';

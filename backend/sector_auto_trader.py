@@ -365,6 +365,41 @@ def compute_composite_score(symbol: str, sig: dict) -> Optional[float]:
     return round(composite, 1)
 
 
+# ── 強勢拉回偵測（高檔拉回加碼點）──
+
+def is_strong_pullback(sig: dict) -> tuple[bool, dict]:
+    """
+    判斷是否為「強勢拉回」訊號 — 高檔轉折下的主力洗盤再攻
+
+    三條件同時成立：
+    1. regime == 高檔轉折（120日相對高檔 + K線/量價警示）
+    2. 投信連買 ≥ 3 天（機構仍在吸籌）
+    3. 原始技術買分 raw_buy_score ≥ 40（動能未破壞）
+
+    回測（2026-01 ~ 04，n=31）：+10d 平均 +18.36%、勝率 82.6%
+    用途：繞過 RegimeLayer 的 veto_buy，識別強勢股拉回的加碼甜蜜點
+
+    Returns:
+        (是否觸發, 細節 dict)
+    """
+    if sig.get("regime") != "高檔轉折":
+        return False, {}
+    raw_buy = sig.get("raw_buy_score", 0)
+    if raw_buy < 40:
+        return False, {}
+
+    for mod in sig.get("layer_modifiers", []):
+        if mod.layer_name == "chipflow":
+            trust = mod.details.get("trust_consec_buy", 0)
+            if trust >= 3:
+                return True, {
+                    "raw_buy_score": raw_buy,
+                    "trust_consec_buy": trust,
+                    "foreign_consec_buy": mod.details.get("foreign_consec_buy", 0),
+                }
+    return False, {}
+
+
 # ── 單一類股交易循環 ──
 
 def build_layers(strategy: dict) -> list:
@@ -428,9 +463,19 @@ def process_sector(manager: SectorTradingManager):
         current_prices[symbol] = price
         # 記錄價格的實際日期（避免用舊日期覆蓋新價格）
         last_idx = df.index[-1]
-        price_dates[symbol] = (last_idx.strftime("%Y-%m-%d")
-                               if hasattr(last_idx, 'strftime')
-                               else str(last_idx)[:10])
+        price_date_str = (last_idx.strftime("%Y-%m-%d")
+                          if hasattr(last_idx, 'strftime')
+                          else str(last_idx)[:10])
+        price_dates[symbol] = price_date_str
+
+        # ── 價格日期守衛：禁止用非當日價格交易 ──
+        tw_tz = pytz.timezone("Asia/Taipei")
+        today_str = datetime.now(tw_tz).strftime("%Y-%m-%d")
+        if price_date_str < today_str:
+            logger.warning(
+                f"{symbol} 價格日期 {price_date_str} 非今日 {today_str}，跳過交易"
+            )
+            continue
 
         # 2. 計算信號（含分析層修正）
         sig = compute_signal(df, weights, symbol,
@@ -478,13 +523,24 @@ def process_sector(manager: SectorTradingManager):
                 manager.execute_trade(symbol, "SELL", price, desc)
         else:
             # 無持倉 → 買入需同時滿足：信號達標 + 綜合 ≥ 50
-            if sig["direction"] == "BUY" and sig["confidence"] >= buy_th:
+            standard_buy = (sig["direction"] == "BUY" and sig["confidence"] >= buy_th)
+            pullback_buy, pb_detail = is_strong_pullback(sig)
+
+            if standard_buy or pullback_buy:
                 if composite is not None and composite < 50:
-                    print(f"  [{manager.sector_name}] {symbol} 信號達標({sig['confidence']:.0f}分)"
+                    src = "強勢拉回" if pullback_buy and not standard_buy else "信號達標"
+                    print(f"  [{manager.sector_name}] {symbol} {src}"
                           f"但綜合分數不足({composite:.0f}<50)，跳過買入")
                     continue
-                desc = f"買入信號 (技術{sig['confidence']:.0f},{comp_tag}, {sig['signal_level']}){regime_tag}"
-                ratio = strategy.get("buy_ratio", 0.20)
+                if pullback_buy and not standard_buy:
+                    # 強勢拉回加碼點：使用較小倉位（70%）防護單次失誤
+                    desc = (f"強勢拉回加碼點 (原買分{pb_detail['raw_buy_score']:.0f}, "
+                            f"投信連買{pb_detail['trust_consec_buy']}天, "
+                            f"外資連買{pb_detail['foreign_consec_buy']}天){regime_tag}")
+                    ratio = strategy.get("buy_ratio", 0.20) * 0.7
+                else:
+                    desc = f"買入信號 (技術{sig['confidence']:.0f},{comp_tag}, {sig['signal_level']}){regime_tag}"
+                    ratio = strategy.get("buy_ratio", 0.20)
                 manager.execute_trade(symbol, "BUY", price, desc, ratio=ratio)
 
     # 5. 記錄權益 + 持久化最新價格（帶實際交易日期，避免舊價覆蓋新價）

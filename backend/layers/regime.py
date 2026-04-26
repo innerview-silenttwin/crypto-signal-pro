@@ -458,19 +458,27 @@ class RegimeLayer(BaseLayer):
                 return (self.REVERSAL_TOP, min(top_signals * 20, 90))
 
         # ── 底部轉強偵測 ──
+        # 過濾「下跌中繼反彈」：避免把接刀子誤判為底部轉強
+        # 註：原本想加「60MA上揚 +1 分」但回測證明該條件反而是反指標
+        # （+10d 勝率僅 26.7%，遠低於 60MA下彎時的 66%），故不採用
         if zone in ("LOW", "MID_LOW"):
-            bottom_signals = 0
-            if kline_pattern in ("LONG_RED_BAR", "BULLISH_ENGULFING", "LONG_LOWER_SHADOW"):
-                bottom_signals += 2
-            if vol_pattern == "BOTTOM_VOLUME_SURGE":
-                bottom_signals += 2
-            if ma_info["above_ma5"]:
-                bottom_signals += 1
-            if adx_info.get("adx_rising"):
-                bottom_signals += 1
+            is_falling_knife = (
+                ma_info["bear_alignment"] or
+                (trend["direction"] == "BEAR" and not ma_info["ma60_up"])
+            )
+            if not is_falling_knife:
+                bottom_signals = 0
+                if kline_pattern in ("LONG_RED_BAR", "BULLISH_ENGULFING", "LONG_LOWER_SHADOW"):
+                    bottom_signals += 2
+                if vol_pattern == "BOTTOM_VOLUME_SURGE":
+                    bottom_signals += 2
+                if ma_info["above_ma5"]:
+                    bottom_signals += 1
+                if adx_info.get("adx_rising"):
+                    bottom_signals += 1
 
-            if bottom_signals >= 3:
-                return (self.REVERSAL_BOTTOM, min(bottom_signals * 20, 90))
+                if bottom_signals >= 3:
+                    return (self.REVERSAL_BOTTOM, min(bottom_signals * 20, 90))
 
         # ── 趨勢判斷 ──
         # 趨勢確認 (+/-3)

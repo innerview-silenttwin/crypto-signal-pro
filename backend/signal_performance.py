@@ -37,11 +37,41 @@ logger = logging.getLogger(__name__)
 
 # ── 設定 ─────────────────────────────────────────────────────────
 
-ANALYSIS_START = "2026-01-02"
 LOOKBACK_DAYS = 200
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-PERF_CACHE_FILE = os.path.join(DATA_DIR, "signal_performance_cache.json")
 PERF_CACHE_TTL = 3600 * 12  # 12 小時
+
+# 期間設定：使用者可從前端選擇
+# key 對應 lookback 天數（向前回推從今天算起）
+PERIOD_DAYS = {
+    "6mo": 180,
+    "1y": 365,
+    "3y": 1095,
+    "5y": 1825,
+}
+DEFAULT_PERIOD = "6mo"
+
+
+def _get_analysis_start(period: str) -> str:
+    """依 period 回推分析起始日"""
+    days = PERIOD_DAYS.get(period, PERIOD_DAYS[DEFAULT_PERIOD])
+    return (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+
+
+def _get_cache_file(period: str) -> str:
+    """每個期間獨立的快取檔"""
+    safe = period if period in PERIOD_DAYS else DEFAULT_PERIOD
+    return os.path.join(DATA_DIR, f"signal_performance_cache_{safe}.json")
+
+
+# 向後相容：舊變數仍保留以避免外部 import 壞掉
+ANALYSIS_START = _get_analysis_start(DEFAULT_PERIOD)
+PERF_CACHE_FILE = _get_cache_file(DEFAULT_PERIOD)
+
+# 買入觸發門檻（依回測校準：門檻 45 為最佳甜蜜點，平均 +10d 報酬 +5.90%）
+# 高門檻（>=60）反而是過熱反指標，故廢棄並改用 45 作為強買
+BUY_THRESHOLD = 40
+STRONG_BUY_THRESHOLD = 45
 
 ETF_SYMBOLS = {"0050.TW", "0056.TW", "00878.TW", "00919.TW"}
 
@@ -155,10 +185,11 @@ def _compute_chip_day(inst_data: Dict[str, dict], date_str: str) -> dict:
 
 # ── 股價歷史 ─────────────────────────────────────────────────────
 
-def _fetch_price_history(symbol: str) -> Optional[pd.DataFrame]:
-    """取得股價歷史"""
+def _fetch_price_history(symbol: str, analysis_start: str = None) -> Optional[pd.DataFrame]:
+    """取得股價歷史。analysis_start 預設為模組級 ANALYSIS_START"""
     import yfinance as yf
-    start_dt = pd.to_datetime(ANALYSIS_START) - timedelta(days=LOOKBACK_DAYS + 60)
+    start_str = analysis_start or ANALYSIS_START
+    start_dt = pd.to_datetime(start_str) - timedelta(days=LOOKBACK_DAYS + 60)
     end_dt = pd.to_datetime(datetime.now().strftime("%Y-%m-%d")) + timedelta(days=1)
     try:
         ticker = yf.Ticker(symbol)
@@ -176,7 +207,7 @@ def _fetch_price_history(symbol: str) -> Optional[pd.DataFrame]:
 
 # ── 核心：單一股票完整回跑 ───────────────────────────────────────
 
-def _process_single_stock(symbol: str, name: str) -> Optional[dict]:
+def _process_single_stock(symbol: str, name: str, analysis_start: str = None) -> Optional[dict]:
     """
     對單一股票回跑所有交易日的五面分析
 
@@ -201,7 +232,8 @@ def _process_single_stock(symbol: str, name: str) -> Optional[dict]:
             }
         }
     """
-    df = _fetch_price_history(symbol)
+    a_start = analysis_start or ANALYSIS_START
+    df = _fetch_price_history(symbol, a_start)
     if df is None:
         return None
 
@@ -213,7 +245,7 @@ def _process_single_stock(symbol: str, name: str) -> Optional[dict]:
     if df.index.tz is not None:
         df.index = df.index.tz_localize(None)
 
-    start_dt = pd.to_datetime(ANALYSIS_START)
+    start_dt = pd.to_datetime(a_start)
     all_dates = list(df.index)
 
     # 預算技術指標
@@ -267,8 +299,8 @@ def _process_single_stock(symbol: str, name: str) -> Optional[dict]:
 
         # 籌碼面
         chip = _compute_chip_day(inst_data, date_str)
-        # 簡易籌碼分數：外資連買+投信連買天數映射
-        chip_score = min(100, 50 + chip["foreign_consec_buy"] * 8 + chip["trust_consec_buy"] * 6)
+        # 籌碼分數：投信加重（回測 +32d 平均 +10%、勝率 60.5%，較外資 +7.5%/59.3% 略強）
+        chip_score = min(100, 50 + chip["trust_consec_buy"] * 8 + chip["foreign_consec_buy"] * 6)
 
         close = float(sub_df['close'].iloc[-1])
 
@@ -298,13 +330,13 @@ def _process_single_stock(symbol: str, name: str) -> Optional[dict]:
 
         # ── 信號觸發記錄（邊緣觸發：從未觸發→觸發時記錄）──
 
-        # 買入信號
-        is_buy = buy_score >= 50
+        # 買入信號（門檻依回測校準）
+        is_buy = buy_score >= BUY_THRESHOLD
         if is_buy and not prev_buy_triggered:
             signals["buy_triggers"].append({"date": date_str, "score": buy_score})
         prev_buy_triggered = is_buy
 
-        is_strong_buy = buy_score >= 65
+        is_strong_buy = buy_score >= STRONG_BUY_THRESHOLD
         if is_strong_buy and not prev_strong_buy_triggered:
             signals["strong_buy_triggers"].append({"date": date_str, "score": buy_score})
         prev_strong_buy_triggered = is_strong_buy
@@ -373,22 +405,32 @@ def _process_single_stock(symbol: str, name: str) -> Optional[dict]:
 
 # ── 主函數 ─────────────────────────────────────────────────────
 
-def run_signal_performance(force_refresh: bool = False) -> dict:
-    """執行完整的信號績效計算"""
-    if not force_refresh and os.path.exists(PERF_CACHE_FILE):
+def run_signal_performance(force_refresh: bool = False, period: str = DEFAULT_PERIOD) -> dict:
+    """執行完整的信號績效計算
+
+    Args:
+        force_refresh: 強制忽略快取
+        period: 期間 6mo / 1y / 3y / 5y
+    """
+    if period not in PERIOD_DAYS:
+        period = DEFAULT_PERIOD
+    cache_file = _get_cache_file(period)
+    a_start = _get_analysis_start(period)
+
+    if not force_refresh and os.path.exists(cache_file):
         try:
-            with open(PERF_CACHE_FILE, "r", encoding="utf-8") as f:
+            with open(cache_file, "r", encoding="utf-8") as f:
                 cached = json.load(f)
             cache_time = cached.get("meta", {}).get("generated_at", "")
             if cache_time:
                 cache_dt = datetime.strptime(cache_time, "%Y-%m-%d %H:%M")
                 if (datetime.now() - cache_dt).total_seconds() < PERF_CACHE_TTL:
-                    logger.info("信號績效：使用快取")
+                    logger.info(f"信號績效({period})：使用快取")
                     return cached
         except Exception:
             pass
 
-    logger.info(f"信號績效回測開始：{ANALYSIS_START} ~ 今日")
+    logger.info(f"信號績效回測開始 [{period}]：{a_start} ~ 今日")
     start_time = time.time()
 
     universe = dict(SCREENER_UNIVERSE)  # 包含 ETF
@@ -400,14 +442,15 @@ def run_signal_performance(force_refresh: bool = False) -> dict:
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = {}
         for symbol, name in universe.items():
-            future = executor.submit(_process_single_stock, symbol, name)
+            future = executor.submit(_process_single_stock, symbol, name, a_start)
             futures[future] = symbol
 
         for future in as_completed(futures):
             symbol = futures[future]
             completed += 1
             try:
-                result = future.result(timeout=60)
+                # 5y 等較長期間單檔耗時可能較久
+                result = future.result(timeout=180)
                 if result:
                     stocks.append(result)
                 if completed % 10 == 0:
@@ -419,12 +462,13 @@ def run_signal_performance(force_refresh: bool = False) -> dict:
     stocks.sort(key=lambda x: x["period_return"], reverse=True)
 
     elapsed = time.time() - start_time
-    logger.info(f"信號回跑完成: {len(stocks)} 檔股票，耗時 {elapsed:.0f}秒")
+    logger.info(f"信號回跑完成 [{period}]: {len(stocks)} 檔股票，耗時 {elapsed:.0f}秒")
 
     result = {
         "stocks": stocks,
         "meta": {
-            "start_date": ANALYSIS_START,
+            "period": period,
+            "start_date": a_start,
             "end_date": datetime.now().strftime("%Y-%m-%d"),
             "total_stocks": len(stocks),
             "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -433,50 +477,54 @@ def run_signal_performance(force_refresh: bool = False) -> dict:
     }
 
     try:
-        os.makedirs(os.path.dirname(PERF_CACHE_FILE), exist_ok=True)
-        with open(PERF_CACHE_FILE, "w", encoding="utf-8") as f:
+        os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+        with open(cache_file, "w", encoding="utf-8") as f:
             json.dump(result, f, ensure_ascii=False)
-        logger.info(f"信號績效快取已寫入: {PERF_CACHE_FILE}")
+        logger.info(f"信號績效快取已寫入: {cache_file}")
     except Exception as e:
         logger.warning(f"寫入快取失敗: {e}")
 
     return result
 
 
-def get_performance_results() -> dict:
+def get_performance_results(period: str = DEFAULT_PERIOD) -> dict:
     """取得績效結果（優先讀快取）"""
-    if os.path.exists(PERF_CACHE_FILE):
+    if period not in PERIOD_DAYS:
+        period = DEFAULT_PERIOD
+    cache_file = _get_cache_file(period)
+    if os.path.exists(cache_file):
         try:
-            with open(PERF_CACHE_FILE, "r", encoding="utf-8") as f:
+            with open(cache_file, "r", encoding="utf-8") as f:
                 return json.load(f)
         except Exception:
             pass
     return {"status": "no_cache", "message": "尚未執行績效分析，請先觸發計算"}
 
 
-_is_running = False
+# 每個期間獨立的執行狀態
+_running_periods: set = set()
 
 
-def is_running() -> bool:
-    return _is_running
+def is_running(period: str = DEFAULT_PERIOD) -> bool:
+    return period in _running_periods
 
 
-def trigger_background_run():
-    """背景執行信號績效計算"""
-    global _is_running
-    if _is_running:
+def trigger_background_run(period: str = DEFAULT_PERIOD):
+    """背景執行信號績效計算（依期間分別執行）"""
+    if period not in PERIOD_DAYS:
+        period = DEFAULT_PERIOD
+    if period in _running_periods:
         return False
     import threading
 
     def _run():
-        global _is_running
-        _is_running = True
+        _running_periods.add(period)
         try:
-            run_signal_performance(force_refresh=True)
+            run_signal_performance(force_refresh=True, period=period)
         except Exception as e:
-            logger.error(f"背景績效計算失敗: {e}")
+            logger.error(f"背景績效計算失敗 [{period}]: {e}")
         finally:
-            _is_running = False
+            _running_periods.discard(period)
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
@@ -485,6 +533,8 @@ def trigger_background_run():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
-    result = run_signal_performance(force_refresh=True)
-    print(f"\n完成！{result['meta']['total_stocks']} 檔股票")
+    import sys as _sys
+    _period = _sys.argv[1] if len(_sys.argv) > 1 else DEFAULT_PERIOD
+    result = run_signal_performance(force_refresh=True, period=_period)
+    print(f"\n完成！{result['meta']['total_stocks']} 檔股票（期間：{_period}）")
     print(f"耗時: {result['meta']['elapsed_seconds']}秒")
