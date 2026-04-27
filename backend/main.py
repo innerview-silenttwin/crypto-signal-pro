@@ -2280,9 +2280,11 @@ async def add_custom_stock_api(symbol: str, name: str = ""):
     if not symbol.endswith(".TW"):
         symbol = symbol.split(".")[0] + ".TW"
 
-    # 若沒提供名稱，自動查詢
+    # 若沒提供名稱，自動查詢；查不到代表代號不存在，拒絕加入
     if not name:
-        name = fetch_stock_name(symbol) or symbol.split(".")[0]
+        name = fetch_stock_name(symbol)
+        if not name:
+            return {"added": False, "reason": "not_found", "symbol": symbol}
 
     from screener import add_custom_stock, _BUILTIN_UNIVERSE
     if symbol in _BUILTIN_UNIVERSE:
@@ -2424,40 +2426,57 @@ async def update_settings_api(req: SettingsUpdate):
 async def add_custom_stock_api(req: CustomStock):
     from settings_manager import add_custom_stock
     from layers.fundamental import fetch_twse_pe_all
-    
+
     sym = req.symbol.strip().upper()
     name = req.name.strip()
-    
-    # 嘗試從 TWSE 資料庫反查
-    all_pe = fetch_twse_pe_all()
-    if not sym and name:
-        for code, info in all_pe.items():
-            if info.get("name") == name:
-                sym = f"{code}.TW"
-                break
-    if sym and not name:
-        code = sym.replace(".TW", "").replace(".TWO", "")
-        if code in all_pe:
-            name = all_pe[code].get("name", "")
-            
-    if not sym:
-        return {"status": "error", "message": "無法找到對應代碼，請手動輸入"}
-    if not name:
-        name = "未知名稱"
 
-    if not sym.endswith(".TW") and not sym.endswith(".TWO"):
-        sym += ".TW"
-        
-    settings = add_custom_stock(sym, req.name, req.sector)
-    
+    if not sym and not name:
+        return {"status": "error", "message": "請輸入股票代號或名稱"}
+
+    # 1) 先查 TWSE 上市資料庫（涵蓋所有上市股，最權威）
+    all_pe = fetch_twse_pe_all()
+    code_only = sym.replace(".TW", "").replace(".TWO", "") if sym else ""
+
+    matched_code = None
+    matched_name = None
+
+    if code_only and code_only in all_pe:
+        matched_code = code_only
+        matched_name = all_pe[code_only].get("name", "")
+    elif name and not code_only:
+        for c, info in all_pe.items():
+            if info.get("name") == name:
+                matched_code = c
+                matched_name = info.get("name")
+                break
+
+    if matched_code:
+        # 上市命中 → 統一掛 .TW，用 TWSE 官方名稱（避免使用者輸入錯字）
+        final_sym = f"{matched_code}.TW"
+        final_name = matched_name or name
+    else:
+        # 2) 上市找不到 → 嘗試上櫃（yfinance .TWO 驗證）
+        if not code_only:
+            return {"status": "error", "message": f"上市資料庫找不到「{name}」，請改輸入代號（如 2330）"}
+        try:
+            hist = yf.Ticker(f"{code_only}.TWO").history(period="1mo", interval="1d")
+        except Exception as e:
+            return {"status": "error", "message": f"驗證上櫃資料失敗：{e}"}
+        if hist is None or hist.empty or len(hist) < 5:
+            return {"status": "error", "message": f"找不到股票 {code_only}（上市/上櫃皆無資料），無法新增"}
+        final_sym = f"{code_only}.TWO"
+        final_name = name or f"上櫃-{code_only}"
+
+    settings = add_custom_stock(final_sym, final_name, req.sector)
+
     # Update screener universe
     try:
         from screener import add_custom_stock as screener_add_stock
-        screener_add_stock(sym, req.name)
+        screener_add_stock(final_sym, final_name)
     except Exception as e:
         print(f"Failed to add to screener: {e}")
-        
-    return {"status": "success", "symbol": sym, "settings": settings}
+
+    return {"status": "success", "symbol": final_sym, "name": final_name, "settings": settings}
 
 
 if __name__ == "__main__":
