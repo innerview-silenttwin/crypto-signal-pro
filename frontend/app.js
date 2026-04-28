@@ -1,8 +1,9 @@
 // WebSocket 連線與狀態管理
 const ws = new WebSocket(`ws://${window.location.host}/ws/signals`);
-let currentSymbol = '2330.TW';
+// 還原上次瀏覽的標的（重整或從別頁回主頁時保留），無紀錄則預設台積電
+let currentSymbol = localStorage.getItem('csp-last-symbol') || '2330.TW';
 let currentTimeframe = '1d';
-let currentMarket = 'stock';
+let currentMarket = localStorage.getItem('csp-last-market') || 'stock';
 let lastServerData = [];
 
 // 台股 / 期貨自動更新的 timer
@@ -482,6 +483,12 @@ window.changeSymbol = async function (sym, market = 'crypto') {
     const isSymbolChanged = (currentSymbol !== sym || currentMarket !== market);
     currentSymbol = sym;
     currentMarket = market;
+
+    // 記住上次瀏覽，重整或回到主頁時還原
+    try {
+        localStorage.setItem('csp-last-symbol', sym);
+        localStorage.setItem('csp-last-market', market);
+    } catch (_) { /* 隱私模式 / 配額滿 */ }
 
     const baseSym = sym.split('/')[0].split('.')[0];
     let compName = market === 'stock' ? (stockNames[sym] || '') : '';
@@ -2810,6 +2817,17 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.target === modal) modal.classList.remove('active');
         });
     }
+
+    // 初始化時根據還原的 currentMarket 同步 select / input 可見性，避免錯位
+    if (marketSelect) marketSelect.value = currentMarket;
+    if (cryptoInput) cryptoInput.style.display = currentMarket === 'crypto' ? 'block' : 'none';
+    if (stockInput) {
+        stockInput.style.display = currentMarket === 'stock' ? 'block' : 'none';
+        if (currentMarket === 'stock') stockInput.value = currentSymbol.replace(/\.(TW|TWO)$/, '');
+    }
+    if (futuresInput) futuresInput.style.display = currentMarket === 'futures' ? 'block' : 'none';
+    if (currentMarket === 'crypto' && cryptoInput) cryptoInput.value = currentSymbol;
+    if (currentMarket === 'futures' && futuresInput) futuresInput.value = currentSymbol;
 
     // 初始化時設定正確顯示 (crypto / stock)
     window.changeSymbol(currentSymbol, currentMarket);

@@ -227,7 +227,7 @@ async def preload_tw_ticker_data():
             continue
 
         # 嘗試 L2: 本地 CSV（資料超過 4 天則視為過期，改抓 TWSE）
-        local_df = load_local_history(tw_sym)
+        local_df = await asyncio.to_thread(load_local_history, tw_sym)
         if local_df is not None and len(local_df) >= 30:
             last_idx = local_df.index[-1]
             last_date = last_idx.date() if hasattr(last_idx, 'date') else pd.to_datetime(last_idx).date()
@@ -238,9 +238,9 @@ async def preload_tw_ticker_data():
                 continue
             print(f"[preload] {tw_sym} local CSV stale ({days_old}d old), fetching fresh data...")
 
-        # 嘗試 L3: TWSE API（尊重 rate limit）
+        # 嘗試 L3: TWSE API（尊重 rate limit；同步 IO 丟 thread pool）
         if tw_market != 'futures':
-            df = _fetch_tw_df(tw_sym, tw_market)
+            df = await asyncio.to_thread(_fetch_tw_df, tw_sym, tw_market)
             if df is not None:
                 print(f"[preload] {tw_sym} from TWSE API")
                 _analyze_tw_df(tw_sym, tw_market, df, "twse_preload")
@@ -249,9 +249,9 @@ async def preload_tw_ticker_data():
             # 最後手段：如果完全沒資料，強制抓一次（忽略 rate limit，僅啟動時）
             if cache_key not in signals_cache:
                 print(f"[preload] {tw_sym} no data anywhere, one-time TWSE fetch...")
-                df = fetch_twse_daily(tw_sym, limit=200, months=12)
+                df = await asyncio.to_thread(fetch_twse_daily, tw_sym, 200, 12)
                 if df is not None and len(df) >= 30:
-                    save_local_history(tw_sym, df)
+                    await asyncio.to_thread(save_local_history, tw_sym, df)
                     _analyze_tw_df(tw_sym, tw_market, df, "twse_preload_forced")
                     # 更新 rate limit 時間戳，避免後續重複抓
                     global tw_last_real_fetch
@@ -281,12 +281,12 @@ async def daily_tw_data_refresh():
                 if tw_market == 'futures':
                     continue
                 try:
-                    # TWSE（上市）優先；若失敗試 yfinance（涵蓋上櫃 .TWO）
-                    df = fetch_twse_daily(tw_sym, limit=200, months=12)
+                    # 同步 IO 全部丟 thread pool，避免阻塞 event loop
+                    df = await asyncio.to_thread(fetch_twse_daily, tw_sym, 200, 12)
                     if df is None or len(df) < 30:
-                        df = _fetch_yfinance_df(tw_sym)
+                        df = await asyncio.to_thread(_fetch_yfinance_df, tw_sym)
                     if df is not None and len(df) >= 30:
-                        save_local_history(tw_sym, df)
+                        await asyncio.to_thread(save_local_history, tw_sym, df)
                         # 只有跑馬燈 ticker 需要進 signals_cache
                         if tw_sym in ticker_set:
                             _analyze_tw_df(tw_sym, tw_market, df, "twse_daily_refresh")
@@ -313,18 +313,18 @@ async def daily_tw_data_refresh():
 
 async def stale_refresh_worker():
     """背景刷新過期 CSV：每 10 秒掃 _stale_refresh_pending，rate limit 允許就抓一支。
-    被前端訪問路徑 (B2) 排隊，讓使用者拿到舊資料的同時，下次重整就能看到新的。
+    所有同步 IO 透過 to_thread 丟到 thread pool，避免阻塞 event loop。
     """
     while True:
         try:
             if _stale_refresh_pending and tw_can_fetch_now():
                 sym = _stale_refresh_pending.pop()
                 try:
-                    df = fetch_twse_daily(sym, limit=200, months=12)
+                    df = await asyncio.to_thread(fetch_twse_daily, sym, 200, 12)
                     if df is None or len(df) < 30:
-                        df = _fetch_yfinance_df(sym)
+                        df = await asyncio.to_thread(_fetch_yfinance_df, sym)
                     if df is not None and len(df) >= 30:
-                        save_local_history(sym, df)
+                        await asyncio.to_thread(save_local_history, sym, df)
                         global tw_last_real_fetch
                         tw_last_real_fetch = time.time()
                         _save_tw_rate_state()
@@ -662,13 +662,13 @@ async def get_tw_signals(symbol: str, market: str = "stock"):
             result["data_source"] = cached["data"]["data_source"] + ("" if market_open else "_closed")
             return result
 
-    # --- L3: TWSE API (盤中可抓，盤後只在無任何快取時抓一次) ---
-    df = _fetch_tw_df(symbol, market)
+    # --- L3: TWSE API (盤中可抓，盤後只在無任何快取時抓一次；同步 IO 丟 thread pool) ---
+    df = await asyncio.to_thread(_fetch_tw_df, symbol, market)
     if df is not None:
         return _analyze_tw_df(symbol, market, df, "twse_daily")
 
     # --- L2: 本地 CSV ---
-    local_df = load_local_history(symbol)
+    local_df = await asyncio.to_thread(load_local_history, symbol)
     if local_df is not None and len(local_df) >= 30:
         print(f"[signals L2] {symbol} from local CSV ({len(local_df)} rows)")
         src = "local_csv" + ("" if market_open else "_closed")
@@ -677,11 +677,11 @@ async def get_tw_signals(symbol: str, market: str = "stock"):
     # --- 盤後無任何資料，嘗試強制抓一次（TWSE → yfinance，忽略 rate limit） ---
     if not market_open and market != 'futures':
         print(f"[signals] No cache for {symbol}, one-time fetch for after-hours...")
-        df = fetch_twse_daily(symbol, limit=200, months=12)
+        df = await asyncio.to_thread(fetch_twse_daily, symbol, 200, 12)
         if df is None or len(df) < 30:
-            df = _fetch_yfinance_df(symbol)
+            df = await asyncio.to_thread(_fetch_yfinance_df, symbol)
         if df is not None and len(df) >= 30:
-            save_local_history(symbol, df)
+            await asyncio.to_thread(save_local_history, symbol, df)
             return _analyze_tw_df(symbol, market, df, "twse_daily_closed")
 
     return {"symbol": symbol, "signals": {}, "next_update_in": remaining, "data_source": "no_data", "market_open": market_open}
@@ -717,8 +717,8 @@ async def get_ticker_summary():
                 }
                 continue
 
-        # L2: 本地 CSV
-        local_df = load_local_history(tw_sym)
+        # L2: 本地 CSV（同步 IO 丟 thread pool 避免阻塞 event loop）
+        local_df = await asyncio.to_thread(load_local_history, tw_sym)
         if local_df is not None and len(local_df) >= 30:
             sig_result = _analyze_tw_df(tw_sym, tw_market, local_df, "local_csv")
             d1 = sig_result.get("signals", {}).get("1d")
@@ -732,7 +732,7 @@ async def get_ticker_summary():
 
         # L3: TWSE API（尊重 rate limit）
         if tw_market != 'futures':
-            df = _fetch_tw_df(tw_sym, tw_market)
+            df = await asyncio.to_thread(_fetch_tw_df, tw_sym, tw_market)
             if df is not None:
                 sig_result = _analyze_tw_df(tw_sym, tw_market, df, "twse_daily")
                 d1 = sig_result.get("signals", {}).get("1d")
@@ -744,12 +744,12 @@ async def get_ticker_summary():
                     }
                     continue
 
-            # 最後手段：完全無資料，強制抓一次 TWSE（僅此一次）
+            # 最後手段：完全無資料，強制抓一次 TWSE（僅此一次；同步 IO 丟 thread pool）
             if tw_sym not in result["tw"]:
                 print(f"[ticker-summary] {tw_sym} no data, one-time forced fetch...")
-                forced_df = fetch_twse_daily(tw_sym, limit=200, months=12)
+                forced_df = await asyncio.to_thread(fetch_twse_daily, tw_sym, 200, 12)
                 if forced_df is not None and len(forced_df) >= 30:
-                    save_local_history(tw_sym, forced_df)
+                    await asyncio.to_thread(save_local_history, tw_sym, forced_df)
                     sig_result = _analyze_tw_df(tw_sym, tw_market, forced_df, "twse_forced")
                     d1 = sig_result.get("signals", {}).get("1d")
                     if d1:
@@ -1079,7 +1079,7 @@ def get_tw_chart_data(symbol: str, timeframe: str, limit: int = 200):
 async def get_chart_data(symbol: str = "BTC/USDT", timeframe: str = "1d", market: str = "crypto"):
     if market == 'futures':
         # 期貨也使用相同的 rate limiter 機制（目前無資料源，保留架構）
-        result = get_tw_chart_data(symbol, timeframe, limit=200)
+        result = await asyncio.to_thread(get_tw_chart_data, symbol, timeframe, 200)
         if result and result["candles"]:
             return {
                 "candles": result["candles"],
@@ -1089,7 +1089,7 @@ async def get_chart_data(symbol: str = "BTC/USDT", timeframe: str = "1d", market
         return {"candles": [], "data_source": None, "next_update_in": 0}
 
     if market == 'stock':
-        result = get_tw_chart_data(symbol, timeframe, limit=200)
+        result = await asyncio.to_thread(get_tw_chart_data, symbol, timeframe, 200)
         if result and result["candles"]:
             return {
                 "candles": result["candles"],
@@ -1404,9 +1404,8 @@ def _sanitize(obj):
         return obj.tolist()
     return obj
 
-@app.get("/api/sector-trading/{sector_id}/regime")
-async def get_sector_regime(sector_id: str):
-    """取得類股各標的即時盤勢辨識"""
+def _compute_sector_regime(sector_id: str):
+    """同步計算類股盤勢辨識；給 to_thread 用，避免阻塞 event loop。"""
     mgr = get_manager(sector_id)
     if not mgr:
         return {"error": f"未知的類股 ID: {sector_id}"}
@@ -1447,6 +1446,12 @@ async def get_sector_regime(sector_id: str):
         }
 
     return {"sector_id": sector_id, "stocks": results}
+
+
+@app.get("/api/sector-trading/{sector_id}/regime")
+async def get_sector_regime(sector_id: str):
+    """取得類股各標的即時盤勢辨識"""
+    return await asyncio.to_thread(_compute_sector_regime, sector_id)
 
 
 @app.get("/api/stock-lookup")
