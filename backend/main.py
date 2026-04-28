@@ -12,7 +12,8 @@ import os
 import asyncio
 import json
 import logging
-from typing import List, Dict
+import re
+from typing import List, Dict, Tuple
 from datetime import datetime, timedelta
 import time
 import pandas as pd
@@ -189,6 +190,8 @@ async def startup_event():
     asyncio.create_task(preload_tw_ticker_data())
     # 每日 14:35 自動刷新台股 ticker 資料（避免資料停滯）
     asyncio.create_task(daily_tw_data_refresh())
+    # 背景消化過期 CSV 刷新佇列（用戶訪問時觸發）
+    asyncio.create_task(stale_refresh_worker())
     # 自動啟動類股交易引擎
     try:
         from sector_auto_trader import auto_trader as _sat
@@ -259,7 +262,7 @@ async def preload_tw_ticker_data():
 
 
 async def daily_tw_data_refresh():
-    """每個交易日盤後（14:35）自動刷新台股 ticker 資料，避免資料停滯。"""
+    """每個交易日盤後（14:35）自動刷新所有 active 標的（5 ticker + 自選股 + 5 產業池）。"""
     while True:
         now = datetime.now()
         today_refresh = now.replace(hour=14, minute=35, second=0, microsecond=0)
@@ -270,19 +273,28 @@ async def daily_tw_data_refresh():
 
         # 只在工作日（週一~週五）執行
         if datetime.now().weekday() < 5:
-            print("[daily-refresh] Starting daily TW stock data refresh...")
+            universe = _collect_active_universe()
+            ticker_set = {s for s, _ in TW_TICKER_SYMBOLS}
+            print(f"[daily-refresh] Starting daily TW stock data refresh ({len(universe)} symbols)...")
             global tw_last_real_fetch
-            for tw_sym, tw_market in TW_TICKER_SYMBOLS:
+            for tw_sym, tw_market in universe:
                 if tw_market == 'futures':
                     continue
                 try:
+                    # TWSE（上市）優先；若失敗試 yfinance（涵蓋上櫃 .TWO）
                     df = fetch_twse_daily(tw_sym, limit=200, months=12)
+                    if df is None or len(df) < 30:
+                        df = _fetch_yfinance_df(tw_sym)
                     if df is not None and len(df) >= 30:
                         save_local_history(tw_sym, df)
-                        _analyze_tw_df(tw_sym, tw_market, df, "twse_daily_refresh")
+                        # 只有跑馬燈 ticker 需要進 signals_cache
+                        if tw_sym in ticker_set:
+                            _analyze_tw_df(tw_sym, tw_market, df, "twse_daily_refresh")
                         tw_last_real_fetch = time.time()
                         _save_tw_rate_state()
                         print(f"[daily-refresh] Updated {tw_sym}: {len(df)} rows")
+                    else:
+                        print(f"[daily-refresh] {tw_sym}: no data")
                     await asyncio.sleep(8)  # 每檔間隔 8 秒，避免 TWSE rate limit
                 except Exception as e:
                     print(f"[daily-refresh] Error refreshing {tw_sym}: {e}")
@@ -297,6 +309,52 @@ async def daily_tw_data_refresh():
             print("[daily-refresh] Daily TW stock data refresh complete.")
         else:
             print("[daily-refresh] Weekend, skipping TW data refresh.")
+
+
+async def stale_refresh_worker():
+    """背景刷新過期 CSV：每 10 秒掃 _stale_refresh_pending，rate limit 允許就抓一支。
+    被前端訪問路徑 (B2) 排隊，讓使用者拿到舊資料的同時，下次重整就能看到新的。
+    """
+    while True:
+        try:
+            if _stale_refresh_pending and tw_can_fetch_now():
+                sym = _stale_refresh_pending.pop()
+                try:
+                    df = fetch_twse_daily(sym, limit=200, months=12)
+                    if df is None or len(df) < 30:
+                        df = _fetch_yfinance_df(sym)
+                    if df is not None and len(df) >= 30:
+                        save_local_history(sym, df)
+                        global tw_last_real_fetch
+                        tw_last_real_fetch = time.time()
+                        _save_tw_rate_state()
+                        # 清掉前端 chart_cache，下次訪問重新從 CSV 讀
+                        for k in list(chart_cache.keys()):
+                            if k.startswith(f"{sym}_"):
+                                chart_cache.pop(k, None)
+                        print(f"[stale-refresh] Updated {sym}: {len(df)} rows")
+                    else:
+                        print(f"[stale-refresh] {sym}: no data from TWSE/yfinance")
+                except Exception as e:
+                    print(f"[stale-refresh] Error refreshing {sym}: {e}")
+            await asyncio.sleep(10)
+        except Exception as e:
+            print(f"[stale-refresh] worker loop error: {e}")
+            await asyncio.sleep(30)
+
+
+def _maybe_queue_stale_refresh(symbol: str, local_df) -> int:
+    """若 CSV 最後一筆 > 4 天舊則排隊背景刷新，回傳 days_old（無法判斷則回 0）。"""
+    try:
+        last_idx = local_df.index[-1]
+        last_date = last_idx.date() if hasattr(last_idx, 'date') else pd.to_datetime(last_idx).date()
+        days_old = (datetime.now().date() - last_date).days
+        if days_old > 4 and symbol not in _stale_refresh_pending:
+            _stale_refresh_pending.add(symbol)
+            print(f"[stale-check] {symbol} CSV is {days_old}d old, queued for refresh")
+        return days_old
+    except Exception:
+        return 0
 
 
 def fetch_stooq_ohlcv(symbol: str, start_date: datetime, end_date: datetime, limit: int = 200):
@@ -819,6 +877,45 @@ TW_TICKER_SYMBOLS = [
 ]
 
 
+_VALID_TW_SYMBOL = re.compile(r'^[A-Z0-9]+\.(TW|TWO)$')
+
+
+def _collect_active_universe() -> List[Tuple[str, str]]:
+    """收集所有需保持資料新鮮的台股標的（去重）。
+    來源：跑馬燈 ticker ∪ 5 個產業池 ∪ Screener 自選股。
+    過濾不合法 symbol（避免歷史垃圾資料拖慢刷新）。
+    """
+    universe: Dict[str, str] = {}  # symbol → market
+
+    for sym, mkt in TW_TICKER_SYMBOLS:
+        universe[sym] = mkt
+
+    try:
+        from sector_trader import SECTOR_STOCKS
+        for stocks in SECTOR_STOCKS.values():
+            for sym in stocks:
+                universe.setdefault(sym, "stock")
+    except Exception as e:
+        print(f"[universe] sector_trader load failed: {e}")
+
+    try:
+        from screener import SCREENER_UNIVERSE
+        for sym in SCREENER_UNIVERSE:
+            universe.setdefault(sym, "stock")
+    except Exception as e:
+        print(f"[universe] screener load failed: {e}")
+
+    valid = [(sym, mkt) for sym, mkt in universe.items() if _VALID_TW_SYMBOL.match(sym)]
+    skipped = [sym for sym in universe if not _VALID_TW_SYMBOL.match(sym)]
+    if skipped:
+        print(f"[universe] skipped invalid symbols: {skipped}")
+    return valid
+
+
+# 過期 CSV 背景刷新佇列：B2 路徑發現過期就排隊，由 stale_refresh_worker 消化
+_stale_refresh_pending: set = set()
+
+
 def is_tw_market_open() -> bool:
     """判斷台灣市場目前是否在交易時段 (週一至五 09:00 - 14:00)。"""
     tz = pytz.timezone('Asia/Taipei')
@@ -947,6 +1044,8 @@ def get_tw_chart_data(symbol: str, timeframe: str, limit: int = 200):
     if timeframe == "1d":
         local_df = load_local_history(symbol)
         if local_df is not None and len(local_df) >= 30:
+            # CSV 過期 (>4 天) 排隊背景刷新；當下仍回傳舊資料避免阻塞
+            _maybe_queue_stale_refresh(symbol, local_df)
             candles = [{"time": int(idx.timestamp()), "open": float(row['open']), "high": float(row['high']),
                          "low": float(row['low']), "close": float(row['close']), "volume": float(row.get('volume', 0) or 0)}
                         for idx, row in local_df.iterrows()]

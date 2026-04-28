@@ -529,6 +529,29 @@ class SectorTradingManager:
         self._save()
 
 
+# ── 啟動時把 settings.json 的自選股注入回 SECTOR_STOCKS ──
+# 否則重啟後，從後台 /api/settings/stock 新增的股票會從交易中心消失
+
+def _inject_custom_stocks_into_sectors():
+    try:
+        settings_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "settings.json")
+        if not os.path.exists(settings_path):
+            return
+        with open(settings_path, "r", encoding="utf-8") as f:
+            settings = json.load(f)
+        for s in settings.get("custom_stocks", []):
+            sec = s.get("sector")
+            sym = s.get("symbol")
+            name = s.get("name") or sym
+            if sec in SECTOR_STOCKS and sym:
+                SECTOR_STOCKS[sec][sym] = name
+    except Exception as e:
+        print(f"[sector_trader] inject custom_stocks failed: {e}")
+
+
+_inject_custom_stocks_into_sectors()
+
+
 # ── 全域 4 個交易管理器實例 ──
 
 sector_managers: Dict[str, SectorTradingManager] = {}
