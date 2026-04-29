@@ -1866,13 +1866,25 @@ async def get_stock_analysis(symbol: str):
         comp = engine_composite if engine_composite is not None else (
             (result.get("recommendation") or {}).get("composite_score"))
 
+        # 優先使用引擎的層調整後分數（與 auto_trader 邏輯完全一致）
+        engine_buy_score = None
+        engine_sell_score = None
+        if engine_raw_buy is not None:
+            try:
+                engine_buy_score = round(float(_sig.get("buy_score", t_buy or 0)), 1)
+                engine_sell_score = round(float(_sig.get("sell_score", t_sell or 0)), 1)
+            except Exception:
+                pass
+        eff_buy = engine_buy_score if engine_buy_score is not None else t_buy
+        eff_sell = engine_sell_score if engine_sell_score is not None else t_sell
+
         # 判定信號（與引擎邏輯一致：direction + confidence + composite）
         direction_ok = engine_direction == "BUY" if engine_direction else (
             tech.get("direction") == "BUY")
-        buy_met = (t_buy is not None and t_buy >= buy_threshold
+        buy_met = (eff_buy is not None and eff_buy >= buy_threshold
                    and direction_ok
                    and comp is not None and comp >= composite_threshold)
-        sell_met = (t_sell is not None and t_sell >= sell_threshold)
+        sell_met = (eff_sell is not None and eff_sell >= sell_threshold)
 
         if buy_met:
             verdict = "符合買入條件"
@@ -1881,12 +1893,12 @@ async def get_stock_analysis(symbol: str):
             verdict = "符合賣出條件"
             verdict_class = "sell"
         else:
-            # 細分未達標原因
+            # 細分未達標原因（用 eff_buy/eff_sell 與引擎一致）
             reasons = []
-            if t_buy is not None and t_buy >= buy_threshold and comp is not None and comp < composite_threshold:
+            if eff_buy is not None and eff_buy >= buy_threshold and comp is not None and comp < composite_threshold:
                 reasons.append(f"綜合分不足({comp:.0f}<{composite_threshold})")
-            elif t_buy is not None and t_buy < buy_threshold:
-                reasons.append(f"技術買分不足({t_buy:.0f}<{buy_threshold})")
+            elif eff_buy is not None and eff_buy < buy_threshold:
+                reasons.append(f"技術買分不足({eff_buy:.0f}<{buy_threshold})")
             if not direction_ok and engine_direction:
                 reasons.append(f"方向非BUY({engine_direction})")
             verdict = "未達交易門檻：" + "、".join(reasons) if reasons else "未達交易門檻，觀望"
@@ -1900,8 +1912,8 @@ async def get_stock_analysis(symbol: str):
             "composite_threshold": composite_threshold,
             "stop_loss_pct": strat["stop_loss_pct"],
             "take_profit_pct": strat["take_profit_pct"],
-            "tech_buy_score": t_buy,
-            "tech_sell_score": t_sell,
+            "tech_buy_score": eff_buy,
+            "tech_sell_score": eff_sell,
             "raw_buy_score": round(engine_raw_buy, 1) if engine_raw_buy is not None else t_buy,
             "raw_sell_score": round(engine_raw_sell, 1) if engine_raw_sell is not None else t_sell,
             "composite_score": comp,
