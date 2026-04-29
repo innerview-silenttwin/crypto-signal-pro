@@ -1776,7 +1776,10 @@
                 // 標題
                 const name = (data.fundamental && data.fundamental.name) || sym.replace('.TW', '');
                 document.getElementById('arc-title').textContent = sym.replace('.TW', '') + ' ' + name;
-                document.getElementById('arc-subtitle').textContent = '五維策略分數 · ' + new Date().toLocaleDateString('zh-TW');
+                const _now = new Date();
+                const _ts = _now.toLocaleDateString('zh-TW') + ' ' +
+                    _now.toLocaleTimeString('zh-TW', {hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false});
+                document.getElementById('arc-subtitle').textContent = '五維策略分數 · 查詢時間 ' + _ts;
 
                 // 分類標籤
                 const sectorTag = document.getElementById('arc-sector-tag');
