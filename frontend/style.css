@@ -2345,6 +2345,13 @@ a.event-item:hover {
     background: rgba(139, 92, 246, 0.18);
     outline: 1.5px solid rgba(139, 92, 246, 0.35);
 }
+/* 主頁當前股票：在所有超選區塊高亮 + 排名 badge */
+.screener-stock-row.screener-current {
+    background: linear-gradient(90deg, rgba(245, 166, 35, 0.22), rgba(245, 166, 35, 0.06));
+    outline: 1.5px solid rgba(245, 166, 35, 0.5);
+    box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.1);
+    position: relative;
+}
 .screener-stock-sym {
     font-size: 12px;
     font-weight: 700;
@@ -2490,6 +2497,45 @@ a.event-item:hover {
     flex-shrink: 0;
     background: var(--text-muted);
     color: var(--bg-primary);
+}
+
+/* 主信號卡：顯示當前股票在超選哪些類別入榜 */
+.screener-presence {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0 24px 12px;
+}
+.screener-presence:empty { display: none; }
+.screener-presence-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    border-radius: 12px;
+    font-size: 11px;
+    background: rgba(80, 200, 120, 0.12);
+    color: var(--accent, #50c878);
+    border: 1px solid rgba(80, 200, 120, 0.32);
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+    user-select: none;
+}
+.screener-presence-chip:hover {
+    background: rgba(80, 200, 120, 0.22);
+    transform: translateY(-1px);
+}
+.screener-presence-chip.warn {
+    background: rgba(244, 67, 54, 0.12);
+    color: #ff7676;
+    border-color: rgba(244, 67, 54, 0.32);
+}
+.screener-presence-chip.warn:hover {
+    background: rgba(244, 67, 54, 0.2);
+}
+.screener-presence-chip .chip-rank {
+    font-weight: 700;
+    opacity: 0.9;
 }
 .screener-stock-row .screener-rank:nth-child(1) { background: #f5a623; }
 .screener-ranking-card .screener-stock-row:nth-child(1) .screener-rank { background: #f5a623; }

@@ -418,6 +418,75 @@ async function fetchStockInfo(symbol) {
 // --- 搜尋紀錄邏輯 ---
 let searchHistory = JSON.parse(localStorage.getItem('searchHistory') || '[]');
 
+// 超選最新分類資料快取（fetchScreenerPicks 成功後填入），用於主信號卡標記
+let screenerCategoriesCache = [];
+
+function renderScreenerPresence(symbol) {
+    const el = document.getElementById('screener-presence');
+    if (!el) return;
+    if (currentMarket !== 'stock' || !symbol || !screenerCategoriesCache.length) {
+        el.innerHTML = '';
+        return;
+    }
+    const matches = [];
+    for (const cat of screenerCategoriesCache) {
+        const idx = (cat.stocks || []).findIndex(s => s.symbol === symbol);
+        if (idx >= 0) {
+            matches.push({
+                id: cat.id,
+                name: cat.name,
+                icon: cat.icon || '',
+                rank: cat.id === 'top_ranked' ? idx + 1 : null,
+            });
+        }
+    }
+    if (!matches.length) { el.innerHTML = ''; return; }
+    el.innerHTML = matches.map(m => {
+        const warnCls = m.id === 'regime_warning' ? ' warn' : '';
+        const rankHtml = m.rank ? `<span class="chip-rank">#${m.rank}</span>` : '';
+        const iconHtml = m.icon ? `<span>${m.icon}</span>` : '';
+        return `<span class="screener-presence-chip${warnCls}" title="點擊跳到超選區塊">${iconHtml}<span>${m.name}</span>${rankHtml}</span>`;
+    }).join('');
+    // 點擊任一 chip 都滾到超選區塊
+    el.querySelectorAll('.screener-presence-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            document.getElementById('screener-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+    });
+}
+
+// 在超選各類股區塊內，把當前股票那一列反白
+function highlightCurrentInScreener(symbol) {
+    const container = document.getElementById('screener-categories');
+    if (!container) return;
+    // 清除前一輪的 highlight
+    container.querySelectorAll('.screener-stock-row.screener-current').forEach(r => {
+        r.classList.remove('screener-current');
+    });
+    if (currentMarket !== 'stock' || !symbol) return;
+
+    container.querySelectorAll('.screener-cat-card').forEach(card => {
+        const rows = card.querySelectorAll('.screener-stock-row');
+        let foundIdx = -1;
+        rows.forEach((row, idx) => {
+            if (row.dataset.symbol === symbol) {
+                foundIdx = idx;
+                row.classList.add('screener-current');
+            }
+        });
+        // 若命中位置在預設折疊範圍外（>5），自動展開讓上下文完整
+        if (foundIdx >= 5) {
+            card.querySelectorAll('.screener-hidden').forEach(el => el.classList.remove('screener-hidden'));
+            const btn = card.querySelector('.screener-expand-btn');
+            if (btn) {
+                btn.dataset.expanded = '1';
+                const total = card.querySelectorAll('.screener-stock-row').length;
+                btn.textContent = `收起 (顯示${total}檔) ▲`;
+            }
+        }
+    });
+}
+
 function addToHistory(sym, market, nameInput = null) {
     if (!sym) return;
 
@@ -524,6 +593,10 @@ window.changeSymbol = async function (sym, market = 'crypto') {
     if (chartSymbol) chartSymbol.textContent =
         market === 'stock' ? `${baseSym}${compName ? ' · ' + compName : ''}` :
             market === 'futures' ? `${baseSym}${futName ? ' · ' + futName : ''}` : sym;
+
+    // 更新主信號卡上的「超選入榜」標記 + 超選各區塊本檔反白
+    renderScreenerPresence(sym);
+    highlightCurrentInScreener(sym);
 
     // 加入搜尋紀錄 (現在已經有名稱了)
     addToHistory(sym, market, compName || (market === 'futures' ? futName : null));
@@ -1279,6 +1352,9 @@ async function fetchScreenerPicks() {
         }
 
         renderScreenerCards(data.categories);
+        screenerCategoriesCache = data.categories;
+        renderScreenerPresence(currentSymbol);
+        highlightCurrentInScreener(currentSymbol);
     } catch (e) {
         console.warn('選股系統載入失敗:', e);
     }
