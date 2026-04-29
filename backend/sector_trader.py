@@ -474,6 +474,7 @@ class SectorTradingManager:
             # 已實現損益 = 賣出淨收入 - 買進總成本（含買進手續費）
             total_cost = hold.get("total_cost", round(qty * hold["avg_price"] * 1.001425))
             profit = net - total_cost
+            profit_pct = (profit / total_cost * 100) if total_cost else 0.0
 
             self.state["balance"] += net
             del self.state["holdings"][symbol]
@@ -492,9 +493,9 @@ class SectorTradingManager:
                 "balance_after": round(self.state["balance"], 2),
             })
             self._save()
-            print(f"[{self.sector_name}] SELL {qty} {symbol} @ {price} (P&L: {profit:+.0f})")
+            print(f"[{self.sector_name}] SELL {qty} {symbol} @ {price} (P&L: {profit:+.0f} / {profit_pct:+.2f}%)")
             notify_trade(self.sector_name, symbol, self.stocks.get(symbol, symbol),
-                         "SELL", price, qty, signal_desc, profit=profit)
+                         "SELL", price, qty, signal_desc, profit=profit, profit_pct=profit_pct)
             return True
 
         return False

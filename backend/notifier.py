@@ -80,7 +80,8 @@ def send_telegram(message: str) -> bool:
 
 def notify_trade(sector_name: str, symbol: str, stock_name: str,
                  trade_type: str, price: float, qty: int,
-                 signal_desc: str, profit: float = None) -> bool:
+                 signal_desc: str, profit: float = None,
+                 profit_pct: float = None) -> bool:
     """交易通知格式化並發送
 
     Args:
@@ -92,6 +93,7 @@ def notify_trade(sector_name: str, symbol: str, stock_name: str,
         qty: 成交股數
         signal_desc: 信號描述
         profit: 已實現損益（賣出時才有）
+        profit_pct: 已實現損益百分比（賣出時才有）
     """
     emoji = "\U0001f7e2" if trade_type == "BUY" else "\U0001f534"
     action = "買入" if trade_type == "BUY" else "賣出"
@@ -110,6 +112,7 @@ def notify_trade(sector_name: str, symbol: str, stock_name: str,
 
     if profit is not None:
         pnl_emoji = "\U0001f4c8" if profit >= 0 else "\U0001f4c9"
-        lines.append(f"損益：{pnl_emoji} ${profit:,.0f}")
+        pct_str = f"（{profit_pct:+.2f}%）" if profit_pct is not None else ""
+        lines.append(f"損益：{pnl_emoji} ${profit:,.0f}{pct_str}")
 
     return send_telegram("\n".join(lines))
