@@ -407,21 +407,24 @@ def is_trend_break_sell(df: pd.DataFrame, sig: dict) -> tuple[bool, dict]:
     """
     判斷是否觸發「趨勢破壞型賣出」（補強 RegimeLayer 對中段破線的遲鈍）
 
-    觸發條件（S8 OR S9，且 regime ∈ {高檔轉折, 盤整}）：
+    觸發條件（S8 OR S9，且 regime ∈ {高檔轉折, 盤整, 多頭}）：
     - S8: 從近 20 日高點下跌 ≥ 3×ATR（波動度自適應停損）
     - S9: 連續 3 黑 K + 收盤跌破 20MA（K 棒型態破壞）
 
     回測（2024-01 ~ 2026-04，76 檔）：
     - S9 在「高檔轉折」: n=284, +10d=+1.06%, 賣對率 70.9%, 全踏空 2.6%
     - S8 在「高檔轉折」: n=663, +10d=+2.07%, 賣對率 68.9%, 全踏空 4.1%
+    - S9 在「多頭」: n=322, +10d=+1.53%, P10=-8.66%, 跌≥10% 比例 8.1%（與高檔轉折相當）
+    - S8 在「多頭」: n=874, +10d=+1.24%, 採用觸發淨效益 +0.59% vs 持有
 
-    用途：在中段位置開始破線時即觸發賣出，避開 RegimeLayer 等到 LOW zone 才轉 BEAR 的遲鈍
+    用途：在多頭/中段位置開始破線時即觸發賣出，避開 RegimeLayer 等到 LOW zone 才轉 BEAR 的遲鈍。
+    「強勢多頭」不納入（樣本不足且本身已有 sell ×0.5 防護）。
 
     Returns:
         (是否觸發, 細節 dict)
     """
     regime = sig.get("regime")
-    if regime not in ("高檔轉折", "盤整"):
+    if regime not in ("高檔轉折", "盤整", "多頭"):
         return False, {}
 
     if df is None or len(df) < 60:
