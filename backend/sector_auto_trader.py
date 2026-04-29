@@ -26,6 +26,7 @@ import threading
 from datetime import datetime, timedelta
 from typing import Dict, Optional
 
+import numpy as np
 import pandas as pd
 import pytz
 import yfinance as yf
@@ -400,6 +401,141 @@ def is_strong_pullback(sig: dict) -> tuple[bool, dict]:
     return False, {}
 
 
+# ── 趨勢破壞型賣出（價量型出場觸發）──
+
+def is_trend_break_sell(df: pd.DataFrame, sig: dict) -> tuple[bool, dict]:
+    """
+    判斷是否觸發「趨勢破壞型賣出」（補強 RegimeLayer 對中段破線的遲鈍）
+
+    觸發條件（S8 OR S9，且 regime ∈ {高檔轉折, 盤整}）：
+    - S8: 從近 20 日高點下跌 ≥ 3×ATR（波動度自適應停損）
+    - S9: 連續 3 黑 K + 收盤跌破 20MA（K 棒型態破壞）
+
+    回測（2024-01 ~ 2026-04，76 檔）：
+    - S9 在「高檔轉折」: n=284, +10d=+1.06%, 賣對率 70.9%, 全踏空 2.6%
+    - S8 在「高檔轉折」: n=663, +10d=+2.07%, 賣對率 68.9%, 全踏空 4.1%
+
+    用途：在中段位置開始破線時即觸發賣出，避開 RegimeLayer 等到 LOW zone 才轉 BEAR 的遲鈍
+
+    Returns:
+        (是否觸發, 細節 dict)
+    """
+    regime = sig.get("regime")
+    if regime not in ("高檔轉折", "盤整"):
+        return False, {}
+
+    if df is None or len(df) < 60:
+        return False, {}
+
+    closes = df['close'].values
+    opens = df['open'].values
+    highs = df['high'].values
+    lows = df['low'].values
+    n = len(df)
+    i = n - 1
+
+    c = float(closes[i])
+    ma20 = float(pd.Series(closes).rolling(20).mean().iloc[i])
+    if ma20 <= 0:
+        return False, {}
+
+    # S9: 連續 3 黑 K + 收盤 < 20MA
+    s9_red3 = all(closes[i - k] < opens[i - k] for k in range(3))
+    s9 = s9_red3 and c < ma20
+
+    # S8: 從近 20 日高點下跌 ≥ 3×ATR
+    high_20d = float(np.max(highs[i - 19:i + 1]))
+    # 簡化 ATR(14)
+    tr_list = []
+    for k in range(14):
+        h = highs[i - k]
+        l = lows[i - k]
+        pc = closes[i - k - 1] if i - k - 1 >= 0 else closes[i - k]
+        tr_list.append(max(h - l, abs(h - pc), abs(l - pc)))
+    atr14 = float(np.mean(tr_list))
+    s8 = atr14 > 0 and (high_20d - c) >= 3.0 * atr14
+
+    if not (s8 or s9):
+        return False, {}
+
+    triggered = []
+    if s9:
+        triggered.append("S9連3黑破20MA")
+    if s8:
+        triggered.append(f"S8從高點{high_20d:.1f}跌{(high_20d-c)/atr14:.1f}×ATR")
+
+    return True, {
+        "triggers": triggered,
+        "regime": regime,
+        "ma20": round(ma20, 2),
+        "high_20d": round(high_20d, 2),
+        "atr14": round(atr14, 2),
+    }
+
+
+# ── 超跌反彈型買入（價量型進場觸發）──
+
+def is_oversold_rebound(df: pd.DataFrame, sig: dict) -> tuple[bool, dict]:
+    """
+    判斷是否觸發「超跌反彈型買入」（補強空頭/底部轉強區的進場機會）
+
+    觸發條件（B2 OR B5，且 regime ∈ {空頭, 底部轉強, 盤整}）：
+    - B2: 連漲 3 日累計 ≥ 5%（持續性反彈）
+    - B5: 單日漲 ≥ 4% + 量比 > 2（強勢突破）
+
+    回測（2024-01 ~ 2026-04，76 檔）：
+    - B2 在「空頭」: n=141, +10d=+3.83%, 勝率 62.4%
+    - B2 在「底部轉強」: n=167, +10d=+2.23%, 勝率 58.7%
+    - B5 在「空頭」: n=25, +10d=+3.31%, 勝率 60.0%
+
+    用途：在空頭中抓反彈、在底部轉強區加強買入信號（繞過 RegimeLayer veto_buy）
+
+    Returns:
+        (是否觸發, 細節 dict)
+    """
+    regime = sig.get("regime")
+    if regime not in ("空頭", "底部轉強", "盤整"):
+        return False, {}
+
+    if df is None or len(df) < 30:
+        return False, {}
+
+    closes = df['close'].values
+    vols = df['volume'].values
+    n = len(df)
+    i = n - 1
+
+    if i < 3:
+        return False, {}
+
+    # B2: 連漲 3 日累計 ≥ 5%
+    u3 = (closes[i] / closes[i - 3] - 1) * 100
+    b2 = u3 >= 5.0
+
+    # B5: 單日漲 ≥ 4% + 量比 > 2
+    daily_chg = (closes[i] / closes[i - 1] - 1) * 100
+    vol_ma20 = float(pd.Series(vols).rolling(20).mean().iloc[i])
+    vol_ratio = (vols[i] / vol_ma20) if vol_ma20 > 0 else 0
+    b5 = daily_chg >= 4.0 and vol_ratio > 2.0
+
+    if not (b2 or b5):
+        return False, {}
+
+    triggered = []
+    if b2:
+        triggered.append(f"B2連漲3日{u3:.1f}%")
+    if b5:
+        triggered.append(f"B5單日漲{daily_chg:.1f}%量比{vol_ratio:.1f}x")
+
+    return True, {
+        "triggers": triggered,
+        "regime": regime,
+        "consec_3d_pct": round(u3, 2),
+        "daily_chg_pct": round(daily_chg, 2),
+        "vol_ratio": round(vol_ratio, 2),
+    }
+
+
 # ── 單一類股交易循環 ──
 
 def build_layers(strategy: dict) -> list:
@@ -517,18 +653,32 @@ def process_sector(manager: SectorTradingManager):
         # 5. 信號交易（雙軌制：信號分數=時機 + 綜合分數=品質）
         regime_tag = f" [{sig['regime']}]" if sig.get("regime") else ""
         if hold and hold["qty"] > 0:
-            # 已持倉 → 只看賣出信號（賣出不受綜合分數限制）
-            if sig["direction"] == "SELL" and sig["confidence"] >= sell_th:
+            # 已持倉 → 賣出觸發兩條：標準信號 + 趨勢破壞型
+            standard_sell = (sig["direction"] == "SELL" and sig["confidence"] >= sell_th)
+            trend_break, tb_detail = is_trend_break_sell(df, sig)
+
+            if standard_sell:
                 desc = f"賣出信號 (技術{sig['confidence']:.0f},{comp_tag}, {sig['signal_level']}){regime_tag}"
+                manager.execute_trade(symbol, "SELL", price, desc)
+            elif trend_break:
+                # 趨勢破壞型：在高檔轉折/盤整 regime 下，連3黑破20MA 或 從高跌3×ATR
+                trig_str = "+".join(tb_detail.get("triggers", []))
+                desc = f"趨勢破壞賣出 ({trig_str}){regime_tag}"
                 manager.execute_trade(symbol, "SELL", price, desc)
         else:
             # 無持倉 → 買入需同時滿足：信號達標 + 綜合 ≥ 50
             standard_buy = (sig["direction"] == "BUY" and sig["confidence"] >= buy_th)
             pullback_buy, pb_detail = is_strong_pullback(sig)
+            rebound_buy, rb_detail = is_oversold_rebound(df, sig)
 
-            if standard_buy or pullback_buy:
+            if standard_buy or pullback_buy or rebound_buy:
                 if composite is not None and composite < 50:
-                    src = "強勢拉回" if pullback_buy and not standard_buy else "信號達標"
+                    if pullback_buy and not standard_buy:
+                        src = "強勢拉回"
+                    elif rebound_buy and not standard_buy:
+                        src = "超跌反彈"
+                    else:
+                        src = "信號達標"
                     print(f"  [{manager.sector_name}] {symbol} {src}"
                           f"但綜合分數不足({composite:.0f}<50)，跳過買入")
                     continue
@@ -537,6 +687,11 @@ def process_sector(manager: SectorTradingManager):
                     desc = (f"強勢拉回加碼點 (原買分{pb_detail['raw_buy_score']:.0f}, "
                             f"投信連買{pb_detail['trust_consec_buy']}天, "
                             f"外資連買{pb_detail['foreign_consec_buy']}天){regime_tag}")
+                    ratio = strategy.get("buy_ratio", 0.20) * 0.7
+                elif rebound_buy and not standard_buy:
+                    # 超跌反彈進場：保守倉位 70%
+                    trig_str = "+".join(rb_detail.get("triggers", []))
+                    desc = f"超跌反彈進場 ({trig_str}){regime_tag}"
                     ratio = strategy.get("buy_ratio", 0.20) * 0.7
                 else:
                     desc = f"買入信號 (技術{sig['confidence']:.0f},{comp_tag}, {sig['signal_level']}){regime_tag}"
