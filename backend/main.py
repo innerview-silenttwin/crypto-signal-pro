@@ -882,7 +882,7 @@ _VALID_TW_SYMBOL = re.compile(r'^[A-Z0-9]+\.(TW|TWO)$')
 
 def _collect_active_universe() -> List[Tuple[str, str]]:
     """收集所有需保持資料新鮮的台股標的（去重）。
-    來源：跑馬燈 ticker ∪ 5 個產業池 ∪ Screener 自選股。
+    來源：跑馬燈 ticker ∪ 6 個產業池 ∪ Screener 自選股。
     過濾不合法 symbol（避免歷史垃圾資料拖慢刷新）。
     """
     universe: Dict[str, str] = {}  # symbol → market
@@ -1199,7 +1199,7 @@ async def remove_watchlist_symbol(symbol: str):
 
 
 # ============================================================
-# 類股虛擬交易 API（4 個獨立交易中心）
+# 類股虛擬交易 API（6 個獨立交易中心）
 # ============================================================
 
 from sector_trader import get_manager, get_all_managers as get_all_sector_managers, SECTOR_IDS, SECTOR_ID_TO_NAME
@@ -1352,8 +1352,9 @@ async def toggle_sector_trading(sector_id: str, active: bool = False):
     return {"sector_id": sector_id, "is_active": is_active}
 
 @app.get("/api/sector-trading/{sector_id}/history")
-async def get_sector_history(sector_id: str, page: int = 1, pageSize: int = 15,
-                              symbol: str = "", startDate: str = "", endDate: str = ""):
+async def get_sector_history(sector_id: str, page: int = 1, pageSize: int = 50,
+                              symbol: str = "", startDate: str = "", endDate: str = "",
+                              tradeType: str = ""):
     """取得單一類股交易歷史"""
     mgr = get_manager(sector_id)
     if not mgr:
@@ -1367,6 +1368,7 @@ async def get_sector_history(sector_id: str, page: int = 1, pageSize: int = 15,
             if price:
                 current_prices[sym] = price
     return mgr.get_history(page, pageSize, symbol, startDate, endDate,
+                           trade_type=tradeType,
                            current_prices=current_prices)
 
 @app.post("/api/sector-trading/{sector_id}/strategy")

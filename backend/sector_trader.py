@@ -107,6 +107,21 @@ DEFAULT_STRATEGIES = {
             "chipflow": {"enabled": True},
         },
     },
+    "其他": {
+        "name": "通用均衡策略 (EMA+Vol+VR)",
+        "param_preset": "標準",
+        "weights": {
+            'rsi': 10.0, 'macd': 15.0, 'bollinger': 3.0,
+            'mfi': 5.0, 'ema_cross': 18.0, 'volume': 25.0, 'adx': 14.0,
+            'stoch_rsi': 8.0, 'volume_reversal': 15.0, 'pullback_support': 14.0,
+        },
+        "buy_threshold": 35,
+        "sell_threshold": 35,
+        "stop_loss_pct": 10.0,
+        "take_profit_pct": 20.0,
+        "buy_ratio": 0.12,
+        "description": "通用台股權重，適用生技、ETF 等未分類標的。Volume+VR 量能主導，EMA 過濾趨勢，門檻適中",
+    },
 }
 
 # ── 類股標的 ──
@@ -130,6 +145,7 @@ SECTOR_STOCKS = {
     },
     "精密機械/工業": {
         "1590.TW": "亞德客-KY", "2049.TW": "上銀", "2395.TW": "研華",
+        "7769.TW": "鴻勁",
     },
     "金融": {
         "2881.TW": "富邦金", "2882.TW": "國泰金", "2891.TW": "中信金",
@@ -146,6 +162,13 @@ SECTOR_STOCKS = {
         "2912.TW": "統一超", "1513.TW": "中興電",
         "2412.TW": "中華電", "3045.TW": "台灣大", "4904.TW": "遠傳",
     },
+    "其他": {
+        # 生技
+        "4743.TW": "合一", "6446.TW": "藥華藥", "1760.TW": "寶齡富錦",
+        # ETF
+        "0050.TW": "元大台灣50", "0056.TW": "元大高股息",
+        "00878.TW": "國泰永續高股息", "00919.TW": "群益台灣精選高息",
+    },
 }
 
 SECTOR_IDS = {
@@ -154,6 +177,7 @@ SECTOR_IDS = {
     "金融": "finance",
     "傳產/航運/電信": "traditional",
     "精密機械/工業": "precision",
+    "其他": "other",
 }
 
 SECTOR_ID_TO_NAME = {v: k for k, v in SECTOR_IDS.items()}
@@ -168,12 +192,15 @@ class SectorTradingManager:
         self.data_file = os.path.join(DATA_DIR, f"{self.sector_id}_account.json")
         self.stocks = SECTOR_STOCKS[sector_name]
 
+        # 半導體、電子代工初始資金 200 萬，其餘 100 萬
+        _init_bal = 2_000_000.0 if sector_name in ("半導體", "電子代工/零組件") else 1_000_000.0
+
         self.initial_state = {
             "sector_name": sector_name,
             "sector_id": self.sector_id,
             "is_active": True,
-            "balance": 1_000_000.0,
-            "initial_balance": 1_000_000.0,
+            "balance": _init_bal,
+            "initial_balance": _init_bal,
             "holdings": {},
             "history": [],
             "equity_curve": [],  # [{"time": "...", "equity": float}]
@@ -306,8 +333,9 @@ class SectorTradingManager:
             "equity_curve": self.state.get("equity_curve", [])[-100:],  # 最近 100 筆
         }
 
-    def get_history(self, page: int = 1, page_size: int = 15,
+    def get_history(self, page: int = 1, page_size: int = 50,
                     symbol: str = "", start_date: str = "", end_date: str = "",
+                    trade_type: str = "",
                     current_prices: dict = None) -> dict:
         current_prices = current_prices or {}
         history = self.state.get("history", [])
@@ -391,10 +419,12 @@ class SectorTradingManager:
             annotated = [h for h in annotated if h.get("time", "") >= start_date]
         if end_date:
             annotated = [h for h in annotated if h.get("time", "")[:10] <= end_date]
+        if trade_type:
+            annotated = [h for h in annotated if h.get("type", "").upper() == trade_type.upper()]
 
         total = len(annotated)
         start = (page - 1) * page_size
-        return {"data": annotated[start:start + page_size], "total": total, "page": page}
+        return {"data": annotated[start:start + page_size], "total": total, "page": page, "page_size": page_size}
 
     # ── 交易執行 ──
 
@@ -553,7 +583,7 @@ def _inject_custom_stocks_into_sectors():
 _inject_custom_stocks_into_sectors()
 
 
-# ── 全域 4 個交易管理器實例 ──
+# ── 全域 6 個交易管理器實例 ──
 
 sector_managers: Dict[str, SectorTradingManager] = {}
 for _sector_name in SECTOR_IDS:

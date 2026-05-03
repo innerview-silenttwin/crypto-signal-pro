@@ -2,7 +2,7 @@
 每日績效報告模組
 
 每天晚上 9 點自動彙總兩大交易中心績效，透過 Telegram Bot 推播：
-1. 台股交易中心（5 類股帳戶）
+1. 台股交易中心（6 類股帳戶）
 2. BTC 交易中心（4 策略帳戶）
 """
 
@@ -27,7 +27,7 @@ REPORT_MINUTE = 0
 # ═══════════════════════════════════════════════
 
 def _build_sector_report() -> str:
-    """彙總台股 5 類股帳戶績效"""
+    """彙總台股 6 類股帳戶績效"""
     from sector_trader import get_all_managers
     from sector_auto_trader import get_current_price
 

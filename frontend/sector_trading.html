@@ -999,11 +999,11 @@
                             <!-- 數據卡片 -->
                             <div class="stats-grid">
                                 <div class="stat-card glass-panel" style="border-top: 2px solid var(--primary)">
-                                    <div class="stat-label">四類總損益</div>
+                                    <div class="stat-label">全類股總損益</div>
                                     <div class="stat-value" id="g-pl">--</div>
                                 </div>
                                 <div class="stat-card glass-panel" style="border-top: 2px solid var(--primary)">
-                                    <div class="stat-label">四類總投報率</div>
+                                    <div class="stat-label">全類股總投報率</div>
                                     <div class="stat-value" id="g-roi">--</div>
                                 </div>
                                 <div class="stat-card glass-panel">
@@ -1033,6 +1033,20 @@
                                         <button id="btn-next" class="btn-global"
                                             style="padding:4px 12px; font-size:11px">下一頁</button>
                                     </div>
+                                </div>
+                                <!-- 篩選列 -->
+                                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; align-items:center">
+                                    <input id="filter-start" type="date" style="padding:4px 8px; border-radius:8px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-main); font-size:11px; width:130px" title="起始日期" />
+                                    <span style="color:var(--text-muted); font-size:11px">—</span>
+                                    <input id="filter-end" type="date" style="padding:4px 8px; border-radius:8px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-main); font-size:11px; width:130px" title="結束日期" />
+                                    <input id="filter-symbol" type="text" placeholder="股票代碼/名稱" style="padding:4px 8px; border-radius:8px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-main); font-size:11px; width:110px" />
+                                    <select id="filter-type" style="padding:4px 8px; border-radius:8px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-main); font-size:11px; cursor:pointer">
+                                        <option value="">全部</option>
+                                        <option value="BUY">買進</option>
+                                        <option value="SELL">賣出</option>
+                                    </select>
+                                    <button id="btn-filter" class="btn-global" style="padding:4px 14px; font-size:11px">篩選</button>
+                                    <button id="btn-filter-clear" class="btn-global" style="padding:4px 10px; font-size:11px; opacity:0.6">清除</button>
                                 </div>
                                 <div style="overflow-x:auto; padding-bottom:10px;">
                                     <table class="history-table">
@@ -1117,11 +1131,11 @@
     <script>
         (function () {
             const API = '';
-            const SECTORS = ['semiconductor', 'electronics', 'finance', 'traditional', 'precision'];
+            const SECTORS = ['semiconductor', 'electronics', 'finance', 'traditional', 'precision', 'other'];
             const SECTOR_LABELS = {
                 semiconductor: '半導體', electronics: '電子代工/零組件',
                 finance: '金融', traditional: '傳產/航運/電信',
-                precision: '精密機械/工業'
+                precision: '精密機械/工業', other: '其他'
             };
             const WEIGHT_NAMES = {
                 rsi: 'RSI', macd: 'MACD', bollinger: 'BB',
@@ -1147,6 +1161,20 @@
                 document.getElementById('btn-toggle-sector').onclick = toggleSector;
                 document.getElementById('btn-prev').onclick = () => { historyPage = Math.max(1, historyPage - 1); refreshHistory(); };
                 document.getElementById('btn-next').onclick = () => { historyPage++; refreshHistory(); };
+                document.getElementById('btn-filter').onclick = () => { historyPage = 1; refreshHistory(); };
+                document.getElementById('btn-filter-clear').onclick = () => {
+                    document.getElementById('filter-start').value = '';
+                    document.getElementById('filter-end').value = '';
+                    document.getElementById('filter-symbol').value = '';
+                    document.getElementById('filter-type').value = '';
+                    historyPage = 1;
+                    refreshHistory();
+                };
+                // Enter key on filter inputs triggers search
+                ['filter-start', 'filter-end', 'filter-symbol'].forEach(id => {
+                    document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') { historyPage = 1; refreshHistory(); } });
+                });
+                document.getElementById('filter-type').addEventListener('change', () => { historyPage = 1; refreshHistory(); });
 
                 buildTabs();
                 await refreshAll();
@@ -1203,7 +1231,18 @@
 
             async function refreshHistory() {
                 try {
-                    const res = await fetch(API + `/api/sector-trading/${currentSector}/history?page=${historyPage}&pageSize=15`);
+                    const startDate = document.getElementById('filter-start').value || '';
+                    const endDate = document.getElementById('filter-end').value || '';
+                    const symbol = document.getElementById('filter-symbol').value.trim();
+                    const tradeType = document.getElementById('filter-type').value || '';
+                    const params = new URLSearchParams({
+                        page: historyPage, pageSize: 50,
+                        ...(startDate && { startDate }),
+                        ...(endDate && { endDate }),
+                        ...(symbol && { symbol }),
+                        ...(tradeType && { tradeType }),
+                    });
+                    const res = await fetch(API + `/api/sector-trading/${currentSector}/history?${params}`);
                     const data = await res.json();
                     renderHistory(data);
                 } catch (e) { }
@@ -1423,7 +1462,7 @@
                 }
             }
 
-            // ── 四類彙總統計 ──
+            // ── 全類股彙總統計 ──
             function renderGlobalStats() {
                 const all = Object.values(sectorsData);
                 if (!all.length) return;
@@ -1569,7 +1608,7 @@
                     </tr>`;
                     }).join('');
                 }
-                document.getElementById('page-info').textContent = `${historyPage} / ${Math.max(1, Math.ceil(data.total / 15))}`;
+                document.getElementById('page-info').textContent = `${historyPage} / ${Math.max(1, Math.ceil(data.total / (data.page_size || 50)))}`;
             }
 
             function renderSectorBarChart() {

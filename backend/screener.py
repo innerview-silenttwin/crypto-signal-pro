@@ -83,7 +83,12 @@ SECTOR_WEIGHTS = {
         'mfi': 2.0, 'ema_cross': 28.0, 'volume': 8.0, 'adx': 8.0,
         'stoch_rsi': 8.0, 'volume_reversal': 8.0, 'pullback_support': 15.0,
     },
-    "default": {  # 其他（生技、ETF 等）：通用台股權重
+    "other": {  # 其他（生技、ETF 等）：通用台股權重
+        'rsi': 10.0, 'macd': 15.0, 'bollinger': 3.0,
+        'mfi': 5.0, 'ema_cross': 18.0, 'volume': 25.0, 'adx': 14.0,
+        'stoch_rsi': 8.0, 'volume_reversal': 15.0, 'pullback_support': 14.0,
+    },
+    "default": {  # 未知分類的 fallback
         'rsi': 10.0, 'macd': 15.0, 'bollinger': 3.0,
         'mfi': 5.0, 'ema_cross': 18.0, 'volume': 25.0, 'adx': 14.0,
         'stoch_rsi': 8.0, 'volume_reversal': 15.0, 'pullback_support': 14.0,
@@ -184,7 +189,12 @@ SECTOR_COMPOSITE_WEIGHTS = {
         "regime": 0.15, "sentiment": 0.07,
         "active_etf": 0.05,
     },
-    "default": {  # 通用
+    "other": {  # 其他（生技、ETF 等）
+        "chipflow": 0.30, "fundamental": 0.25, "technical": 0.25,
+        "regime": 0.12, "sentiment": 0.08,
+        "active_etf": 0.05,
+    },
+    "default": {  # 通用 fallback
         "chipflow": 0.35, "fundamental": 0.20, "technical": 0.25,
         "regime": 0.13, "sentiment": 0.07,
         "active_etf": 0.05,
@@ -210,7 +220,7 @@ for _s in ["2317.TW", "2382.TW", "2308.TW", "2357.TW", "3008.TW", "2345.TW",
     SYMBOL_SECTOR_MAP[_s] = "electronics"
 
 # 精密機械 / 工業自動化
-for _s in ["1590.TW", "2049.TW", "2395.TW"]:
+for _s in ["1590.TW", "2049.TW", "2395.TW", "7769.TW"]:
     SYMBOL_SECTOR_MAP[_s] = "precision"
 
 # 金融
@@ -224,6 +234,11 @@ for _s in ["1301.TW", "2002.TW", "1216.TW", "2603.TW", "2609.TW", "2615.TW",
            "2412.TW", "3045.TW", "4904.TW", "2912.TW",
            "1513.TW", "6505.TW", "2618.TW"]:
     SYMBOL_SECTOR_MAP[_s] = "traditional"
+
+# 其他（生技、ETF 等）
+for _s in ["4743.TW", "6446.TW", "1760.TW",
+           "0050.TW", "0056.TW", "00878.TW", "00919.TW"]:
+    SYMBOL_SECTOR_MAP[_s] = "other"
 
 
 def get_sector_weights(symbol: str) -> dict:
@@ -326,6 +341,8 @@ _BUILTIN_UNIVERSE = {
     "4743.TW": "合一", "6446.TW": "藥華藥", "1760.TW": "寶齡富錦",
     # 食品 / 零售
     "2912.TW": "統一超", "1590.TW": "亞德客-KY",
+    # 精密機械 / 半導體設備
+    "7769.TW": "鴻勁",
     # ETF (不需基本面)
     "0050.TW": "元大台灣50", "0056.TW": "元大高股息",
     "00878.TW": "國泰永續高股息", "00919.TW": "群益台灣精選高息",
