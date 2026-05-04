@@ -2395,6 +2395,32 @@ a.event-item:hover {
     text-align: center;
     white-space: nowrap;
     flex-shrink: 0;
+    cursor: help;
+}
+/* 全持有特殊樣式（金色，最強共識） */
+.aetf-etf-count-all {
+    color: #fbbf24;
+    background: rgba(251,191,36,0.15);
+    border-color: rgba(251,191,36,0.5);
+}
+/* 超選頁的小 ETF chip */
+.screener-etf-chip {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    color: #38bdf8;
+    background: rgba(56,189,248,0.10);
+    border: 1px solid rgba(56,189,248,0.3);
+    border-radius: 8px;
+    padding: 1px 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    cursor: help;
+}
+.screener-etf-chip-all {
+    color: #fbbf24;
+    background: rgba(251,191,36,0.13);
+    border-color: rgba(251,191,36,0.5);
 }
 .screener-days-badge {
     font-size: 10px;

@@ -173,6 +173,50 @@ def fetch_latest_price(symbol: str) -> Optional[float]:
         return None
 
 
+# 1m 即時價快取（30 秒，避免單輪掃描重複呼叫）
+_live_price_cache: Dict[str, dict] = {}
+LIVE_PRICE_TTL = 30
+
+
+def fetch_live_price(symbol: str, prev_close: Optional[float] = None) -> Optional[float]:
+    """取得盤中即時成交價（1m K 最後一根 close）。
+
+    yfinance daily candle 在盤中會延遲/快取，漲停或低成交標的特別容易抓到舊值。
+    1m K 線是真實逐筆成交，用來作交易執行價較可靠。
+
+    若提供 prev_close，會檢查價格是否在昨收 ±10%（台股漲跌停限制）內，
+    超出代表 1m 資料異常，回傳 None。
+    """
+    now = time.time()
+    cached = _live_price_cache.get(symbol)
+    if cached and now - cached["time"] < LIVE_PRICE_TTL:
+        return cached["price"]
+
+    try:
+        ticker = yf.Ticker(symbol)
+        df = ticker.history(period="1d", interval="1m")
+        if df.empty:
+            return None
+        df = df.dropna(subset=['Close'])
+        if df.empty:
+            return None
+        price = float(df['Close'].iloc[-1])
+
+        # 合理性檢查：±10% 漲跌停範圍
+        if prev_close and prev_close > 0:
+            if not (prev_close * 0.89 <= price <= prev_close * 1.11):
+                logger.warning(
+                    f"{symbol} 1m 即時價 {price:.2f} 超出昨收 {prev_close:.2f} ±10%，疑似異常"
+                )
+                return None
+
+        _live_price_cache[symbol] = {"price": price, "time": now}
+        return price
+    except Exception as e:
+        logger.warning(f"取即時價失敗 {symbol}: {e}")
+        return None
+
+
 def fetch_signal_data(symbol: str, lookback_days: int = 250) -> Optional[pd.DataFrame]:
     """取得用於信號計算的歷史數據（本地 CSV 優先、yfinance 備援）"""
     now = time.time()
@@ -592,31 +636,52 @@ def process_sector(manager: SectorTradingManager):
     current_prices = {}
     price_dates = {}  # symbol → 價格的實際交易日期
 
+    tw_tz = pytz.timezone("Asia/Taipei")
+    now_tw = datetime.now(tw_tz)
+    today_str = now_tw.strftime("%Y-%m-%d")
+    # 台股交易時間 09:00–13:30
+    is_market_hours = (now_tw.weekday() < 5 and
+                       (now_tw.hour, now_tw.minute) >= (9, 0) and
+                       (now_tw.hour, now_tw.minute) <= (13, 30))
+
     for symbol in manager.state.get("stocks", []):
-        # 1. 取得數據
+        # 1. 取得歷史數據（信號計算用）
         df = fetch_signal_data(symbol)
         if df is None:
             continue
 
-        price = float(df['close'].iloc[-1])
+        # 2. 決定執行價
+        # 盤中：優先用 1m K 即時價（避免 daily candle 延遲/快取問題）
+        # 收盤後：用 daily close
+        daily_price = float(df['close'].iloc[-1])
+        prev_close = float(df['close'].iloc[-2]) if len(df) >= 2 else None
+        price = daily_price
+        if is_market_hours:
+            live = fetch_live_price(symbol, prev_close=prev_close)
+            if live is not None:
+                price = live
+
         current_prices[symbol] = price
-        # 記錄價格的實際日期（避免用舊日期覆蓋新價格）
         last_idx = df.index[-1]
         price_date_str = (last_idx.strftime("%Y-%m-%d")
                           if hasattr(last_idx, 'strftime')
                           else str(last_idx)[:10])
         price_dates[symbol] = price_date_str
 
-        # ── 價格日期守衛：禁止用非當日價格交易 ──
-        tw_tz = pytz.timezone("Asia/Taipei")
-        today_str = datetime.now(tw_tz).strftime("%Y-%m-%d")
-        if price_date_str < today_str:
+        # ── 價格日期守衛：盤中已用 1m 即時價，可放行；只擋「daily 也是舊資料」場景 ──
+        if not is_market_hours and price_date_str < today_str:
             logger.warning(
                 f"{symbol} 價格日期 {price_date_str} 非今日 {today_str}，跳過交易"
             )
             continue
 
-        # 2. 計算信號（含分析層修正）
+        # ── 漲停偵測：漲幅 ≥9.5% 不買入（實務上漲停板買不到） ──
+        _is_limit_up = False
+        if prev_close and prev_close > 0 and price >= prev_close * 1.095:
+            _is_limit_up = True
+            logger.info(f"{symbol} 漲停板（{price:.1f} / 昨收 {prev_close:.1f}），跳過買入")
+
+        # 3. 計算信號（含分析層修正）
         sig = compute_signal(df, weights, symbol,
                              layers=layers, sector_id=manager.sector_id)
         if sig is None:
@@ -631,7 +696,7 @@ def process_sector(manager: SectorTradingManager):
                   f"賣:{sig['sell_score']:.0f}(原{sig['raw_sell_score']:.0f}) "
                   f"{reason_str}")
 
-        # 3. 檢查停損/停利（已持倉）
+        # 4. 檢查停損/停利（已持倉）
         hold = manager.state["holdings"].get(symbol)
         if hold and hold["qty"] > 0:
             pnl_pct = (price - hold["avg_price"]) / hold["avg_price"] * 100
@@ -649,11 +714,11 @@ def process_sector(manager: SectorTradingManager):
                 )
                 continue
 
-        # 4. 計算五維綜合分數（品質門檻）
+        # 5. 計算五維綜合分數（品質門檻）
         composite = compute_composite_score(symbol, sig)
         comp_tag = f" 綜合{composite:.0f}" if composite is not None else ""
 
-        # 5. 信號交易（雙軌制：信號分數=時機 + 綜合分數=品質）
+        # 6. 信號交易（雙軌制：信號分數=時機 + 綜合分數=品質）
         regime_tag = f" [{sig['regime']}]" if sig.get("regime") else ""
         if hold and hold["qty"] > 0:
             # 已持倉 → 賣出觸發兩條：標準信號 + 趨勢破壞型
@@ -673,6 +738,9 @@ def process_sector(manager: SectorTradingManager):
             standard_buy = (sig["direction"] == "BUY" and sig["confidence"] >= buy_th)
             pullback_buy, pb_detail = is_strong_pullback(sig)
             rebound_buy, rb_detail = is_oversold_rebound(df, sig)
+
+            if _is_limit_up:
+                continue
 
             if standard_buy or pullback_buy or rebound_buy:
                 if composite is not None and composite < 50:

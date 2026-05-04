@@ -190,6 +190,8 @@ async def startup_event():
     asyncio.create_task(preload_tw_ticker_data())
     # 每日 14:35 自動刷新台股 ticker 資料（避免資料停滯）
     asyncio.create_task(daily_tw_data_refresh())
+    # 主動 ETF 持股分數獨立刷新（每 4 小時，避免被 daily-refresh 拖累或漏跑）
+    asyncio.create_task(active_etf_refresh_worker())
     # 背景消化過期 CSV 刷新佇列（用戶訪問時觸發）
     asyncio.create_task(stale_refresh_worker())
     # 自動啟動類股交易引擎
@@ -298,17 +300,50 @@ async def daily_tw_data_refresh():
                     await asyncio.sleep(8)  # 每檔間隔 8 秒，避免 TWSE rate limit
                 except Exception as e:
                     print(f"[daily-refresh] Error refreshing {tw_sym}: {e}")
-            # 同步刷新主動 ETF 持股分數
-            try:
-                from layers.active_etf import refresh_active_etf_scores
-                ok = refresh_active_etf_scores()
-                print(f"[daily-refresh] Active ETF scores refresh: {'OK' if ok else 'FAILED'}")
-            except Exception as e:
-                print(f"[daily-refresh] Active ETF refresh error: {e}")
 
             print("[daily-refresh] Daily TW stock data refresh complete.")
         else:
             print("[daily-refresh] Weekend, skipping TW data refresh.")
+
+
+async def active_etf_refresh_worker():
+    """獨立刷新主動 ETF 持股分數：啟動時若快取過期立即跑一次，之後每 4 小時跑一次。
+
+    與 daily_tw_data_refresh 解耦避免被 symbol loop 拖累或漏跑。
+    """
+    from datetime import date as _date
+    from layers.active_etf import refresh_active_etf_scores, _CACHE_FILE
+
+    # 啟動時延遲 30 秒（讓其他啟動任務先就緒），檢查是否需要立即刷新
+    await asyncio.sleep(30)
+
+    while True:
+        try:
+            # 檢查快取新鮮度
+            need_refresh = True
+            if os.path.exists(_CACHE_FILE):
+                try:
+                    with open(_CACHE_FILE, "r", encoding="utf-8") as f:
+                        cache_data = json.load(f)
+                    cache_date = _date.fromisoformat(cache_data.get("date", "2000-01-01"))
+                    today = _date.today()
+                    days_old = (today - cache_date).days
+                    if days_old <= 0:
+                        print(f"[active-etf-refresh] 快取為今日（{cache_date}），略過")
+                        need_refresh = False
+                    else:
+                        print(f"[active-etf-refresh] 快取已過期 {days_old} 天（{cache_date}），刷新")
+                except Exception as e:
+                    print(f"[active-etf-refresh] 讀取快取失敗，強制刷新: {e}")
+
+            if need_refresh:
+                ok = await asyncio.to_thread(refresh_active_etf_scores)
+                print(f"[active-etf-refresh] 結果: {'OK' if ok else 'FAILED'}")
+        except Exception as e:
+            print(f"[active-etf-refresh] worker 例外: {e}")
+
+        # 每 4 小時檢查一次（盤中 + 盤後都會涵蓋）
+        await asyncio.sleep(4 * 3600)
 
 
 async def stale_refresh_worker():
@@ -2321,6 +2356,7 @@ async def get_screener_picks():
         "updated_at": data.get("updated_at", ""),
         "total": data.get("total", 0),
         "scanning": is_scanning(),
+        "active_etfs": data.get("active_etfs", []),
     }
 
 

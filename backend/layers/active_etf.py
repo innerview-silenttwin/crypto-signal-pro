@@ -52,6 +52,7 @@ _RANK_HISTORY_FILE = os.path.join(_CACHE_DIR, "active_etf_rank_history.json")
 _scores_cache: dict = {}   # {stock_id: normalized_score(0-100)}
 _names_cache: dict = {}    # {stock_id: stock_name}
 _etf_count_cache: dict = {}  # {stock_id: int} 被幾檔 ETF 持有
+_etf_holders_cache: dict = {}  # {stock_id: [etf_code, ...]} 被哪些 ETF 持有
 _cache_date: Optional[date] = None
 _cache_lock = threading.RLock()  # 保護多執行緒下的讀寫安全
 
@@ -119,6 +120,10 @@ def refresh_active_etf_scores() -> bool:
     raw_scores: dict = {}
     names: dict = {}
     etf_count: dict = {}  # 每支股票被幾檔 ETF 持有
+    etf_holders: dict = {}  # {stock_id: [etf_code, ...]} 持有它的 ETF 清單
+
+    # 依 BEAT_ETFS 的原始排序記錄，方便前端按重要性顯示
+    etf_order = {etf["code"]: idx for idx, etf in enumerate(BEAT_ETFS)}
 
     with ThreadPoolExecutor(max_workers=len(BEAT_ETFS)) as executor:
         futures = {executor.submit(_fetch_holdings, etf["code"], token): etf for etf in BEAT_ETFS}
@@ -130,6 +135,11 @@ def refresh_active_etf_scores() -> bool:
                 raw_scores[sid] = raw_scores.get(sid, 0.0) + w * pct
                 names[sid] = sname
                 etf_count[sid] = etf_count.get(sid, 0) + 1
+                etf_holders.setdefault(sid, []).append(etf["code"])
+
+    # 依 BEAT_ETFS 排名重新排序每支股票的 holders 清單
+    for sid in etf_holders:
+        etf_holders[sid].sort(key=lambda c: etf_order.get(c, 999))
 
     if not raw_scores:
         logger.warning("[active_etf] 未取得任何持股資料")
@@ -150,12 +160,15 @@ def refresh_active_etf_scores() -> bool:
         _names_cache.update(names)
         _etf_count_cache.clear()
         _etf_count_cache.update(etf_count)
+        _etf_holders_cache.clear()
+        _etf_holders_cache.update(etf_holders)
         _cache_date = date.today()
 
     os.makedirs(_CACHE_DIR, exist_ok=True)
     with open(_CACHE_FILE, "w", encoding="utf-8") as f:
         json.dump({"date": str(_cache_date), "scores": normalized, "names": names,
                    "etf_count_per_stock": etf_count,
+                   "etf_holders_per_stock": etf_holders,
                    "etf_count": len(BEAT_ETFS), "stock_count": n},
                   f, ensure_ascii=False, indent=2)
 
@@ -175,32 +188,63 @@ def _load_cache_from_disk() -> bool:
         has_etf_count = "etf_count_per_stock" in data
         is_fresh = cache_date >= date.today() and has_etf_count
 
+        # 若磁碟版與記憶體版同日，視為已讀過，不重載 dict 也不 log
         with _cache_lock:
-            _scores_cache.clear()
-            _scores_cache.update(data["scores"])
-            _names_cache.clear()
-            _names_cache.update(data.get("names", {}))
-            _etf_count_cache.clear()
-            _etf_count_cache.update(data.get("etf_count_per_stock", {}))
-            _cache_date = cache_date
+            already_loaded = (_cache_date == cache_date and len(_scores_cache) > 0)
+            if not already_loaded:
+                _scores_cache.clear()
+                _scores_cache.update(data["scores"])
+                _names_cache.clear()
+                _names_cache.update(data.get("names", {}))
+                _etf_count_cache.clear()
+                _etf_count_cache.update(data.get("etf_count_per_stock", {}))
+                _etf_holders_cache.clear()
+                _etf_holders_cache.update(data.get("etf_holders_per_stock", {}))
+                _cache_date = cache_date
 
-        if is_fresh:
-            logger.info(f"[active_etf] 從磁碟載入快取（{cache_date}，{len(_scores_cache)} 支股票）")
-        else:
-            logger.info(f"[active_etf] 載入過期快取作為 fallback（{cache_date}，{len(_scores_cache)} 支股票）")
+        if not already_loaded:
+            if is_fresh:
+                logger.info(f"[active_etf] 從磁碟載入快取（{cache_date}，{len(_scores_cache)} 支股票）")
+            else:
+                logger.info(f"[active_etf] 載入過期快取作為 fallback（{cache_date}，{len(_scores_cache)} 支股票）")
         return is_fresh
     except Exception as e:
         logger.warning(f"[active_etf] 磁碟快取讀取失敗: {e}")
         return False
 
 
+# 防併發 refresh：去重同一秒內重複的 lazy refresh 請求
+_refresh_in_progress = threading.Event()
+_last_refresh_attempt: float = 0.0
+
+
 def _ensure_cache():
-    """確保快取是今天的，否則刷新"""
+    """確保快取是今天的，否則刷新
+
+    refresh 由獨立背景 task 主導（main.py active_etf_refresh_worker），
+    這裡只在以下情況才主動觸發：磁碟快取也過期、且 60 秒內沒人在 refresh。
+    """
+    import time as _time
+    global _last_refresh_attempt
+
     with _cache_lock:
         if _cache_date == date.today() and _scores_cache:
             return
-    if not _load_cache_from_disk():
+
+    # 嘗試從磁碟載入新鮮快取（背景任務剛刷完就直接讀到）
+    if _load_cache_from_disk():
+        return
+
+    # 磁碟也過期 → 60 秒去重 + 鎖防止 ThreadPool 併發 refresh 雪崩
+    now = _time.time()
+    if _refresh_in_progress.is_set() or (now - _last_refresh_attempt < 60):
+        return  # 別人正在刷或剛刷過，不重複
+    _last_refresh_attempt = now
+    _refresh_in_progress.set()
+    try:
         refresh_active_etf_scores()
+    finally:
+        _refresh_in_progress.clear()
 
 
 def get_active_etf_score(symbol: str) -> Optional[float]:
@@ -212,6 +256,14 @@ def get_active_etf_score(symbol: str) -> Optional[float]:
     sid = symbol.replace(".TW", "").replace(".tw", "").strip()
     with _cache_lock:
         return _scores_cache.get(sid)
+
+
+def get_active_etf_holders(symbol: str) -> list:
+    """取得某股票被哪些主動 ETF 持有，回傳 [etf_code, ...]，依 BEAT_ETFS 排名排序。"""
+    _ensure_cache()
+    sid = symbol.replace(".TW", "").replace(".tw", "").strip()
+    with _cache_lock:
+        return list(_etf_holders_cache.get(sid, []))
 
 
 def _load_rank_history() -> dict:
@@ -308,7 +360,8 @@ def get_active_etf_ranking() -> dict:
                     "message": "資料載入中，請稍後再試"}
         stocks = sorted(
             [{"symbol": sid, "name": _names_cache.get(sid, sid), "score": score,
-              "etf_count": int(_etf_count_cache.get(sid, 0))}
+              "etf_count": int(_etf_count_cache.get(sid, 0)),
+              "etf_holders": list(_etf_holders_cache.get(sid, []))}
              for sid, score in _scores_cache.items()],
             key=lambda x: -x["score"]
         )

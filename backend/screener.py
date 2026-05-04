@@ -33,7 +33,7 @@ from layers.fundamental import fetch_twse_pe_all, _strip_tw
 from layers.chipflow import fetch_chip_summary, compute_chip_score
 from layers.regime import RegimeLayer
 from layers.sentiment import get_stock_sentiment, fetch_rss_articles
-from layers.active_etf import get_active_etf_score
+from layers.active_etf import get_active_etf_score, get_active_etf_holders
 
 logger = logging.getLogger(__name__)
 
@@ -534,6 +534,7 @@ def scan_single_stock(symbol: str, name: str, all_pe: dict, articles: list) -> O
         # ── 4. 主動式 ETF 評分（未被持有時設為 None，不列入綜合評分）──
         active_etf_score = get_active_etf_score(symbol)
         scores["active_etf"] = active_etf_score
+        etf_holders = get_active_etf_holders(symbol)
 
         # ── 5. 消息面（無相關新聞時設為 None，不列入綜合評分）──
         sent_score = None
@@ -585,6 +586,7 @@ def scan_single_stock(symbol: str, name: str, all_pe: dict, articles: list) -> O
             "composite": composite,
             "highlights": highlights,
             "details": details,
+            "etf_holders": etf_holders,
         }
 
     except Exception as e:
@@ -1092,6 +1094,7 @@ def _format_picks(picks: List[dict]) -> List[dict]:
             "trust_consec_buy": chip.get("trust_consec_buy", 0),
             "foreign_net_amount": chip.get("foreign_net_amount"),
             "trust_net_amount": chip.get("trust_net_amount"),
+            "etf_holders": p.get("etf_holders", []),
         })
     return formatted
 
@@ -1249,7 +1252,12 @@ def run_screener_scan() -> dict:
             "scores": r["scores"],
             "raw_scores": r.get("raw_scores", {}),
             "highlights": r["highlights"],
+            "etf_holders": r.get("etf_holders", []),
         })
+
+    # 主動 ETF 名稱對應表（給前端 tooltip 用）
+    from layers.active_etf import BEAT_ETFS
+    active_etfs_meta = [{"code": e["code"], "name": e["name"]} for e in BEAT_ETFS]
 
     data = {
         "results": top_results,
@@ -1257,6 +1265,7 @@ def run_screener_scan() -> dict:
         "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
         "total": len(results),
         "time": time.time(),
+        "active_etfs": active_etfs_meta,
     }
 
     # 存檔案快取

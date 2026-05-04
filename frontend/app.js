@@ -1351,7 +1351,7 @@ async function fetchScreenerPicks() {
             updatedEl.dataset.picksUpdated = `更新: ${data.updated_at}`;
         }
 
-        renderScreenerCards(data.categories);
+        renderScreenerCards(data.categories, data.active_etfs || []);
         screenerCategoriesCache = data.categories;
         renderScreenerPresence(currentSymbol);
         highlightCurrentInScreener(currentSymbol);
@@ -1360,11 +1360,27 @@ async function fetchScreenerPicks() {
     }
 }
 
-function renderScreenerCards(categories) {
+function renderScreenerCards(categories, activeEtfs = []) {
     const container = document.getElementById('screener-categories');
     if (!container) return;
 
     const DEFAULT_SHOW = 5;
+    const totalEtfCount = activeEtfs.length;
+    const etfNameMap = {};
+    activeEtfs.forEach(e => { etfNameMap[e.code] = (e.name || '').replace('主動', ''); });
+
+    function buildEtfChip(holders) {
+        if (!holders || !holders.length) return '';
+        const count = holders.length;
+        const isAll = totalEtfCount > 0 && count >= totalEtfCount;
+        const tip = isAll
+            ? `🌟 全 ${totalEtfCount} 檔主動 ETF 共同持有（最強共識）`
+            : `被 ${count} / ${totalEtfCount} 檔 ETF 持有：\n` +
+              holders.map(c => `${c} ${etfNameMap[c] || ''}`.trim()).join('\n');
+        const label = isAll ? '全持' : `${count}檔`;
+        const cls = isAll ? 'screener-etf-chip screener-etf-chip-all' : 'screener-etf-chip';
+        return `<span class="${cls}" title="${tip}">ETF ${label}</span>`;
+    }
 
     // 從 dot-path 取值，例如 "scores.regime" → s.scores.regime
     function _getScore(stock, field) {
@@ -1411,11 +1427,13 @@ function renderScreenerCards(categories) {
                         `</span>`;
                 }
 
+                const etfChip = buildEtfChip(s.etf_holders);
                 return `<div class="screener-stock-row${hiddenCls}" data-symbol="${s.symbol}" data-market="stock">
                     ${rankBadge}
                     <span class="screener-stock-sym">${s.symbol.replace('.TW','')}</span>
                     <span class="screener-stock-name">${s.name}</span>
                     ${daysBadge}
+                    ${etfChip}
                     ${scoreHtml}
                     <span class="screener-stock-hl">${s.highlight}</span>
                 </div>`;
@@ -1858,6 +1876,21 @@ function renderActiveEtfRanking(data) {
     const DEFAULT_SHOW = 15;
     const stocks = data.stocks || [];
     const etfs = data.etfs || [];
+    const totalEtfCount = etfs.length;
+
+    // ETF code → 短名稱（去掉「主動」前綴）
+    const etfNameMap = {};
+    etfs.forEach(e => { etfNameMap[e.code] = e.name.replace('主動', ''); });
+
+    // 產生 holders tooltip 文字：全持有 → 統一文案；部分 → 列出明細
+    function buildHoldersTip(holders, count) {
+        if (!holders || !holders.length) return 'ETF 持股資料更新中';
+        if (count >= totalEtfCount && totalEtfCount > 0) {
+            return `🌟 全 ${totalEtfCount} 檔主動 ETF 共同持有（最強共識）`;
+        }
+        const lines = holders.map(c => `${c} ${etfNameMap[c] || ''}`.trim());
+        return `被 ${count} / ${totalEtfCount} 檔 ETF 持有：\n${lines.join('\n')}`;
+    }
 
     // ETF 概覽卡
     const etfSummaryHtml = etfs.map(e => `
@@ -1871,8 +1904,12 @@ function renderActiveEtfRanking(data) {
     const stockRows = stocks.map((s, idx) => {
         const hiddenCls = idx >= DEFAULT_SHOW ? ' screener-hidden' : '';
         const etfCount = s.etf_count || 0;
+        const tipText = buildHoldersTip(s.etf_holders, etfCount);
+        const isAllHeld = etfCount >= totalEtfCount && totalEtfCount > 0;
+        const countLabel = isAllHeld ? '全持' : `${etfCount}檔`;
+        const allHeldCls = isAllHeld ? ' aetf-etf-count-all' : '';
         const etfCountDisplay = etfCount > 0
-            ? `<span class="aetf-etf-count" title="被 ${etfCount} 檔 ETF 持有">${etfCount}檔</span>`
+            ? `<span class="aetf-etf-count${allHeldCls}" title="${tipText}">${countLabel}</span>`
             : `<span class="aetf-etf-count" style="opacity:0.4" title="ETF 持股數資料更新中">--</span>`;
         const days = s.days_in_rank || 1;
         let daysBadge = '';
