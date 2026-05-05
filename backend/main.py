@@ -620,10 +620,20 @@ def _analyze_tw_df(symbol: str, market: str, df, data_source: str):
         "market_open": market_open,
     }
 
+    # 取得 df 最後一筆 K 棒的日期（盤後判斷快取新舊用）
+    try:
+        last_idx = df.index[-1]
+        data_date = (last_idx.strftime("%Y-%m-%d")
+                     if hasattr(last_idx, 'strftime')
+                     else str(last_idx)[:10])
+    except Exception:
+        data_date = ""
+
     # 寫入 L1 cache
     signals_cache[f"signals_{symbol}"] = {
         "data": result_data,
-        "fetched_at": time.time()
+        "fetched_at": time.time(),
+        "data_date": data_date,
     }
     # 記錄台股更新時間
     last_update_timestamps["tw_stock"] = datetime.now().strftime("%H:%M:%S")
@@ -689,13 +699,20 @@ async def get_tw_signals(symbol: str, market: str = "stock"):
     if cache_key in signals_cache:
         cached = signals_cache[cache_key]
         age = now - cached["fetched_at"]
-        # 盤中：60 秒內回傳快取；盤後：永遠回傳快取（不重抓）
-        if age < TW_RATE_LIMIT_SEC or not market_open:
-            print(f"[signals L1] {symbol} (age={int(age)}s, open={market_open})")
+        cached_data_date = cached.get("data_date", "")
+        latest_trading_day = latest_closed_tw_trading_day()
+        # 盤中：60 秒內 TTL
+        # 盤後：資料日期 == 最近收盤日才視為新鮮，否則重抓（避免跨日後仍回舊快取）
+        is_fresh_intraday = market_open and age < TW_RATE_LIMIT_SEC
+        is_fresh_overnight = (not market_open) and cached_data_date and cached_data_date >= latest_trading_day
+        if is_fresh_intraday or is_fresh_overnight:
+            print(f"[signals L1] {symbol} (age={int(age)}s, open={market_open}, data_date={cached_data_date})")
             result = dict(cached["data"])
             result["next_update_in"] = remaining
             result["data_source"] = cached["data"]["data_source"] + ("" if market_open else "_closed")
             return result
+        else:
+            print(f"[signals L1 stale] {symbol} data_date={cached_data_date} < latest={latest_trading_day}, refetch")
 
     # --- L3: TWSE API (盤中可抓，盤後只在無任何快取時抓一次；同步 IO 丟 thread pool) ---
     df = await asyncio.to_thread(_fetch_tw_df, symbol, market)
@@ -960,8 +977,31 @@ def is_tw_market_open() -> bool:
         return False
     # 09:00 - 14:00 (含緩衝至 14:00)
     current_time = now.time()
-    return (current_time >= datetime.strptime("09:00", "%H:%M").time() and 
+    return (current_time >= datetime.strptime("09:00", "%H:%M").time() and
             current_time <= datetime.strptime("14:15", "%H:%M").time())
+
+
+def latest_closed_tw_trading_day() -> str:
+    """回傳「最近一個已收盤交易日」的日期字串 YYYY-MM-DD。
+
+    判定：
+    - 週一~五 14:30 後 → 今天
+    - 週一~五 14:30 前 → 上一個交易日
+    - 週末 → 上一個週五（簡化處理，不考慮國定假日）
+    """
+    tz = pytz.timezone('Asia/Taipei')
+    now = datetime.now(tz)
+    candidate = now.date()
+
+    today_close = now.replace(hour=14, minute=30, second=0, microsecond=0)
+    if now.weekday() < 5 and now >= today_close:
+        return candidate.strftime("%Y-%m-%d")
+
+    # 否則回推到最近的工作日
+    candidate = candidate - timedelta(days=1)
+    while candidate.weekday() >= 5:
+        candidate = candidate - timedelta(days=1)
+    return candidate.strftime("%Y-%m-%d")
 
 @app.get("/api/ping")
 async def ping():
