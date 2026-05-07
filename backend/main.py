@@ -182,8 +182,44 @@ async def background_signal_updater():
         
     await exchange.close()
 
+# ── 背景任務單例鎖 ──
+# uvicorn --workers N 會 fork N 個 process，每個 process 都會 fire startup_event。
+# 若不 gate，會跑出 N 份 auto_trader / daily_report_scheduler，造成：
+#   - 10 份排程在 21:00 各送一則 daily report → 10 則重複訊息
+#   - 10 份 auto_trader 競爭寫同一個 JSON 帳本 → race condition + 重複 Telegram
+#   - 10 份 background_signal_updater → 10× 上游 API 呼叫
+# 用 fcntl.flock 取 exclusive lock，process 退出時 kernel 自動釋放。
+_SCHEDULER_LOCK_FILE = None
+
+def _acquire_scheduler_lock() -> bool:
+    """嘗試取得單例排程鎖。第一個 worker 拿到 → 跑背景任務；其他 worker → 只服務 HTTP。"""
+    global _SCHEDULER_LOCK_FILE
+    import fcntl
+    lock_path = os.path.join(BACKEND_DIR, "data", "scheduler.lock")
+    try:
+        os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+        f = open(lock_path, "w")
+        fcntl.flock(f.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        f.write(f"pid={os.getpid()}\nacquired_at={datetime.now().isoformat()}\n")
+        f.flush()
+        _SCHEDULER_LOCK_FILE = f  # 保留 fd 到 process 結束，flock 才不會被釋放
+        return True
+    except (BlockingIOError, OSError):
+        try:
+            f.close()
+        except Exception:
+            pass
+        return False
+
+
 @app.on_event("startup")
 async def startup_event():
+    # ── 單例鎖：只有第一個 worker 跑背景任務，避免 --workers N 造成重複 ──
+    if not _acquire_scheduler_lock():
+        print(f"[Startup] PID {os.getpid()} 未取得 scheduler lock，本 worker 只服務 HTTP request（leader worker 在跑背景任務）")
+        return
+
+    print(f"[Startup] PID {os.getpid()} 取得 scheduler lock，啟動背景任務 + 排程")
     # 啟動背景更新任務
     asyncio.create_task(background_signal_updater())
     # 預載台股 ticker 資料（L2 本地 CSV → L3 TWSE，尊重 rate limit）

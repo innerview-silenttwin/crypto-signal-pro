@@ -65,3 +65,6 @@ data/cert/
 *.p12
 
 shioaji.log
+
+# Singleton scheduler lock (per-process, regenerated on start)
+backend/data/scheduler.lock
