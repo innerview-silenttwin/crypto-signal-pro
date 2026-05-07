@@ -49,38 +49,44 @@ def _fetch_economic_calendar() -> List[Dict]:
     today = datetime.now()
 
     # ── 來源 1: TWSE 休市日曆（台股相關）──
+    # 舊的 www.twse.com.tw/rwd/.../holiday 已經 302 → 404 page，2026 起改走 openapi
+    # response: [{"Name":"...","Date":"1150101","Weekday":"四","Description":"..."}, ...]
     try:
-        year = today.year - 1911  # 民國年
-        url = f"https://www.twse.com.tw/rwd/zh/trading/holiday?response=json"
+        url = "https://openapi.twse.com.tw/v1/holidaySchedule/holidaySchedule"
         resp = legacy_get(url, timeout=10, headers={
             "User-Agent": "Mozilla/5.0 (CryptoSignalPro)"
         })
         if resp.status_code == 200:
-            data = resp.json()
-            if data.get("data"):
-                for row in data["data"]:
-                    # row: [日期, 名稱, 說明]
-                    if len(row) >= 2:
-                        date_str = row[0].strip()
-                        name = row[1].strip()
-                        # 解析民國日期 "115年01月01日"
-                        try:
-                            parts = date_str.replace("年", "/").replace("月", "/").replace("日", "")
-                            y, m, d = parts.split("/")
-                            event_date = datetime(int(y) + 1911, int(m), int(d))
-                            # 只取未來 30 天內的
-                            diff = (event_date - today).days
-                            if 0 <= diff <= 30:
-                                events.append({
-                                    "name": f"🇹🇼 {name}",
-                                    "date": event_date.isoformat(),
-                                    "impact": "tw_stock",
-                                    "warning": "台股休市" if "休市" in str(row) else "注意交易日",
-                                    "query": f"台灣 {name} 股市",
-                                })
-                        except (ValueError, IndexError):
-                            pass
-                logger.info(f"TWSE 日曆抓取成功: {len(events)} 筆")
+            rows = resp.json()
+            if isinstance(rows, list):
+                hit = 0
+                for row in rows:
+                    name = (row.get("Name") or "").strip()
+                    date_str = (row.get("Date") or "").strip()  # 民國 7 碼 YYYMMDD
+                    if len(date_str) != 7 or not name:
+                        continue
+                    try:
+                        roc_year = int(date_str[:3])
+                        m = int(date_str[3:5])
+                        d = int(date_str[5:7])
+                        event_date = datetime(roc_year + 1911, m, d)
+                    except (ValueError, IndexError):
+                        continue
+                    diff = (event_date - today).days
+                    # 只取未來 30 天內的
+                    if not (0 <= diff <= 30):
+                        continue
+                    # openapi 的 Description 沒有「休市」字樣，用 Name 判斷：交易日 vs 放假
+                    is_trading_day = "交易日" in name or "結算" in name
+                    events.append({
+                        "name": f"🇹🇼 {name}",
+                        "date": event_date.isoformat(),
+                        "impact": "tw_stock",
+                        "warning": "注意交易日" if is_trading_day else "台股休市",
+                        "query": f"台灣 {name} 股市",
+                    })
+                    hit += 1
+                logger.info(f"TWSE 日曆抓取成功: {hit} 筆（未來 30 天內）")
     except Exception as e:
         logger.warning(f"TWSE 日曆抓取失敗: {e}")
 
