@@ -73,6 +73,15 @@ except ImportError:
     # python-dotenv 未裝也沒關係 —— 退化成只讀 os.environ
     pass
 
+# 修補 macOS Python.org 版的 SSL 憑證問題
+# 預設 Python.org 不帶系統 CA bundle，會讓 shioaji 連 cloud config 端點時 SSL 驗證失敗
+if not os.environ.get("SSL_CERT_FILE"):
+    try:
+        import certifi
+        os.environ["SSL_CERT_FILE"] = certifi.where()
+    except ImportError:
+        pass
+
 # 把 shioaji 內建 logger 降級，避免 INFO 訊息夾帶內部欄位
 logging.getLogger("shioaji").setLevel(logging.WARNING)
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s %(levelname)s %(message)s")
