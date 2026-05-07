@@ -8,3 +8,10 @@ python-dotenv>=1.0.0
 aiosqlite>=0.19.0
 pyjwt>=2.8.0
 httpx>=0.24.0
+
+# 風控 / 行事曆 YAML 解析（market_hours, broker_config）
+pyyaml>=6.0
+
+# 永豐證券 Shioaji（僅 prod 機需要；dev 機可不裝，broker factory 會 fallback 為 VirtualBroker）
+# pip install shioaji
+# shioaji>=1.2.0

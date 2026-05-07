@@ -10,12 +10,21 @@
 """
 
 import json
+import logging
 import os
+import tempfile
+import threading
 import time
+import uuid
 from datetime import datetime
 from typing import Dict, Optional, List
 
-from notifier import notify_trade
+from notifier import notify_trade, send_telegram
+
+# Broker 抽象層（None 預設 = VirtualBroker，不破壞既有行為）
+from brokers.base import Broker, BrokerResult
+
+logger = logging.getLogger(__name__)
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "sector_accounts")
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -186,11 +195,24 @@ SECTOR_ID_TO_NAME = {v: k for k, v in SECTOR_IDS.items()}
 class SectorTradingManager:
     """單一類股的虛擬交易管理器"""
 
-    def __init__(self, sector_name: str):
+    def __init__(
+        self,
+        sector_name: str,
+        *,
+        broker: Optional[Broker] = None,
+        risk_gate=None,           # backend.brokers.risk_gate.RiskGate (避免 import 環)
+        state_store=None,         # backend.brokers.state_store.BrokerStateStore
+    ):
         self.sector_name = sector_name
         self.sector_id = SECTOR_IDS[sector_name]
         self.data_file = os.path.join(DATA_DIR, f"{self.sector_id}_account.json")
         self.stocks = SECTOR_STOCKS[sector_name]
+        # 並行控制（daemon thread + Shioaji callback thread 並寫保護）
+        self._lock = threading.RLock()
+        # broker 預設留 None，由 sector_auto_trader 啟動時注入；測試或舊呼叫路徑可走預設 VirtualBroker
+        self._broker: Optional[Broker] = broker
+        self._risk_gate = risk_gate
+        self._state_store = state_store
 
         # 半導體、電子代工初始資金 200 萬，其餘 100 萬
         _init_bal = 2_000_000.0 if sector_name in ("半導體", "電子代工/零組件") else 1_000_000.0
@@ -229,8 +251,46 @@ class SectorTradingManager:
         return self.initial_state.copy()
 
     def _save(self):
-        with open(self.data_file, "w", encoding="utf-8") as f:
-            json.dump(self.state, f, indent=2, ensure_ascii=False)
+        """Atomic write：避免 daemon thread + Shioaji callback thread 並寫造成損壞。
+
+        失敗時殘留的 .tmp 會被嘗試清掉，但不阻擋例外往上拋。
+        """
+        with self._lock:
+            d = os.path.dirname(self.data_file) or "."
+            fd, tmp = tempfile.mkstemp(prefix=f".{self.sector_id}_acct.", suffix=".tmp", dir=d)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(self.state, f, indent=2, ensure_ascii=False)
+                os.replace(tmp, self.data_file)
+            except Exception:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+                raise
+
+    # ── broker / risk_gate 注入（sector_auto_trader 啟動時呼叫）──
+
+    def attach_broker(self, broker: Broker, risk_gate=None, state_store=None) -> None:
+        with self._lock:
+            self._broker = broker
+            self._risk_gate = risk_gate
+            self._state_store = state_store
+
+    def get_broker_name(self) -> str:
+        return self._broker.name if self._broker else "virtual_default"
+
+    def get_equity(self) -> float:
+        """目前總權益（現金 + 持倉以 avg_price 估值）。給 RiskGate 使用。"""
+        with self._lock:
+            equity = self.state["balance"]
+            for h in self.state["holdings"].values():
+                equity += (h.get("qty", 0) or 0) * (h.get("avg_price", 0.0) or 0.0)
+            return equity
+
+    def get_position(self, symbol: str) -> dict:
+        with self._lock:
+            return dict(self.state["holdings"].get(symbol, {}))
 
     # ── 帳戶控制 ──
 
@@ -428,107 +488,318 @@ class SectorTradingManager:
 
     # ── 交易執行 ──
 
-    def execute_trade(self, symbol: str, trade_type: str, price: float,
-                      signal_desc: str, ratio: float = 0.20) -> bool:
-        """
-        執行交易（每檔標的配置 ~20% 資金）
+    # ── 交易執行（broker 路由 + 風控）──
 
-        ratio: 單檔投入比例（5檔平分 = 0.20）
+    def _get_broker(self) -> Broker:
+        """Lazy-import VirtualBroker 避免 import cycle 與單元測試時的依賴。"""
+        if self._broker is not None:
+            return self._broker
+        from brokers.virtual import VirtualBroker
+        self._broker = VirtualBroker()
+        return self._broker
+
+    def _compute_buy_qty(self, price: float, ratio: float) -> int:
+        """以既有公式估算可買股數（沿用虛擬模式邏輯，避免回測/手動跑出現差異）。"""
+        with self._lock:
+            total_equity = self.state["balance"]
+            for h in self.state["holdings"].values():
+                total_equity += (h.get("qty", 0) or 0) * (h.get("avg_price", 0.0) or 0.0)
+        spend_cash = min(total_equity * ratio, self.state["balance"] * 0.95)
+        return int(spend_cash / (price * 1.001425))
+
+    def _apply_buy_to_ledger(self, symbol: str, qty: int, price: float, signal_desc: str) -> None:
+        """成交回填 → 寫帳本。必須持 self._lock。"""
+        # 手續費四捨五入取整（台灣實務）
+        buy_fee = round(qty * price * 0.001425)
+        actual_cost = qty * price + buy_fee
+        self.state["balance"] -= actual_cost
+
+        if symbol in self.state["holdings"]:
+            old = self.state["holdings"][symbol]
+            new_qty = old["qty"] + qty
+            new_avg = ((old["qty"] * old["avg_price"]) + (qty * price)) / new_qty
+            new_total_cost = old.get(
+                "total_cost", old["qty"] * old["avg_price"] * 1.001425
+            ) + actual_cost
+            self.state["holdings"][symbol] = {
+                "qty": new_qty, "avg_price": round(new_avg, 2),
+                "total_cost": round(new_total_cost, 2),
+                "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        else:
+            self.state["holdings"][symbol] = {
+                "qty": qty, "avg_price": price,
+                "total_cost": round(actual_cost, 2),
+                "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+
+        self.state["history"].insert(0, {
+            "id": int(time.time() * 1000),
+            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "symbol": symbol,
+            "name": self.stocks.get(symbol, symbol),
+            "type": "BUY",
+            "price": price,
+            "qty": qty,
+            "cost": round(actual_cost, 2),
+            "signal": signal_desc,
+            "balance_after": round(self.state["balance"], 2),
+            "broker": self.get_broker_name(),
+        })
+
+    def _apply_sell_to_ledger(self, symbol: str, qty: int, price: float, signal_desc: str) -> tuple[float, float]:
+        """成交回填 → 寫帳本。回傳 (profit, profit_pct)。必須持 self._lock。"""
+        hold = self.state["holdings"].get(symbol, {})
+        gross = qty * price
+        sell_fee = round(gross * 0.001425)
+        sell_tax = round(gross * 0.003)
+        net = gross - sell_fee - sell_tax
+        # 已實現損益 = 賣出淨收入 - 買進總成本（含買進手續費）
+        # 部分賣出時用比例縮放 total_cost
+        full_total_cost = hold.get("total_cost", round((hold.get("qty", qty) or qty) * hold.get("avg_price", price) * 1.001425))
+        full_qty = hold.get("qty", qty) or qty
+        if full_qty <= 0:
+            scaled_cost = full_total_cost
+        else:
+            scaled_cost = full_total_cost * (qty / full_qty)
+        profit = net - scaled_cost
+        profit_pct = (profit / scaled_cost * 100) if scaled_cost else 0.0
+
+        self.state["balance"] += net
+        # 持倉扣除：全賣 → 刪 key；部分賣 → 縮減 qty + total_cost
+        new_qty = (hold.get("qty", 0) or 0) - qty
+        if new_qty <= 0:
+            self.state["holdings"].pop(symbol, None)
+        else:
+            self.state["holdings"][symbol] = {
+                **hold,
+                "qty": new_qty,
+                "total_cost": round(full_total_cost - scaled_cost, 2),
+                "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+
+        self.state["history"].insert(0, {
+            "id": int(time.time() * 1000),
+            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "symbol": symbol,
+            "name": self.stocks.get(symbol, symbol),
+            "type": "SELL",
+            "price": price,
+            "qty": qty,
+            "income": round(net, 2),
+            "profit": round(profit, 2),
+            "signal": signal_desc,
+            "balance_after": round(self.state["balance"], 2),
+            "broker": self.get_broker_name(),
+        })
+        return profit, profit_pct
+
+    def _handle_skipped(self, symbol: str, action: str, reason: str, *,
+                         needed: float = 0.0, available: float = 0.0,
+                         signal_desc: str = "") -> None:
+        """RiskGate 拒單時的統一處理：JSONL log + Telegram 通知（below_min_lot 才通知，避免訊息洪水）"""
+        rec = {
+            "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "sector_id": self.sector_id,
+            "symbol": symbol,
+            "action": action,
+            "reason": reason,
+            "needed_twd": round(needed, 0),
+            "available_twd": round(available, 0),
+            "signal": signal_desc,
+        }
+        try:
+            log_path = os.path.join(DATA_DIR, "..", "skipped_trades.jsonl")
+            log_path = os.path.normpath(log_path)
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        except Exception as e:
+            logger.warning(f"skipped_trades log failed: {e}")
+
+        # 通知策略：
+        #   below_min_lot     → 主動通知（你需要決定是否加碼資金）
+        #   daily_locked      → 主動通知（kill-switch 觸發，重大事件）
+        #   broker_*          → 主動通知（券商側錯誤可能代表 wrapper 不相容、API 變動或網路問題，需立即關注）
+        #   pending_exists*   → 不通知（預期內的 dedup，避免訊息洪水）
+        #   cooldown_*        → 不通知（正常風控動作）
+        #   over_*/no_position/market_closed/holiday → 不通知（routine reject，靠 JSONL 即可）
+        stock_name = self.stocks.get(symbol, symbol)
+        if reason == "below_min_lot":
+            send_telegram(
+                f"⚠️ <b>銀彈不足</b> [{self.sector_name}]\n"
+                f"標的：{stock_name} ({symbol})\n"
+                f"買 1 張需 ~${int(needed):,}，目前現金 ~${int(available):,}\n"
+                f"觸發信號：{signal_desc}"
+            )
+        elif reason.startswith("daily_locked"):
+            send_telegram(
+                f"🛑 <b>每日 kill-switch 啟動</b>\n"
+                f"類股：{self.sector_name}\n"
+                f"理由：{reason}\n"
+                f"剩餘交易暫停至明日"
+            )
+        elif reason.startswith("broker_"):
+            send_telegram(
+                f"🚨 <b>券商下單異常</b> [{self.sector_name}]\n"
+                f"標的：{stock_name} ({symbol})\n"
+                f"動作：{action}\n"
+                f"原因：{reason}\n"
+                f"觸發信號：{signal_desc}\n"
+                f"⚠️ 連續發生請檢查 Shioaji API 相容性 / 網路 / 帳號狀態"
+            )
+
+    def execute_trade(
+        self,
+        symbol: str,
+        trade_type: str,
+        price: float,
+        signal_desc: str,
+        ratio: float = 0.20,
+        *,
+        is_auto_stop: bool = False,
+    ) -> bool:
+        """執行交易。
+
+        Args:
+            ratio: BUY 用，單檔投入比例（5 檔平分 = 0.20）
+            is_auto_stop: True 表示停損/停利自動觸發；風險閘對「除權息凍結」會擋此類 SELL
+
+        流程：估算 qty → RiskGate.allow → 寫 pending → broker.submit → 寫 ledger / 清 pending → cooldown / 通知
         """
+        broker = self._get_broker()
+
+        # ── 1. 估算 qty ──
         if trade_type == "BUY":
             if self.state["balance"] < 100:
                 return False
-
-            # 單檔投入金額
-            total_equity = self.state["balance"]
-            for h in self.state["holdings"].values():
-                total_equity += h["qty"] * h["avg_price"]
-
-            spend_cash = min(total_equity * ratio, self.state["balance"] * 0.95)
-            # 先估算可買股數（預留手續費空間）
-            qty = int(spend_cash / (price * 1.001425))
+            qty = self._compute_buy_qty(price, ratio)
             if qty <= 0:
                 return False
-
-            # 手續費四捨五入取整（台灣實務）
-            buy_fee = round(qty * price * 0.001425)
-            actual_cost = qty * price + buy_fee
-            self.state["balance"] -= actual_cost
-
-            if symbol in self.state["holdings"]:
-                old = self.state["holdings"][symbol]
-                new_qty = old["qty"] + qty
-                new_avg = ((old["qty"] * old["avg_price"]) + (qty * price)) / new_qty
-                new_total_cost = old.get("total_cost", old["qty"] * old["avg_price"] * 1.001425) + actual_cost
-                self.state["holdings"][symbol] = {
-                    "qty": new_qty, "avg_price": round(new_avg, 2),
-                    "total_cost": round(new_total_cost, 2),
-                    "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                }
-            else:
-                self.state["holdings"][symbol] = {
-                    "qty": qty, "avg_price": price,
-                    "total_cost": round(actual_cost, 2),
-                    "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                }
-
-            self.state["history"].insert(0, {
-                "id": int(time.time() * 1000),
-                "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "symbol": symbol,
-                "name": self.stocks.get(symbol, symbol),
-                "type": "BUY",
-                "price": price,
-                "qty": qty,
-                "cost": round(actual_cost, 2),
-                "signal": signal_desc,
-                "balance_after": round(self.state["balance"], 2),
-            })
-            self._save()
-            print(f"[{self.sector_name}] BUY {qty} {symbol} @ {price}")
-            notify_trade(self.sector_name, symbol, self.stocks.get(symbol, symbol),
-                         "BUY", price, qty, signal_desc)
-            return True
-
         elif trade_type == "SELL":
             hold = self.state["holdings"].get(symbol)
-            if not hold or hold["qty"] <= 0:
+            if not hold or (hold.get("qty", 0) or 0) <= 0:
+                return False
+            qty = hold["qty"]
+        else:
+            return False
+
+        # ── 2. RiskGate（若已注入）──
+        if self._risk_gate is not None:
+            decision = self._risk_gate.allow(
+                sector_id=self.sector_id,
+                symbol=symbol,
+                action=trade_type,
+                qty_shares=qty,
+                limit_price=price,
+                is_auto_stop=is_auto_stop,
+            )
+            if not decision.ok:
+                self._handle_skipped(
+                    symbol, trade_type, decision.reason,
+                    needed=decision.needed_twd, available=decision.available_twd,
+                    signal_desc=signal_desc,
+                )
                 return False
 
-            qty = hold["qty"]
-            gross = qty * price
-            # 手續費、證交稅各自四捨五入取整（台灣實務）
-            sell_fee = round(gross * 0.001425)
-            sell_tax = round(gross * 0.003)
-            net = gross - sell_fee - sell_tax
-            # 已實現損益 = 賣出淨收入 - 買進總成本（含買進手續費）
-            total_cost = hold.get("total_cost", round(qty * hold["avg_price"] * 1.001425))
-            profit = net - total_cost
-            profit_pct = (profit / total_cost * 100) if total_cost else 0.0
+        # ── 3. pending order（state_store 若已注入）──
+        # 用 try_reserve_for_symbol 做 atomic check-and-insert，修補與 RiskGate.allow 之間的 TOCTOU race
+        # （兩個 thread 同時對同一 symbol 跑 execute_trade 時，只有一個能搶到 reservation）
+        client_order_id = uuid.uuid4().hex
+        if self._state_store is not None:
+            from brokers.state_store import PendingOrder
+            reserved = self._state_store.try_reserve_for_symbol(PendingOrder(
+                client_order_id=client_order_id,
+                sector_id=self.sector_id,
+                symbol=symbol,
+                action=trade_type,
+                qty_shares=qty,
+                limit_price=price,
+                submitted_at=time.time(),
+                notes=signal_desc[:120],
+            ))
+            if not reserved:
+                # 另一個 thread 已經為同一 symbol 開了 in-flight 訂單；這次跳過
+                self._handle_skipped(
+                    symbol, trade_type, "pending_exists_race",
+                    signal_desc=signal_desc,
+                )
+                return False
 
-            self.state["balance"] += net
-            del self.state["holdings"][symbol]
+        # ── 4. 送出 ──
+        try:
+            result: BrokerResult = broker.submit(
+                symbol=symbol,
+                action=trade_type,
+                qty_shares=qty,
+                limit_price=price,
+                client_order_id=client_order_id,
+                sector_id=self.sector_id,
+                signal_desc=signal_desc,
+            )
+        except Exception as e:
+            logger.exception("broker.submit raised: %s", e.__class__.__name__)
+            if self._state_store is not None:
+                self._state_store.remove_pending(client_order_id)
+            send_telegram(
+                f"❌ <b>下單例外</b> [{self.sector_name}]\n"
+                f"{trade_type} {symbol} qty={qty} price={price:.2f}\n"
+                f"錯誤類型：{e.__class__.__name__}"
+            )
+            return False
+        finally:
+            # 確保 pending 在「成交/拒絕後同步點」之前一定會清掉（reconcile 也會兜底）
+            pass
 
-            self.state["history"].insert(0, {
-                "id": int(time.time() * 1000),
-                "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "symbol": symbol,
-                "name": self.stocks.get(symbol, symbol),
-                "type": "SELL",
-                "price": price,
-                "qty": qty,
-                "income": round(net, 2),
-                "profit": round(profit, 2),
-                "signal": signal_desc,
-                "balance_after": round(self.state["balance"], 2),
-            })
+        # ── 5. 處理結果 ──
+        if not result.ok:
+            if self._state_store is not None:
+                self._state_store.remove_pending(client_order_id)
+            self._handle_skipped(
+                symbol, trade_type, f"broker_{result.fill_status}:{result.reason}",
+                signal_desc=signal_desc,
+            )
+            return False
+
+        actual_qty = result.actual_qty if result.actual_qty > 0 else qty
+        actual_price = result.actual_price if result.actual_price > 0 else price
+
+        with self._lock:
+            if trade_type == "BUY":
+                self._apply_buy_to_ledger(symbol, actual_qty, actual_price, signal_desc)
+                profit_twd: Optional[float] = None
+                profit_pct: Optional[float] = None
+            else:  # SELL
+                profit_twd, profit_pct = self._apply_sell_to_ledger(
+                    symbol, actual_qty, actual_price, signal_desc
+                )
             self._save()
-            print(f"[{self.sector_name}] SELL {qty} {symbol} @ {price} (P&L: {profit:+.0f} / {profit_pct:+.2f}%)")
-            notify_trade(self.sector_name, symbol, self.stocks.get(symbol, symbol),
-                         "SELL", price, qty, signal_desc, profit=profit, profit_pct=profit_pct)
-            return True
 
-        return False
+        if self._state_store is not None:
+            self._state_store.remove_pending(client_order_id)
+
+        if self._risk_gate is not None:
+            self._risk_gate.record_success(self.sector_id, symbol, trade_type)
+            if trade_type == "SELL" and profit_twd is not None:
+                self._risk_gate.maybe_trigger_kill_switch(self.sector_id, profit_twd)
+
+        # 通知 + console
+        if trade_type == "BUY":
+            print(f"[{self.sector_name}] BUY {actual_qty} {symbol} @ {actual_price} ({broker.name})")
+            notify_trade(
+                self.sector_name, symbol, self.stocks.get(symbol, symbol),
+                "BUY", actual_price, actual_qty, signal_desc,
+            )
+        else:
+            print(
+                f"[{self.sector_name}] SELL {actual_qty} {symbol} @ {actual_price} "
+                f"(P&L: {profit_twd:+.0f} / {profit_pct:+.2f}%) ({broker.name})"
+            )
+            notify_trade(
+                self.sector_name, symbol, self.stocks.get(symbol, symbol),
+                "SELL", actual_price, actual_qty, signal_desc,
+                profit=profit_twd, profit_pct=profit_pct,
+            )
+        return True
 
     def record_equity(self, current_prices: dict = None):
         """記錄當前權益到曲線（只在有即時價格時記錄，避免假波動）"""

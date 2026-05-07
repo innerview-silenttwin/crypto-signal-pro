@@ -969,16 +969,13 @@ _stale_refresh_pending: set = set()
 
 
 def is_tw_market_open() -> bool:
-    """判斷台灣市場目前是否在交易時段 (週一至五 09:00 - 14:00)。"""
-    tz = pytz.timezone('Asia/Taipei')
-    now = datetime.now(tz)
-    # 週六(5), 週日(6) 不開市
-    if now.weekday() >= 5:
-        return False
-    # 09:00 - 14:00 (含緩衝至 14:00)
-    current_time = now.time()
-    return (current_time >= datetime.strptime("09:00", "%H:%M").time() and
-            current_time <= datetime.strptime("14:15", "%H:%M").time())
+    """判斷台灣市場目前是否在『可抓即時行情』時段 (週一至五 09:00 - 14:15)。
+
+    給 1m K bar / 即時報價 cache 用，含收盤後 45 分緩衝。
+    交易決策的時段判斷請用 backend.brokers.market_hours.is_orderable_now()。
+    """
+    from brokers import market_hours as _mh
+    return _mh.is_data_capture_window()
 
 
 def latest_closed_tw_trading_day() -> str:

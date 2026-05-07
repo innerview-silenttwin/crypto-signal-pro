@@ -54,3 +54,13 @@ data/btc_funding_rate.csv
 # BTC trading account state (backed up separately via scripts/backup_state.sh)
 data/btc_trading_account.json
 
+# Broker (Sinopac Shioaji) — 風控、控制狀態、CA 憑證皆不入 git
+data/broker_config.yaml
+data/broker_state.json
+data/ex_dividend_calendar.yaml
+data/tw_holidays.yaml
+data/skipped_trades.jsonl
+data/cert/
+*.pfx
+*.p12
+

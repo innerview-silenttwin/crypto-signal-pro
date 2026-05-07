@@ -1,0 +1,51 @@
+# Broker 風控配置（範本）
+#
+# 使用方式：
+#   1. 在 prod 機把這個檔複製為 data/broker_config.yaml（gitignored）
+#   2. 依風險偏好調整數值
+#   3. broker factory 啟動時讀取一次；要重新載入需重啟 service
+#
+# 所有金額單位：新台幣（TWD），整數即可。
+
+# ────────────────────────────────────────────
+# brokers：每個 sector_id 用哪一家
+# 同時受環境變數 ALLOWED_SECTORS 過濾（取交集）。
+# 認可的值：virtual | sinopac
+# ────────────────────────────────────────────
+brokers:
+  per_sector:
+    semiconductor: sinopac
+    electronics:   sinopac
+    finance:       virtual
+    precision:     virtual
+    traditional:   virtual
+    other:         virtual
+
+# ────────────────────────────────────────────
+# risk：風險閘規則閾值
+# ────────────────────────────────────────────
+risk:
+  # 單筆委託最大金額（NTD）
+  # 半導體 / 電子代工 平均單檔約 5–20 萬，預設保守 10 萬
+  max_order_amount_twd: 100000
+
+  # 全系統每日最多委託筆數（含全部 sector）
+  max_daily_orders_total: 20
+
+  # 單一 sector 每日最多委託筆數
+  max_daily_orders_per_sector: 10
+
+  # 單日累計實現虧損達此百分比 → 啟動 kill-switch（當日不再下單）
+  # 注意：這是「單一 sector vs 自家 initial_balance」的比例
+  max_daily_loss_pct: 2.0
+
+  # 單一標的（含本筆）持倉占類股權益百分比上限
+  # 200萬 × 15% = 30 萬，差不多 1 張 TSMC 加減
+  max_position_pct_per_symbol: 15.0
+
+  # 同檔同方向冷卻時間（分鐘）
+  cooldown_minutes_after_buy: 30
+  cooldown_minutes_after_sell: 60
+
+  # 是否強制檢查市場時段（測試時可關）
+  enforce_market_hours: true

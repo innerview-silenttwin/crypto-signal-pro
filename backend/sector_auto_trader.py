@@ -42,6 +42,8 @@ from sector_trader import (
 )
 from layers import RegimeLayer, FundamentalLayer, SentimentLayer, ChipFlowLayer, LayerRegistry
 from screener import get_symbol_sector, SECTOR_COMPOSITE_WEIGHTS
+from brokers import market_hours
+from brokers.factory import build_setup
 
 
 # ── 行情快取 ──
@@ -639,10 +641,8 @@ def process_sector(manager: SectorTradingManager):
     tw_tz = pytz.timezone("Asia/Taipei")
     now_tw = datetime.now(tw_tz)
     today_str = now_tw.strftime("%Y-%m-%d")
-    # 台股交易時間 09:00–13:30
-    is_market_hours = (now_tw.weekday() < 5 and
-                       (now_tw.hour, now_tw.minute) >= (9, 0) and
-                       (now_tw.hour, now_tw.minute) <= (13, 30))
+    # 統一台股交易時段判斷：09:00–13:30 平日，含節假日排除
+    is_market_hours = market_hours.is_signal_window(now_tw)
 
     for symbol in manager.state.get("stocks", []):
         # 1. 取得歷史數據（信號計算用）
@@ -704,13 +704,15 @@ def process_sector(manager: SectorTradingManager):
             if pnl_pct <= -stop_loss:
                 manager.execute_trade(
                     symbol, "SELL", price,
-                    f"停損觸發 ({pnl_pct:.1f}%)"
+                    f"停損觸發 ({pnl_pct:.1f}%)",
+                    is_auto_stop=True,
                 )
                 continue
             elif pnl_pct >= take_profit:
                 manager.execute_trade(
                     symbol, "SELL", price,
-                    f"停利觸發 ({pnl_pct:.1f}%)"
+                    f"停利觸發 ({pnl_pct:.1f}%)",
+                    is_auto_stop=True,
                 )
                 continue
 
@@ -790,10 +792,63 @@ class SectorAutoTrader:
         self._thread: Optional[threading.Thread] = None
         self.last_run_time: Optional[str] = None
         self.last_run_status: Dict[str, str] = {}
+        self._broker_setup = None
+        self._broker_inited = False
+
+    def _ensure_broker_setup(self) -> None:
+        """啟動時把 broker / risk_gate / state_store 注入到每個 manager。
+
+        延遲到 start 後第一次執行才呼叫，這樣測試可以單獨 import 模組而不需要 .env。
+        """
+        if self._broker_inited:
+            return
+        managers = get_all_managers()
+        sector_ids = list(managers.keys())
+
+        def _equity_provider(sid: str):
+            m = managers.get(sid)
+            if m is None:
+                return (0.0, 0.0)
+            return (m.get_equity(), float(m.state.get("balance", 0.0) or 0.0))
+
+        def _position_provider(sid: str, symbol: str):
+            m = managers.get(sid)
+            if m is None:
+                return {}
+            return m.get_position(symbol)
+
+        def _initial_balance_provider(sid: str):
+            m = managers.get(sid)
+            if m is None:
+                return 0.0
+            return float(m.state.get("initial_balance", 0.0) or 0.0)
+
+        try:
+            self._broker_setup = build_setup(
+                sector_ids=sector_ids,
+                equity_provider=_equity_provider,
+                position_provider=_position_provider,
+                initial_balance_provider=_initial_balance_provider,
+            )
+        except Exception as e:
+            logger.exception("broker setup failed (%s); 全部 sector 走 VirtualBroker 預設", e.__class__.__name__)
+            self._broker_inited = True
+            return
+
+        for sid, mgr in managers.items():
+            broker = self._broker_setup.brokers_by_sector.get(sid)
+            mgr.attach_broker(
+                broker=broker,
+                risk_gate=self._broker_setup.risk_gate,
+                state_store=self._broker_setup.state_store,
+            )
+            logger.info("sector %s broker=%s", sid, broker.name if broker else "default")
+        self._broker_inited = True
 
     def start(self):
         if self._running:
             return False
+        self._ensure_broker_setup()
         self._running = True
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
@@ -819,22 +874,34 @@ class SectorAutoTrader:
 
     @staticmethod
     def _is_tw_market_open() -> bool:
-        """判斷現在是否為台股交易時段（週一～週五 08:30～13:35）"""
-        tw_tz = pytz.timezone("Asia/Taipei")
-        now_tw = datetime.now(tw_tz)
-        weekday = now_tw.weekday()  # 0=週一 ... 6=週日
-        if weekday >= 5:  # 週六、週日
-            return False
-        t = now_tw.hour * 60 + now_tw.minute  # 轉換為分鐘數
-        # 08:30 = 510, 13:35 = 815（收盤後留 5 分鐘緩衝）
-        return 510 <= t <= 815
+        """判斷現在是否為台股可下單時段。已統一用 market_hours.is_signal_window。
+
+        signal_window: 09:00–13:30 平日（含節假日排除）
+        """
+        return market_hours.is_signal_window()
+
+    def _reconcile_brokers(self) -> None:
+        """同步所有 broker 的 in-flight 訂單。重啟後或 partial fill 兜底用。"""
+        if not self._broker_setup:
+            return
+        for sid, broker in self._broker_setup.brokers_by_sector.items():
+            try:
+                completed = broker.reconcile()
+                if completed:
+                    logger.info("[reconcile] %s: %d 筆 in-flight 訂單已完成", sid, len(completed))
+            except Exception as e:
+                logger.warning("[reconcile] %s failed: %s", sid, e.__class__.__name__)
 
     def _run_once(self):
         """執行一輪所有類股檢查"""
+        self._ensure_broker_setup()
         self.last_run_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         if not self._is_tw_market_open():
             return
+
+        # 先做 reconcile：重啟後 in-flight 訂單兜底
+        self._reconcile_brokers()
 
         managers = get_all_managers()
         active_count = 0
