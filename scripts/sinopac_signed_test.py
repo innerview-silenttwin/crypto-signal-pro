@@ -3,7 +3,8 @@
 
 永豐簽署 API 服務時要求你必須在 simulation 環境跑通：
   1. 登入測試
-  2. 股票模擬下單測試（買單）
+  2. **CA 憑證啟用測試（activate_ca）— 即使 simulation 也要做**
+  3. 股票模擬下單測試（買單）
 
 跑通之後，永豐後台會把你的帳號標記為「測試完成」/`signed=True`，
 然後人工審核 1-2 個工作日才會開通正式下單權限。
@@ -60,6 +61,17 @@ import os
 import sys
 import time
 from datetime import datetime
+from pathlib import Path
+
+# 自動載入 repo 根目錄的 .env（讓使用者不需要 export 變數）
+try:
+    from dotenv import load_dotenv
+    _ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
+    if _ENV_PATH.exists():
+        load_dotenv(_ENV_PATH)
+except ImportError:
+    # python-dotenv 未裝也沒關係 —— 退化成只讀 os.environ
+    pass
 
 # 把 shioaji 內建 logger 降級，避免 INFO 訊息夾帶內部欄位
 logging.getLogger("shioaji").setLevel(logging.WARNING)
@@ -94,14 +106,23 @@ def main() -> int:
     api_key = os.environ.get("SHIOAJI_API_KEY", "").strip()
     secret_key = os.environ.get("SHIOAJI_SECRET_KEY", "").strip()
     person_id = os.environ.get("SHIOAJI_PERSON_ID", "").strip()
+    ca_path = os.environ.get("SHIOAJI_CA_PATH", "").strip()
+    ca_password = os.environ.get("SHIOAJI_CA_PASSWORD", "").strip()
 
     print("\n── 環境變數檢查 ──")
     print(f"  SHIOAJI_API_KEY:    {_redact(api_key)}")
     print(f"  SHIOAJI_SECRET_KEY: {_redact(secret_key)}")
     print(f"  SHIOAJI_PERSON_ID:  {_redact(person_id, 1)}")
+    print(f"  SHIOAJI_CA_PATH:    {ca_path or '(empty)'}")
+    print(f"  SHIOAJI_CA_PASSWORD:{_redact(ca_password, 0)}")
 
     if not (api_key and secret_key and person_id):
         _fail("缺必要環境變數。請先 export SHIOAJI_API_KEY / SHIOAJI_SECRET_KEY / SHIOAJI_PERSON_ID")
+    if not (ca_path and ca_password):
+        _fail("缺 CA 設定。永豐測試流程要求啟用 CA 才會標記 signed=True。\n"
+              "   請先在永豐網站下載 .pfx 憑證、設定密碼，然後填入 .env 的 SHIOAJI_CA_PATH / SHIOAJI_CA_PASSWORD")
+    if not os.path.exists(ca_path):
+        _fail(f"CA 檔案不存在：{ca_path}\n   請確認路徑（macOS 下載通常在 ~/Downloads/）")
 
     # ── 時段檢查（提醒用，不強制中止）──
     now = datetime.now()
@@ -126,7 +147,11 @@ def main() -> int:
     print("\n➡️  Step 1：登入（simulation=True）")
     api = sj.Shioaji(simulation=True)
     try:
-        accounts = api.login(api_key=api_key, secret_key=secret_key)
+        accounts = api.login(
+            api_key=api_key,
+            secret_key=secret_key,
+            fetch_contract=False,    # 與官方範例對齊；下單前才取 contract
+        )
     except Exception as e:
         _fail(f"登入失敗：{e.__class__.__name__}（檢查 KEY/SECRET 是否正確；簽過風險預告書）", code=3)
 
@@ -141,12 +166,35 @@ def main() -> int:
     if fut_acc:
         _info(f"futopt_account: {fut_acc}（你沒申請期貨，本腳本不會測試期貨下單）")
 
+    # ── Step 1.5：activate_ca（永豐測試必需）──
+    print("\n➡️  Step 1.5：啟用 CA 憑證（activate_ca）")
+    try:
+        # 注意：1.3.x 預設不需 person_id 參數；若版本舊會丟 TypeError，再嘗試帶 person_id
+        try:
+            ok = api.activate_ca(ca_path=ca_path, ca_passwd=ca_password)
+        except TypeError:
+            ok = api.activate_ca(ca_path=ca_path, ca_passwd=ca_password, person_id=person_id)
+    except Exception as e:
+        _fail(f"activate_ca 失敗：{e.__class__.__name__}\n"
+              f"   檢查：1) ca_path 是否正確、2) 密碼是否正確、3) 憑證是否已過期", code=5)
+
+    if ok:
+        _ok("CA 已啟用 → 永豐後台應認可此次測試")
+    else:
+        _fail("activate_ca 回傳 False（憑證或密碼可能不對）", code=5)
+
     # ── Step 2：取合約 ──
     print("\n➡️  Step 2：取得 2330 (台積電) 合約")
     try:
+        # login 時 fetch_contract=False，這裡明確抓
+        api.fetch_contracts(contract_download=True)
+    except Exception as e:
+        _info(f"fetch_contracts 警告（不致命）：{e.__class__.__name__}")
+
+    try:
         contract = api.Contracts.Stocks["2330"]
     except (KeyError, AttributeError, Exception) as e:
-        _fail(f"取合約失敗：{e.__class__.__name__}", code=5)
+        _fail(f"取合約失敗：{e.__class__.__name__}", code=6)
 
     contract_name = getattr(contract, "name", "2330")
     _ok(f"合約：{contract_name}")
@@ -165,12 +213,12 @@ def main() -> int:
             account=stock_acc,
         )
     except Exception as e:
-        _fail(f"建構 Order 物件失敗：{e.__class__.__name__}", code=6)
+        _fail(f"建構 Order 物件失敗：{e.__class__.__name__}", code=7)
 
     try:
         buy_trade = api.place_order(contract, buy_order)
     except Exception as e:
-        _fail(f"place_order 失敗：{e.__class__.__name__}", code=7)
+        _fail(f"place_order 失敗：{e.__class__.__name__}", code=8)
 
     order_id = ""
     try:

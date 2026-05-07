@@ -64,3 +64,4 @@ data/cert/
 *.pfx
 *.p12
 
+shioaji.log
