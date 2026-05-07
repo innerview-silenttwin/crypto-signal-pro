@@ -18,6 +18,10 @@ from datetime import datetime, timedelta
 
 import requests
 
+# TWSE 走 TWCA 簽出的 cert chain，intermediate 缺 Subject Key Identifier，
+# Python 3.14 strict 模式會擋掉。改用容忍 legacy chain 的 session。
+from http_legacy_ssl import legacy_get
+
 logger = logging.getLogger(__name__)
 
 
@@ -48,7 +52,7 @@ def _fetch_economic_calendar() -> List[Dict]:
     try:
         year = today.year - 1911  # 民國年
         url = f"https://www.twse.com.tw/rwd/zh/trading/holiday?response=json"
-        resp = requests.get(url, timeout=10, headers={
+        resp = legacy_get(url, timeout=10, headers={
             "User-Agent": "Mozilla/5.0 (CryptoSignalPro)"
         })
         if resp.status_code == 200:

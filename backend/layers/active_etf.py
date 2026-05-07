@@ -15,10 +15,13 @@ import re
 import json
 import logging
 import threading
-import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
 from typing import Optional
+
+# CMoney 走 TWCA 簽出的 cert chain，intermediate 缺 Subject Key Identifier，
+# Python 3.14 strict 模式會擋掉。改用容忍 legacy chain 的 session。
+from http_legacy_ssl import legacy_get
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +63,7 @@ _cache_lock = threading.RLock()  # 保護多執行緒下的讀寫安全
 def _get_guest_token() -> Optional[str]:
     """從 CMoney ETF 頁面取得 guest JWT token"""
     try:
-        resp = requests.get(
+        resp = legacy_get(
             "https://www.cmoney.tw/etf/tw/00981A/fundholding",
             headers={"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                      "AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"},
@@ -76,7 +79,7 @@ def _get_guest_token() -> Optional[str]:
 def _fetch_holdings(etf_code: str, token: str) -> dict:
     """取得某 ETF 的台股持股 {stock_id: (name, weight_pct)}"""
     try:
-        resp = requests.get(
+        resp = legacy_get(
             "https://www.cmoney.tw/MobileService/ashx/GetDtnoData.ashx",
             params={
                 "action": "getdtnodata",
