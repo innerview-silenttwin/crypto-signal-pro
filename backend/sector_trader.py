@@ -213,6 +213,9 @@ class SectorTradingManager:
         self._broker: Optional[Broker] = broker
         self._risk_gate = risk_gate
         self._state_store = state_store
+        # 去重：同一天 同一 symbol 同一類失敗只發一次 Telegram，避免下單失敗時每 5 分鐘洪水
+        # key = (date_str, category, symbol)；跨日自動清理
+        self._notif_dedup_today: set = set()
 
         # 半導體、電子代工初始資金 200 萬，其餘 100 萬
         _init_bal = 2_000_000.0 if sector_name in ("半導體", "電子代工/零組件") else 1_000_000.0
@@ -594,6 +597,21 @@ class SectorTradingManager:
         })
         return profit, profit_pct
 
+    def _should_notify_once_today(self, category: str, symbol: str) -> bool:
+        """同一天 同一 symbol 同一類別只通知一次。
+
+        broker 失敗 / below_min_lot 在每 5 分鐘輪詢中會持續觸發；若每次都送 Telegram 會被洗版。
+        這裡做 in-memory dedup（重啟後會 reset，可接受），跨日自動清掉舊紀錄避免 set 無限長大。
+        """
+        today = datetime.now().strftime("%Y-%m-%d")
+        # lazy GC：清掉非今日的 key
+        self._notif_dedup_today = {k for k in self._notif_dedup_today if k[0] == today}
+        key = (today, category, symbol)
+        if key in self._notif_dedup_today:
+            return False
+        self._notif_dedup_today.add(key)
+        return True
+
     def _handle_skipped(self, symbol: str, action: str, reason: str, *,
                          needed: float = 0.0, available: float = 0.0,
                          signal_desc: str = "") -> None:
@@ -625,28 +643,32 @@ class SectorTradingManager:
         #   over_*/no_position/market_closed/holiday → 不通知（routine reject，靠 JSONL 即可）
         stock_name = self.stocks.get(symbol, symbol)
         if reason == "below_min_lot":
-            send_telegram(
-                f"⚠️ <b>銀彈不足</b> [{self.sector_name}]\n"
-                f"標的：{stock_name} ({symbol})\n"
-                f"買 1 張需 ~${int(needed):,}，目前現金 ~${int(available):,}\n"
-                f"觸發信號：{signal_desc}"
-            )
+            if self._should_notify_once_today("below_min_lot", symbol):
+                send_telegram(
+                    f"⚠️ <b>銀彈不足</b> [{self.sector_name}]\n"
+                    f"標的：{stock_name} ({symbol})\n"
+                    f"買 1 張需 ~${int(needed):,}，目前現金 ~${int(available):,}\n"
+                    f"觸發信號：{signal_desc}"
+                )
         elif reason.startswith("daily_locked"):
-            send_telegram(
-                f"🛑 <b>每日 kill-switch 啟動</b>\n"
-                f"類股：{self.sector_name}\n"
-                f"理由：{reason}\n"
-                f"剩餘交易暫停至明日"
-            )
+            # kill-switch 是 sector 級事件，跨 symbol 共用一個 dedup key
+            if self._should_notify_once_today("daily_locked", "*"):
+                send_telegram(
+                    f"🛑 <b>每日 kill-switch 啟動</b>\n"
+                    f"類股：{self.sector_name}\n"
+                    f"理由：{reason}\n"
+                    f"剩餘交易暫停至明日"
+                )
         elif reason.startswith("broker_"):
-            send_telegram(
-                f"🚨 <b>券商下單異常</b> [{self.sector_name}]\n"
-                f"標的：{stock_name} ({symbol})\n"
-                f"動作：{action}\n"
-                f"原因：{reason}\n"
-                f"觸發信號：{signal_desc}\n"
-                f"⚠️ 連續發生請檢查 Shioaji API 相容性 / 網路 / 帳號狀態"
-            )
+            if self._should_notify_once_today("broker_error", symbol):
+                send_telegram(
+                    f"🚨 <b>券商下單異常</b> [{self.sector_name}]\n"
+                    f"標的：{stock_name} ({symbol})\n"
+                    f"動作：{action}\n"
+                    f"原因：{reason}\n"
+                    f"觸發信號：{signal_desc}\n"
+                    f"⚠️ 連續發生請檢查 Shioaji API 相容性 / 網路 / 帳號狀態"
+                )
 
     def execute_trade(
         self,
@@ -740,11 +762,12 @@ class SectorTradingManager:
             logger.exception("broker.submit raised: %s", e.__class__.__name__)
             if self._state_store is not None:
                 self._state_store.remove_pending(client_order_id)
-            send_telegram(
-                f"❌ <b>下單例外</b> [{self.sector_name}]\n"
-                f"{trade_type} {symbol} qty={qty} price={price:.2f}\n"
-                f"錯誤類型：{e.__class__.__name__}"
-            )
+            if self._should_notify_once_today("broker_error", symbol):
+                send_telegram(
+                    f"❌ <b>下單例外</b> [{self.sector_name}]\n"
+                    f"{trade_type} {symbol} qty={qty} price={price:.2f}\n"
+                    f"錯誤類型：{e.__class__.__name__}"
+                )
             return False
         finally:
             # 確保 pending 在「成交/拒絕後同步點」之前一定會清掉（reconcile 也會兜底）
