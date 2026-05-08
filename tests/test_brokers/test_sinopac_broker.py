@@ -171,9 +171,9 @@ def test_init_simulation_no_ca_required(fake_shioaji):
 
 
 def test_buy_below_min_lot_returns_rejected(fake_shioaji):
-    """qty_shares < 1 才被 sinopac broker 擋；零股（1~999 股）已開放走 IntradayOdd。"""
+    """qty_shares < 10 才被 sinopac broker 擋；零股（10~999 股）走 IntradayOdd。"""
     b = _new_broker(fake_shioaji)
-    r = b.submit(symbol="2330.TW", action="BUY", qty_shares=0,
+    r = b.submit(symbol="2330.TW", action="BUY", qty_shares=5,
                  limit_price=1000.0, client_order_id="x", sector_id="semiconductor")
     assert r.ok is False
     assert "below_min_lot" in r.reason

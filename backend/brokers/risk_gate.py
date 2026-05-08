@@ -128,10 +128,10 @@ class RiskGate:
         limit_price: float,
         today: str,
     ) -> RiskDecision:
-        # 5a. 股數下限：允許零股（≥1 股即可），現金不夠買 1 股才擋
-        if qty_shares < 1:
+        # 5a. 股數下限：允許零股，但至少 10 股；買不到 10 股才擋
+        if qty_shares < 10:
             equity, balance = self.equity_provider(sector_id)
-            needed = limit_price * 1.001425  # 買 1 股的成本（含手續費）
+            needed = 10 * limit_price * 1.001425  # 買 10 股的成本（含手續費）
             return RiskDecision(
                 ok=False,
                 reason="below_min_lot",

@@ -129,13 +129,13 @@ class SinopacBroker:
         sector_id: str,
         signal_desc: str = "",
     ) -> BrokerResult:
-        # 股數至少 1 股；< 1000 走盤中零股 (IntradayOdd)，>= 1000 走整股 (Common)
+        # 股數至少 10 股；< 1000 走盤中零股 (IntradayOdd)，>= 1000 走整股 (Common)
         # 不做混合（>=1000 + 餘數零股），實際 qty_shares 帶整千的部分過去；零股走 odd
-        if qty_shares < 1:
+        if qty_shares < 10:
             return BrokerResult(
                 ok=False,
                 fill_status="rejected",
-                reason="below_min_lot_qty=0",
+                reason=f"below_min_lot_qty={qty_shares}",
             )
 
         is_odd_lot = qty_shares < 1000

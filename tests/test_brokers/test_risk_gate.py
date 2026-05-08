@@ -30,19 +30,19 @@ def _make_gate(store, *, equity=2_000_000.0, balance=2_000_000.0, position=None,
 
 # ── BUY 規則 ──
 
-def test_buy_below_min_lot_zero_shares(store):
-    """qty_shares=0 → below_min_lot；零股 (1~999 股) 已開放，所以下限只剩 1 股。"""
+def test_buy_below_min_lot_under_10_shares(store):
+    """qty_shares < 10 → below_min_lot；零股下限是 10 股。"""
     gate = _make_gate(store)
     d = gate.allow(sector_id="semiconductor", symbol="2330.TW",
-                   action="BUY", qty_shares=0, limit_price=1845.0)
+                   action="BUY", qty_shares=9, limit_price=1845.0)
     assert d.ok is False
     assert d.reason == "below_min_lot"
-    # needed_twd ≈ 買 1 股 + 手續費
-    assert 1845.0 < d.needed_twd < 1845.0 * 1.01
+    # needed_twd ≈ 買 10 股 + 手續費
+    assert 10 * 1845.0 < d.needed_twd < 10 * 1845.0 * 1.01
 
 
 def test_buy_odd_lot_allowed(store):
-    """108 股（< 1000）以前會被 below_min_lot 擋；現在零股開放，需通過此規則。"""
+    """108 股（< 1000）以前會被 below_min_lot 擋；零股開放後 ≥10 股應通過此規則。"""
     gate = _make_gate(store)
     d = gate.allow(sector_id="semiconductor", symbol="2330.TW",
                    action="BUY", qty_shares=108, limit_price=1845.0)

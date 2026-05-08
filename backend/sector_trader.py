@@ -650,7 +650,7 @@ class SectorTradingManager:
                 send_telegram(
                     f"⚠️ <b>銀彈不足</b> [{self.sector_name}]\n"
                     f"標的：<a href=\"{stock_url}\">{stock_name}({code})</a>\n"
-                    f"買 1 股需 ~${int(needed):,}，目前現金 ~${int(available):,}\n"
+                    f"買 10 股需 ~${int(needed):,}，目前現金 ~${int(available):,}\n"
                     f"觸發信號：{signal_desc}"
                 )
         elif reason.startswith("daily_locked"):
