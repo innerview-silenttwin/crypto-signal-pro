@@ -642,12 +642,15 @@ class SectorTradingManager:
         #   cooldown_*        → 不通知（正常風控動作）
         #   over_*/no_position/market_closed/holiday → 不通知（routine reject，靠 JSONL 即可）
         stock_name = self.stocks.get(symbol, symbol)
+        # 跟 notify_trade 一樣產生 Yahoo 股價連結
+        code = symbol.replace(".TW", "").replace(".TWO", "")
+        stock_url = f"https://tw.stock.yahoo.com/quote/{code}.TW"
         if reason == "below_min_lot":
             if self._should_notify_once_today("below_min_lot", symbol):
                 send_telegram(
                     f"⚠️ <b>銀彈不足</b> [{self.sector_name}]\n"
-                    f"標的：{stock_name} ({symbol})\n"
-                    f"買 1 張需 ~${int(needed):,}，目前現金 ~${int(available):,}\n"
+                    f"標的：<a href=\"{stock_url}\">{stock_name}({code})</a>\n"
+                    f"買 1 股需 ~${int(needed):,}，目前現金 ~${int(available):,}\n"
                     f"觸發信號：{signal_desc}"
                 )
         elif reason.startswith("daily_locked"):
@@ -663,7 +666,7 @@ class SectorTradingManager:
             if self._should_notify_once_today("broker_error", symbol):
                 send_telegram(
                     f"🚨 <b>券商下單異常</b> [{self.sector_name}]\n"
-                    f"標的：{stock_name} ({symbol})\n"
+                    f"標的：<a href=\"{stock_url}\">{stock_name}({code})</a>\n"
                     f"動作：{action}\n"
                     f"原因：{reason}\n"
                     f"觸發信號：{signal_desc}\n"
@@ -763,9 +766,13 @@ class SectorTradingManager:
             if self._state_store is not None:
                 self._state_store.remove_pending(client_order_id)
             if self._should_notify_once_today("broker_error", symbol):
+                code = symbol.replace(".TW", "").replace(".TWO", "")
+                stock_url = f"https://tw.stock.yahoo.com/quote/{code}.TW"
+                stock_name = self.stocks.get(symbol, symbol)
                 send_telegram(
                     f"❌ <b>下單例外</b> [{self.sector_name}]\n"
-                    f"{trade_type} {symbol} qty={qty} price={price:.2f}\n"
+                    f"標的：<a href=\"{stock_url}\">{stock_name}({code})</a>\n"
+                    f"{trade_type} qty={qty} price={price:.2f}\n"
                     f"錯誤類型：{e.__class__.__name__}"
                 )
             return False

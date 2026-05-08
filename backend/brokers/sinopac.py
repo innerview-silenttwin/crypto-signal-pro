@@ -129,14 +129,18 @@ class SinopacBroker:
         sector_id: str,
         signal_desc: str = "",
     ) -> BrokerResult:
-        # 整股單位是「張」(1張=1000股)
-        qty_lots = qty_shares // 1000
-        if qty_lots < 1:
+        # 股數至少 1 股；< 1000 走盤中零股 (IntradayOdd)，>= 1000 走整股 (Common)
+        # 不做混合（>=1000 + 餘數零股），實際 qty_shares 帶整千的部分過去；零股走 odd
+        if qty_shares < 1:
             return BrokerResult(
                 ok=False,
                 fill_status="rejected",
-                reason="below_min_lot_lots=0",
+                reason="below_min_lot_qty=0",
             )
+
+        is_odd_lot = qty_shares < 1000
+        # IntradayOdd 用「股」，Common 用「張」
+        sj_quantity = qty_shares if is_odd_lot else (qty_shares // 1000)
 
         contract = self._resolve_contract(symbol)
         if contract is None:
@@ -151,10 +155,11 @@ class SinopacBroker:
             order = self.api.Order(
                 action=sj.constant.Action.Buy if action == "BUY" else sj.constant.Action.Sell,
                 price=float(limit_price),
-                quantity=int(qty_lots),
+                quantity=int(sj_quantity),
                 price_type=sj.constant.StockPriceType.LMT,
                 order_type=sj.constant.OrderType.ROD,
-                order_lot=sj.constant.StockOrderLot.Common,
+                order_lot=(sj.constant.StockOrderLot.IntradayOdd if is_odd_lot
+                          else sj.constant.StockOrderLot.Common),
                 order_cond=sj.constant.StockOrderCond.Cash,
                 account=self.api.stock_account,
                 # daytrade_short 留預設（False）
@@ -189,8 +194,9 @@ class SinopacBroker:
             if status.get("filled"):
                 with self._lock:
                     self._in_flight.pop(client_order_id, None)
-                deal_qty_lots = status.get("deal_quantity") or qty_lots
-                actual_qty_shares = int(deal_qty_lots) * 1000
+                # 零股：deal_quantity 已是「股」；整股：deal_quantity 是「張」
+                deal_qty = status.get("deal_quantity") or sj_quantity
+                actual_qty_shares = int(deal_qty) if is_odd_lot else int(deal_qty) * 1000
                 actual_price = float(status.get("avg_price") or limit_price)
                 return BrokerResult(
                     ok=True,
@@ -218,8 +224,8 @@ class SinopacBroker:
         with self._lock:
             self._safe_update_status()
             final_status = self._read_trade_status(trade)
-        deal_qty_lots = final_status.get("deal_quantity") or 0
-        if deal_qty_lots > 0:
+        deal_qty = final_status.get("deal_quantity") or 0
+        if deal_qty > 0:
             # 部分成交：取消剩餘 + 回報 partial
             try:
                 with self._lock:
@@ -230,7 +236,7 @@ class SinopacBroker:
             actual_price = float(final_status.get("avg_price") or limit_price)
             return BrokerResult(
                 ok=True,
-                actual_qty=int(deal_qty_lots) * 1000,
+                actual_qty=int(deal_qty) if is_odd_lot else int(deal_qty) * 1000,
                 actual_price=actual_price,
                 order_id=broker_order_id,
                 fill_status="partial",
@@ -280,10 +286,11 @@ class SinopacBroker:
         for cid, trade in in_flight_snapshot:
             status = self._read_trade_status(trade)
             if status.get("filled"):
-                deal_qty_lots = status.get("deal_quantity") or 0
+                deal_qty = status.get("deal_quantity") or 0
+                trade_is_odd = self._is_trade_odd_lot(trade)
                 completed.append(BrokerResult(
                     ok=True,
-                    actual_qty=int(deal_qty_lots) * 1000,
+                    actual_qty=int(deal_qty) if trade_is_odd else int(deal_qty) * 1000,
                     actual_price=float(status.get("avg_price") or 0.0),
                     order_id=self._safe_order_id(trade),
                     fill_status="filled",
@@ -323,6 +330,14 @@ class SinopacBroker:
         return out
 
     # ── 內部工具 ──
+
+    def _is_trade_odd_lot(self, trade) -> bool:
+        """從 trade.order.order_lot 回讀此訂單是不是盤中零股，給 reconcile 後正確換算成股。"""
+        try:
+            ol = trade.order.order_lot
+            return ol == self._sj.constant.StockOrderLot.IntradayOdd
+        except Exception:
+            return False
 
     def _resolve_contract(self, symbol: str):
         """symbol 形如 '2330.TW'；取出 4 碼代號，找 self.api.Contracts.Stocks."""
