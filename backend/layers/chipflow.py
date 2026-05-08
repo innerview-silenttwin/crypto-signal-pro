@@ -23,6 +23,10 @@ from typing import Dict, Optional, List
 import pandas as pd
 import requests
 
+# openapi.twse.com.tw 走 TWCA 簽出的 cert chain，intermediate 缺 Subject Key Identifier，
+# Python 3.14 strict 模式會擋掉。改用容忍 legacy chain 的 session（保留 hostname/過期等其他驗證）。
+from http_legacy_ssl import legacy_get
+
 from .base import BaseLayer, LayerModifier, LayerRegistry
 
 logger = logging.getLogger(__name__)
@@ -41,6 +45,10 @@ _INST_HISTORY_FILE = os.path.join(_DATA_DIR, "chip_inst_history.json")
 _MARGIN_HISTORY_FILE = os.path.join(_DATA_DIR, "chip_margin_history.json")
 _openapi_inst_fetched = False   # 本次啟動是否已抓過 OpenAPI 三大法人
 _openapi_margin_fetched = False  # 本次啟動是否已抓過 OpenAPI 融資融券
+
+# API 重試冷卻：失敗後 5 分鐘內不重試，避免每輪都卡 timeout
+_MARGIN_RETRY_COOLDOWN = 300
+_margin_last_attempt: float = 0.0
 
 
 def _load_history_file(filepath: str) -> Dict:
@@ -62,6 +70,19 @@ def _save_history_file(filepath: str, data: Dict):
             json.dump(data, f, ensure_ascii=False)
     except Exception as e:
         logger.warning(f"儲存歷史快取失敗 ({filepath}): {e}")
+
+
+def _preload_margin_cache():
+    """啟動時從本地歷史檔預載融資融券快取，確保 API 失敗時仍有資料可用"""
+    history = _load_history_file(_MARGIN_HISTORY_FILE)
+    if history:
+        _margin_cache["data"] = history
+        _margin_cache["time"] = time.time()
+        latest = max(history.keys()) if history else "N/A"
+        logger.info(f"融資融券：從本地快取預載 {len(history)} 天（最新 {latest}）")
+
+
+_preload_margin_cache()
 
 
 def _strip_tw(symbol: str) -> str:
@@ -195,7 +216,7 @@ def _fetch_margin_openapi() -> tuple:
     """
     url = "https://openapi.twse.com.tw/v1/marginTrading/MI_MARGN"
     try:
-        resp = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+        resp = legacy_get(url, timeout=25, headers={"User-Agent": "Mozilla/5.0"})
         if resp.status_code != 200 or not resp.text.strip():
             logger.warning(f"融資融券 OpenAPI HTTP {resp.status_code}")
             return None, {}
@@ -244,14 +265,19 @@ def _fetch_margin_openapi() -> tuple:
 
 
 def _ensure_margin_openapi():
-    """確保本次啟動已從 OpenAPI 抓過融資融券最新資料"""
-    global _openapi_margin_fetched
+    """確保融資融券有最新資料：API 成功 → 更新快取；API 失敗 → 用本地歷史（不阻塞）"""
+    global _openapi_margin_fetched, _margin_last_attempt
     if _openapi_margin_fetched:
         return
-    _openapi_margin_fetched = True
+    # 冷卻中不重試（避免每 5 分鐘輪詢都卡 25 秒 timeout）
+    now = time.time()
+    if now - _margin_last_attempt < _MARGIN_RETRY_COOLDOWN and _margin_cache.get("data"):
+        return
+    _margin_last_attempt = now
 
     api_date, result = _fetch_margin_openapi()
     if result and api_date:
+        _openapi_margin_fetched = True  # 只在成功時標記
         if "data" not in _margin_cache:
             _margin_cache["data"] = {}
         _margin_cache["data"][api_date] = result
@@ -262,6 +288,9 @@ def _ensure_margin_openapi():
         sorted_dates = sorted(history.keys(), reverse=True)[:35]
         history = {d: history[d] for d in sorted_dates}
         _save_history_file(_MARGIN_HISTORY_FILE, history)
+    else:
+        logger.warning("融資融券 API 失敗，使用本地歷史快取（%d 天）",
+                        len(_margin_cache.get("data", {})))
 
 
 def fetch_twse_margin(date_str: str) -> Dict[str, dict]:

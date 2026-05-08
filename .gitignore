@@ -46,6 +46,8 @@ backend/data/tw_rate_state.json
 backend/data/signal_performance_cache*.json
 backend/data/threshold_backtest.json
 backend/data/backtest/
+backend/data/fundamental_pe_cache.json
+backend/data/fundamental_rev_cache.json
 
 # Auto-fetched external market data (refreshed via API)
 data/btc_fear_greed.csv
