@@ -17,7 +17,7 @@ set -euo pipefail
 
 APP_DIR="/Users/kentsai/Documents/plate/crypto-signal-pro"
 PYTHON="${APP_DIR}/venv/bin/python3"
-PLIST_ID="me.linego.crypto-signal-pro"
+PLIST_ID="local.crypto-signal-pro"
 PLIST_PATH="${HOME}/Library/LaunchAgents/${PLIST_ID}.plist"
 LOG_DIR="${APP_DIR}/logs"
 
