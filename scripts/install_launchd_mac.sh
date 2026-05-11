@@ -50,8 +50,11 @@ set -a
 source "${APP_DIR}/.env"
 set +a
 
+# 關閉 stdout/stderr buffer，讓日誌即時寫到檔案（不然 launchd 下會看不到輸出）
+export PYTHONUNBUFFERED=1
+
 cd "${APP_DIR}"
-exec "${PYTHON}" -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1
+exec "${PYTHON}" -u -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 1
 WRAPPER
 chmod +x "${APP_DIR}/scripts/run_prod.sh"
 
