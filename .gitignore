@@ -42,6 +42,8 @@ backend/data/custom_stocks.json
 # Auto-generated cache (regenerated each run)
 backend/data/screener_cache.json
 backend/data/active_etf_scores.json
+backend/data/active_etf_rank_history.json
+backend/data/chip_margin_history.json
 backend/data/screener_rank_history.json
 backend/data/tw_rate_state.json
 backend/data/signal_performance_cache*.json
