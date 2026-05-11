@@ -233,6 +233,10 @@ class SectorTradingManager:
             "stocks": list(self.stocks.keys()),
         }
         self.state = self._load()
+        if os.path.exists(self.data_file):
+            self._last_mtime = os.path.getmtime(self.data_file)
+        else:
+            self._last_mtime = 0
 
     def _load(self) -> dict:
         if os.path.exists(self.data_file):
@@ -265,12 +269,26 @@ class SectorTradingManager:
                 with os.fdopen(fd, "w", encoding="utf-8") as f:
                     json.dump(self.state, f, indent=2, ensure_ascii=False)
                 os.replace(tmp, self.data_file)
+                self._last_mtime = os.path.getmtime(self.data_file)
             except Exception:
                 try:
                     os.unlink(tmp)
                 except OSError:
                     pass
                 raise
+
+    def _sync_from_disk(self):
+        """從磁碟重新載入最新狀態（解決 uvicorn 多 worker 造成的記憶體不一致）"""
+        with self._lock:
+            if not os.path.exists(self.data_file):
+                return
+            try:
+                mtime = os.path.getmtime(self.data_file)
+                if mtime > getattr(self, '_last_mtime', 0):
+                    self.state = self._load()
+                    self._last_mtime = mtime
+            except Exception as e:
+                logger.error(f"Sync from disk failed for {self.sector_id}: {e}")
 
     # ── broker / risk_gate 注入（sector_auto_trader 啟動時呼叫）──
 
@@ -285,6 +303,7 @@ class SectorTradingManager:
 
     def get_equity(self) -> float:
         """目前總權益（現金 + 持倉以 avg_price 估值）。給 RiskGate 使用。"""
+        self._sync_from_disk()
         with self._lock:
             equity = self.state["balance"]
             for h in self.state["holdings"].values():
@@ -292,18 +311,21 @@ class SectorTradingManager:
             return equity
 
     def get_position(self, symbol: str) -> dict:
+        self._sync_from_disk()
         with self._lock:
             return dict(self.state["holdings"].get(symbol, {}))
 
     # ── 帳戶控制 ──
 
     def toggle_active(self, active: bool) -> bool:
+        self._sync_from_disk()
         self.state["is_active"] = active
         self._save()
         return active
 
     def reset_account(self):
         """重置帳戶（保留策略設定）"""
+        self._sync_from_disk()
         strategy = self.state.get("strategy", DEFAULT_STRATEGIES[self.sector_name].copy())
         self.state = self.initial_state.copy()
         self.state["strategy"] = strategy
@@ -312,16 +334,19 @@ class SectorTradingManager:
     # ── 策略管理（解耦） ──
 
     def get_strategy(self) -> dict:
+        self._sync_from_disk()
         return self.state.get("strategy", DEFAULT_STRATEGIES[self.sector_name])
 
     def update_strategy(self, new_strategy: dict):
         """更新策略設定（不影響帳戶狀態）"""
+        self._sync_from_disk()
         self.state["strategy"] = new_strategy
         self._save()
 
     # ── 查詢 ──
 
     def get_summary(self, current_prices: dict = None) -> dict:
+        self._sync_from_disk()
         current_prices = current_prices or {}
         equity = self.state["balance"]
         total_unrealized_pl = 0.0
@@ -400,6 +425,7 @@ class SectorTradingManager:
                     symbol: str = "", start_date: str = "", end_date: str = "",
                     trade_type: str = "",
                     current_prices: dict = None) -> dict:
+        self._sync_from_disk()
         current_prices = current_prices or {}
         history = self.state.get("history", [])
 
@@ -691,6 +717,7 @@ class SectorTradingManager:
 
         流程：估算 qty → RiskGate.allow → 寫 pending → broker.submit → 寫 ledger / 清 pending → cooldown / 通知
         """
+        self._sync_from_disk()
         broker = self._get_broker()
 
         # ── 1. 估算 qty ──
@@ -833,6 +860,7 @@ class SectorTradingManager:
 
     def record_equity(self, current_prices: dict = None):
         """記錄當前權益到曲線（只在有即時價格時記錄，避免假波動）"""
+        self._sync_from_disk()
         current_prices = current_prices or {}
         holdings = self.state["holdings"]
 
