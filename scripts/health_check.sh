@@ -132,19 +132,21 @@ if lock:
 else:
     print(f"🔓 daily_lock: 未觸發")
 
-# cooldowns
+# cooldowns: flat dict {f"{sector}:{symbol}:{action}": expires_at}
 cd = s.get("cooldowns", {})
 now = time.time()
 active = []
-for sym, actions in cd.items():
-    for action, expires in actions.items():
-        if expires > now:
-            mins = (expires - now) / 60
-            active.append((sym, action, mins))
-active.sort(key=lambda x: -x[2])
+for key, expires in cd.items():
+    try:
+        if float(expires) > now:
+            mins = (float(expires) - now) / 60
+            active.append((key, mins))
+    except (TypeError, ValueError):
+        continue
+active.sort(key=lambda x: -x[1])
 print(f"⏱  進行中冷卻 ({len(active)} 筆):")
-for sym, action, mins in active[:10]:
-    print(f"   - {sym} {action} 剩 {mins:.0f} 分鐘")
+for key, mins in active[:10]:
+    print(f"   - {key} 剩 {mins:.0f} 分鐘")
 if len(active) > 10:
     print(f"   ... 還有 {len(active)-10} 筆")
 PY

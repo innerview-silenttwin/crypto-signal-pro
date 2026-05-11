@@ -192,6 +192,26 @@ SECTOR_IDS = {
 SECTOR_ID_TO_NAME = {v: k for k, v in SECTOR_IDS.items()}
 
 
+def compute_buy_qty_pure(*, price: float, max_order: float, available_cash: float) -> int:
+    """純函式：給股價、單筆金額上限、可用現金，回傳買進股數。
+
+    規則：
+      - price > 100：零股，買 floor(target_amount / price) 股
+      - price ≤ 100：整張，買 floor(target_amount / (price × 1000)) × 1000 股
+      - target_amount = min(max_order, available_cash)
+      - target_amount ≤ 0 或 price ≤ 0：回 0
+    """
+    if price <= 0:
+        return 0
+    target = min(max_order, available_cash)
+    if target <= 0:
+        return 0
+    if price > 100:
+        return int(target / price)
+    lots = int(target / (price * 1000))
+    return lots * 1000
+
+
 class SectorTradingManager:
     """單一類股的虛擬交易管理器"""
 
@@ -528,13 +548,35 @@ class SectorTradingManager:
         return self._broker
 
     def _compute_buy_qty(self, price: float, ratio: float) -> int:
-        """以既有公式估算可買股數（沿用虛擬模式邏輯，避免回測/手動跑出現差異）。"""
+        """估算可買股數（純按股價、不依賴帳戶 ratio）。
+
+        規則：
+          - price > 100：買零股，數量 = max_order_amount / price 股
+          - price ≤ 100：買整數張，floor(max_order_amount / (price × 1000)) 張 × 1000 股
+          - 若 RiskGate 沒注入，fallback 用舊規則（ratio × 餘額）保持向下相容
+          - 帳戶可用現金（balance × 0.95，留手續費/稅金緩衝）不夠時，自動降到負擔得起
+
+        ratio 參數保留是為了向下相容（VirtualBroker fallback），新邏輯不使用。
+        """
+        if price <= 0:
+            return 0
+
+        # RiskGate 未注入時走舊邏輯（純虛擬模式相容）
+        if self._risk_gate is None:
+            with self._lock:
+                total_equity = self.state["balance"]
+                for h in self.state["holdings"].values():
+                    total_equity += (h.get("qty", 0) or 0) * (h.get("avg_price", 0.0) or 0.0)
+            spend_cash = min(total_equity * ratio, self.state["balance"] * 0.95)
+            return int(spend_cash / (price * 1.001425))
+
         with self._lock:
-            total_equity = self.state["balance"]
-            for h in self.state["holdings"].values():
-                total_equity += (h.get("qty", 0) or 0) * (h.get("avg_price", 0.0) or 0.0)
-        spend_cash = min(total_equity * ratio, self.state["balance"] * 0.95)
-        return int(spend_cash / (price * 1.001425))
+            available_cash = self.state["balance"] * 0.95
+        return compute_buy_qty_pure(
+            price=price,
+            max_order=float(self._risk_gate.cfg.max_order_amount_twd),
+            available_cash=available_cash,
+        )
 
     def _apply_buy_to_ledger(self, symbol: str, qty: int, price: float, signal_desc: str) -> None:
         """成交回填 → 寫帳本。必須持 self._lock。"""
@@ -677,6 +719,14 @@ class SectorTradingManager:
                     f"⚠️ <b>銀彈不足</b> [{self.sector_name}]\n"
                     f"標的：<a href=\"{stock_url}\">{stock_name}({code})</a>\n"
                     f"買 10 股需 ~${int(needed):,}，目前現金 ~${int(available):,}\n"
+                    f"觸發信號：{signal_desc}"
+                )
+        elif reason.startswith("below_min_order_amount"):
+            if self._should_notify_once_today("below_min_order_amount", symbol):
+                send_telegram(
+                    f"⚠️ <b>銀彈不足</b> [{self.sector_name}]\n"
+                    f"標的：<a href=\"{stock_url}\">{stock_name}({code})</a>\n"
+                    f"單筆下限 ~${int(needed):,}，目前現金 ~${int(available):,}\n"
                     f"觸發信號：{signal_desc}"
                 )
         elif reason.startswith("daily_locked"):

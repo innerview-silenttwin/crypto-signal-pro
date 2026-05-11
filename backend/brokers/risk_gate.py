@@ -35,6 +35,7 @@ class RiskConfig:
     """風控閾值。所有金額單位為新台幣（TWD）。"""
 
     max_order_amount_twd: float = 100_000.0
+    min_order_amount_twd: float = 20_000.0   # 低於此金額視為「銀彈不足」，發通知不下單
     max_daily_orders_total: int = 20
     max_daily_orders_per_sector: int = 10
     max_daily_loss_pct: float = 2.0          # 觸發 kill-switch 的當日累計虧損百分比（vs initial_balance）
@@ -149,6 +150,18 @@ class RiskGate:
                 reason=f"over_max_order:{order_amount:.0f}>{self.cfg.max_order_amount_twd:.0f}",
                 needed_twd=order_amount,
                 available_twd=self.cfg.max_order_amount_twd,
+            )
+
+        # 5b'. 單筆金額下限（銀彈不足）— 算出來的 qty * price 太低代表帳戶餘額不足
+        # 注意：只在 min_order_amount_twd > 0 時生效；設 0 可關掉
+        if self.cfg.min_order_amount_twd > 0 and order_amount < self.cfg.min_order_amount_twd:
+            equity, balance = self.equity_provider(sector_id)
+            return RiskDecision(
+                ok=False,
+                reason=f"below_min_order_amount:{order_amount:.0f}<{self.cfg.min_order_amount_twd:.0f}",
+                needed_twd=self.cfg.min_order_amount_twd,
+                available_twd=balance,
+                extra={"qty_shares_requested": qty_shares, "limit_price": limit_price},
             )
 
         # 5c. 每日筆數上限

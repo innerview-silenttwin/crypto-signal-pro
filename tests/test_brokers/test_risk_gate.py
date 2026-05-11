@@ -51,13 +51,52 @@ def test_buy_odd_lot_allowed(store):
 
 
 def test_buy_over_max_order_amount(store):
-    cfg = RiskConfig(enforce_market_hours=False, max_order_amount_twd=100_000.0)
+    cfg = RiskConfig(enforce_market_hours=False, max_order_amount_twd=100_000.0,
+                     min_order_amount_twd=0.0)  # 關掉下限避免互相干擾
     gate = _make_gate(store, cfg=cfg)
     # 1 張 × 200元 = 20萬，超過上限 10萬
     d = gate.allow(sector_id="semiconductor", symbol="2317.TW",
                    action="BUY", qty_shares=1000, limit_price=200.0)
     assert d.ok is False
     assert d.reason.startswith("over_max_order")
+
+
+def test_buy_below_min_order_amount(store):
+    """qty * price < min_order_amount → below_min_order_amount（銀彈不足）"""
+    cfg = RiskConfig(enforce_market_hours=False,
+                     max_order_amount_twd=100_000.0,
+                     min_order_amount_twd=20_000.0)
+    gate = _make_gate(store, cfg=cfg)
+    # 100 股 × 50 元 = 5,000，< 20,000 下限
+    d = gate.allow(sector_id="semiconductor", symbol="2330.TW",
+                   action="BUY", qty_shares=100, limit_price=50.0)
+    assert d.ok is False
+    assert d.reason.startswith("below_min_order_amount")
+
+
+def test_buy_min_order_amount_zero_disables_check(store):
+    """min_order_amount_twd=0 → 不檢查下限，小額單放行（向下相容）"""
+    cfg = RiskConfig(enforce_market_hours=False,
+                     max_order_amount_twd=100_000.0,
+                     min_order_amount_twd=0.0,
+                     max_position_pct_per_symbol=99.0)  # 放寬避免被其他規則擋
+    gate = _make_gate(store, cfg=cfg)
+    d = gate.allow(sector_id="semiconductor", symbol="2330.TW",
+                   action="BUY", qty_shares=100, limit_price=50.0)
+    assert d.ok is True
+
+
+def test_buy_at_or_above_min_order_amount_passes(store):
+    """qty * price >= min_order_amount → 通過此規則（仍可能被其他規則擋）"""
+    cfg = RiskConfig(enforce_market_hours=False,
+                     max_order_amount_twd=100_000.0,
+                     min_order_amount_twd=20_000.0,
+                     max_position_pct_per_symbol=99.0)
+    gate = _make_gate(store, cfg=cfg)
+    # 1000 股 × 25 元 = 25,000 ≥ 20,000 下限，且 ≤ 100,000 上限
+    d = gate.allow(sector_id="semiconductor", symbol="0050.TW",
+                   action="BUY", qty_shares=1000, limit_price=25.0)
+    assert d.ok is True
 
 
 def test_buy_over_position_pct(store):

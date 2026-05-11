@@ -29,6 +29,10 @@ risk:
   # 半導體 / 電子代工 平均單檔約 5–20 萬，預設保守 10 萬
   max_order_amount_twd: 100000
 
+  # 單筆委託最小金額（NTD）— 算出來的 qty × price 低於此 = 銀彈不足通知
+  # 設 0 可關閉此檢查（向下相容；舊版只有 below_min_lot=10股 那條）
+  min_order_amount_twd: 20000
+
   # 全系統每日最多委託筆數（含全部 sector）
   max_daily_orders_total: 20
 
@@ -40,8 +44,8 @@ risk:
   max_daily_loss_pct: 2.0
 
   # 單一標的（含本筆）持倉占類股權益百分比上限
-  # 200萬 × 15% = 30 萬，差不多 1 張 TSMC 加減
-  max_position_pct_per_symbol: 15.0
+  # 50萬 × 25% = 12.5 萬，容納 100k 單筆訂單 + 上漲空間
+  max_position_pct_per_symbol: 25.0
 
   # 同檔同方向冷卻時間（分鐘）
   cooldown_minutes_after_buy: 30
