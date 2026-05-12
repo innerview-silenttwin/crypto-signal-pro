@@ -1585,17 +1585,18 @@
                     body.innerHTML = data.data.map(h => {
                         const isBuy = h.type === 'BUY';
                         let plText;
+                        const fmtPct = (p) => (p == null) ? '' : ` <small style="color:var(--text-muted)">(${p >= 0 ? '+' : ''}${p.toFixed(2)}%)</small>`;
                         if (isBuy) {
                             if (h.pnl_status && h.pnl_status !== 'realized') {
                                 const pnl = h.pnl || 0;
                                 const color = pnl >= 0 ? 'var(--buy-color)' : 'var(--sell-color)';
                                 const label = h.pnl_status === 'partial' ? '部分實現' : '未實現';
-                                plText = `<span style="color:${color}; font-weight:700">${pnl >= 0 ? '+' : ''}${Math.round(pnl).toLocaleString()}</span> <small style="color:var(--text-muted)">${label}</small>`;
+                                plText = `<span style="color:${color}; font-weight:700">${pnl >= 0 ? '+' : ''}${Math.round(pnl).toLocaleString()}</span>${fmtPct(h.pnl_pct)} <small style="color:var(--text-muted)">${label}</small>`;
                             } else {
                                 plText = `<span style="color:var(--text-muted)">—</span>`;
                             }
                         } else {
-                            plText = `<span style="color:${h.profit >= 0 ? 'var(--buy-color)' : 'var(--sell-color)'}; font-weight:700">${h.profit >= 0 ? '+' : ''}${(h.profit || 0).toLocaleString()}</span> <small style="color:var(--text-muted)">已實現</small>`;
+                            plText = `<span style="color:${h.profit >= 0 ? 'var(--buy-color)' : 'var(--sell-color)'}; font-weight:700">${h.profit >= 0 ? '+' : ''}${(h.profit || 0).toLocaleString()}</span>${fmtPct(h.profit_pct)} <small style="color:var(--text-muted)">已實現</small>`;
                         }
                         return `<tr class="${isBuy ? 'buy-row' : 'sell-row'}">
                         <td>${h.time}</td>

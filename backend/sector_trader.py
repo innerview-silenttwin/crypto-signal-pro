@@ -519,6 +519,18 @@ class SectorTradingManager:
             if info and rec["type"] == "BUY":
                 rec_copy["pnl"] = info["pnl"]
                 rec_copy["pnl_status"] = info["pnl_status"]
+                # BUY pnl_pct = pnl / cost × 100
+                cost = float(rec.get("cost") or (rec.get("price", 0) * rec.get("qty", 0)))
+                if cost > 0:
+                    rec_copy["pnl_pct"] = round(info["pnl"] / cost * 100, 2)
+            elif rec["type"] == "SELL":
+                # SELL profit_pct = profit / 持有成本 × 100
+                # 持有成本 = income - profit（從已存欄位反推）
+                profit = float(rec.get("profit") or 0)
+                income = float(rec.get("income") or 0)
+                scaled_cost = income - profit
+                if scaled_cost > 0:
+                    rec_copy["profit_pct"] = round(profit / scaled_cost * 100, 2)
             annotated.append(rec_copy)
 
         # ── 篩選 ──
@@ -659,6 +671,7 @@ class SectorTradingManager:
             "qty": qty,
             "income": round(net, 2),
             "profit": round(profit, 2),
+            "profit_pct": round(profit_pct, 2),
             "signal": signal_desc,
             "balance_after": round(self.state["balance"], 2),
             "broker": self.get_broker_name(),
