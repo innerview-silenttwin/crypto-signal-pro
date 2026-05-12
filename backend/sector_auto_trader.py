@@ -656,6 +656,7 @@ def process_sector(manager: SectorTradingManager):
         daily_price = float(df['close'].iloc[-1])
         prev_close = float(df['close'].iloc[-2]) if len(df) >= 2 else None
         price = daily_price
+        live = None
         if is_market_hours:
             live = fetch_live_price(symbol, prev_close=prev_close)
             if live is not None:
@@ -668,12 +669,20 @@ def process_sector(manager: SectorTradingManager):
                           else str(last_idx)[:10])
         price_dates[symbol] = price_date_str
 
-        # ── 價格日期守衛：盤中已用 1m 即時價，可放行；只擋「daily 也是舊資料」場景 ──
-        if not is_market_hours and price_date_str < today_str:
-            logger.warning(
-                f"{symbol} 價格日期 {price_date_str} 非今日 {today_str}，跳過交易"
-            )
-            continue
+        # ── 價格日期守衛：daily 是非今日資料時 ──
+        # 盤後：直接跳過
+        # 盤中：必須有 1m 即時價當參考；1m 也失敗代表「全部資料都是昨日的」 → 跳過避免用昨收下單
+        if price_date_str < today_str:
+            if is_market_hours and live is None:
+                logger.warning(
+                    f"{symbol} 盤中 daily 仍為 {price_date_str}、1m 也抓不到，跳過避免用昨收下單"
+                )
+                continue
+            if not is_market_hours:
+                logger.warning(
+                    f"{symbol} 價格日期 {price_date_str} 非今日 {today_str}，跳過交易"
+                )
+                continue
 
         # ── 漲停偵測：漲幅 ≥9.5% 不買入（實務上漲停板買不到） ──
         _is_limit_up = False

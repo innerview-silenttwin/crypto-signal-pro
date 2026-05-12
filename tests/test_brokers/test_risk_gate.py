@@ -194,6 +194,25 @@ def test_sell_no_position_blocks(store):
     assert d.reason == "no_position"
 
 
+def test_sell_dust_position_blocks(store):
+    """持倉 < 10 股（dust）→ 永豐不收，RiskGate 應主動擋下並標記原因"""
+    gate = _make_gate(store, holding={"qty": 5, "avg_price": 800.0})
+    d = gate.allow(sector_id="semiconductor", symbol="2474.TW",
+                   action="SELL", qty_shares=5, limit_price=200.0)
+    assert d.ok is False
+    assert d.reason.startswith("dust_position")
+    # qty 應該被回報出來方便 telegram 顯示
+    assert "qty=5" in d.reason
+
+
+def test_sell_exactly_10_shares_passes(store):
+    """剛好 10 股應該通過（10 是 dust 的邊界）"""
+    gate = _make_gate(store, holding={"qty": 10, "avg_price": 800.0})
+    d = gate.allow(sector_id="semiconductor", symbol="2474.TW",
+                   action="SELL", qty_shares=10, limit_price=200.0)
+    assert d.ok is True
+
+
 def test_sell_ex_div_freeze_only_blocks_auto_stop(store):
     gate = _make_gate(store, holding={"qty": 1000, "avg_price": 800})
     with mock.patch("brokers.risk_gate.is_within_ex_div_freeze", return_value=True):

@@ -117,7 +117,7 @@ class RiskGate:
         if action == "BUY":
             return self._check_buy(sector_id, symbol, qty_shares, limit_price, today)
         elif action == "SELL":
-            return self._check_sell(sector_id, symbol, today, is_auto_stop)
+            return self._check_sell(sector_id, symbol, today, is_auto_stop, qty_shares)
         else:
             return RiskDecision(ok=False, reason=f"unknown_action:{action}")
 
@@ -191,10 +191,21 @@ class RiskGate:
         symbol: str,
         today: str,
         is_auto_stop: bool,
+        qty_shares: int = 0,
     ) -> RiskDecision:
         hold = self.position_provider(sector_id, symbol)
         if not hold or (hold.get("qty", 0) or 0) <= 0:
             return RiskDecision(ok=False, reason="no_position")
+
+        # Dust position：持倉 < 10 股，永豐不收（< 整股最低門檻）
+        # 這種尾數通常來自過去零股部分成交留下的渣，需要手動處理
+        current_qty = qty_shares if qty_shares > 0 else (hold.get("qty", 0) or 0)
+        if current_qty < 10:
+            return RiskDecision(
+                ok=False,
+                reason=f"dust_position_qty={current_qty}",
+                extra={"qty_shares_requested": current_qty},
+            )
 
         # 除權息凍結：只擋自動停損/停利；標準信號賣 / 趨勢破壞型賣不擋
         if is_auto_stop and is_within_ex_div_freeze(symbol, today):

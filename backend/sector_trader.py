@@ -681,15 +681,28 @@ class SectorTradingManager:
         return True
 
     def _handle_skipped(self, symbol: str, action: str, reason: str, *,
+                         qty: int = 0, price: float = 0.0,
                          needed: float = 0.0, available: float = 0.0,
                          signal_desc: str = "") -> None:
-        """RiskGate 拒單時的統一處理：JSONL log + Telegram 通知（below_min_lot 才通知，避免訊息洪水）"""
+        """RiskGate / broker 拒單時的統一處理：JSONL log + Telegram 通知。
+
+        通知策略：對影響可交易性的原因主動推播，並附上股票、價量、原因、觸發信號。
+          - below_min_lot / below_min_order_amount → 銀彈不足通知
+          - dust_position                          → 通知（持倉尾數無法賣，需要手動處理）
+          - daily_locked                           → kill-switch 通知（每日一次）
+          - broker_*                               → 券商異常通知
+          - pending_exists* / cooldown_* / over_*  → 不通知（routine reject）
+          - no_position / market_closed / holiday  → 不通知
+        """
         rec = {
             "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "sector_id": self.sector_id,
             "symbol": symbol,
             "action": action,
             "reason": reason,
+            "qty_shares": int(qty),
+            "limit_price": round(price, 2),
+            "order_amount_twd": round(qty * price, 0),
             "needed_twd": round(needed, 0),
             "available_twd": round(available, 0),
             "signal": signal_desc,
@@ -702,23 +715,25 @@ class SectorTradingManager:
         except Exception as e:
             logger.warning(f"skipped_trades log failed: {e}")
 
-        # 通知策略：
-        #   below_min_lot     → 主動通知（你需要決定是否加碼資金）
-        #   daily_locked      → 主動通知（kill-switch 觸發，重大事件）
-        #   broker_*          → 主動通知（券商側錯誤可能代表 wrapper 不相容、API 變動或網路問題，需立即關注）
-        #   pending_exists*   → 不通知（預期內的 dedup，避免訊息洪水）
-        #   cooldown_*        → 不通知（正常風控動作）
-        #   over_*/no_position/market_closed/holiday → 不通知（routine reject，靠 JSONL 即可）
         stock_name = self.stocks.get(symbol, symbol)
-        # 跟 notify_trade 一樣產生 Yahoo 股價連結
         code = symbol.replace(".TW", "").replace(".TWO", "")
         stock_url = f"https://tw.stock.yahoo.com/quote/{code}.TW"
+
+        # 共用的「動作+股數+價位+小計」資訊行
+        if qty > 0 and price > 0:
+            order_line = f"動作：{action} {qty:,} 股 @ ${price:,.2f}（小計 ${int(qty * price):,}）"
+        elif qty > 0:
+            order_line = f"動作：{action} {qty:,} 股"
+        else:
+            order_line = f"動作：{action}"
+
         if reason == "below_min_lot":
             if self._should_notify_once_today("below_min_lot", symbol):
                 send_telegram(
                     f"⚠️ <b>銀彈不足</b> [{self.sector_name}]\n"
                     f"標的：<a href=\"{stock_url}\">{stock_name}({code})</a>\n"
-                    f"買 10 股需 ~${int(needed):,}，目前現金 ~${int(available):,}\n"
+                    f"{order_line}\n"
+                    f"原因：股數 < 10（10 股需 ~${int(needed):,}，可用 ~${int(available):,}）\n"
                     f"觸發信號：{signal_desc}"
                 )
         elif reason.startswith("below_min_order_amount"):
@@ -726,11 +741,21 @@ class SectorTradingManager:
                 send_telegram(
                     f"⚠️ <b>銀彈不足</b> [{self.sector_name}]\n"
                     f"標的：<a href=\"{stock_url}\">{stock_name}({code})</a>\n"
-                    f"單筆下限 ~${int(needed):,}，目前現金 ~${int(available):,}\n"
+                    f"{order_line}\n"
+                    f"原因：金額低於單筆下限 ~${int(needed):,}（可用 ~${int(available):,}）\n"
+                    f"觸發信號：{signal_desc}"
+                )
+        elif reason.startswith("dust_position"):
+            if self._should_notify_once_today("dust_position", symbol):
+                send_telegram(
+                    f"⚠️ <b>持倉尾數無法賣出</b> [{self.sector_name}]\n"
+                    f"標的：<a href=\"{stock_url}\">{stock_name}({code})</a>\n"
+                    f"{order_line}\n"
+                    f"原因：持倉 {qty} 股 < 10 股下限（永豐不收）\n"
+                    f"請手動處理此 dust 部位\n"
                     f"觸發信號：{signal_desc}"
                 )
         elif reason.startswith("daily_locked"):
-            # kill-switch 是 sector 級事件，跨 symbol 共用一個 dedup key
             if self._should_notify_once_today("daily_locked", "*"):
                 send_telegram(
                     f"🛑 <b>每日 kill-switch 啟動</b>\n"
@@ -743,7 +768,7 @@ class SectorTradingManager:
                 send_telegram(
                     f"🚨 <b>券商下單異常</b> [{self.sector_name}]\n"
                     f"標的：<a href=\"{stock_url}\">{stock_name}({code})</a>\n"
-                    f"動作：{action}\n"
+                    f"{order_line}\n"
                     f"原因：{reason}\n"
                     f"觸發信號：{signal_desc}\n"
                     f"⚠️ 連續發生請檢查 Shioaji API 相容性 / 網路 / 帳號狀態"
@@ -798,6 +823,7 @@ class SectorTradingManager:
             if not decision.ok:
                 self._handle_skipped(
                     symbol, trade_type, decision.reason,
+                    qty=qty, price=price,
                     needed=decision.needed_twd, available=decision.available_twd,
                     signal_desc=signal_desc,
                 )
@@ -823,6 +849,7 @@ class SectorTradingManager:
                 # 另一個 thread 已經為同一 symbol 開了 in-flight 訂單；這次跳過
                 self._handle_skipped(
                     symbol, trade_type, "pending_exists_race",
+                    qty=qty, price=price,
                     signal_desc=signal_desc,
                 )
                 return False
@@ -842,16 +869,12 @@ class SectorTradingManager:
             logger.exception("broker.submit raised: %s", e.__class__.__name__)
             if self._state_store is not None:
                 self._state_store.remove_pending(client_order_id)
-            if self._should_notify_once_today("broker_error", symbol):
-                code = symbol.replace(".TW", "").replace(".TWO", "")
-                stock_url = f"https://tw.stock.yahoo.com/quote/{code}.TW"
-                stock_name = self.stocks.get(symbol, symbol)
-                send_telegram(
-                    f"❌ <b>下單例外</b> [{self.sector_name}]\n"
-                    f"標的：<a href=\"{stock_url}\">{stock_name}({code})</a>\n"
-                    f"{trade_type} qty={qty} price={price:.2f}\n"
-                    f"錯誤類型：{e.__class__.__name__}"
-                )
+            # 透過 _handle_skipped 走統一格式（含 dedup、price/qty）
+            self._handle_skipped(
+                symbol, trade_type, f"broker_exception:{e.__class__.__name__}",
+                qty=qty, price=price,
+                signal_desc=signal_desc,
+            )
             return False
         finally:
             # 確保 pending 在「成交/拒絕後同步點」之前一定會清掉（reconcile 也會兜底）
@@ -863,6 +886,7 @@ class SectorTradingManager:
                 self._state_store.remove_pending(client_order_id)
             self._handle_skipped(
                 symbol, trade_type, f"broker_{result.fill_status}:{result.reason}",
+                qty=qty, price=price,
                 signal_desc=signal_desc,
             )
             return False
