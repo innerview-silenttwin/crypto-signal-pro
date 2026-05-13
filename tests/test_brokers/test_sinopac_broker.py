@@ -113,6 +113,14 @@ class _FakeShioajiAPI:
         # 把訂單參數記到 trade，方便 assertion
         self._last_order_params = order.params
         self._last_contract = contract
+        # 支援測試「前 N 次 timeout、第 N+1 次成功」
+        if hasattr(self, "_place_order_timeouts_left") and self._place_order_timeouts_left > 0:
+            self._place_order_timeouts_left -= 1
+            raise TimeoutError("simulated Solace not ready")
+        if getattr(self, "_place_order_always_timeout", False):
+            raise TimeoutError("simulated persistent timeout")
+        if getattr(self, "_place_order_value_error", False):
+            raise ValueError("non-timeout error should not retry")
         return self._trade_to_return
 
     def cancel_order(self, trade):
@@ -141,6 +149,12 @@ class _FakeShioajiModule(types.ModuleType):
             cfg = self._next_api
             api._trade_to_return = cfg._trade_to_return
             api._login_should_fail = cfg._login_should_fail
+            # 把 retry test 用的 flags 也複製過去
+            for attr in ("_place_order_timeouts_left",
+                         "_place_order_always_timeout",
+                         "_place_order_value_error"):
+                if hasattr(cfg, attr):
+                    setattr(api, attr, getattr(cfg, attr))
         return api
 
 
@@ -295,3 +309,77 @@ def test_non_simulation_requires_ca(fake_shioaji):
     with pytest.raises(RuntimeError, match="CA"):
         SinopacBroker(api_key="x", secret_key="y", person_id="z",
                       simulation=False)
+
+
+# ── place_order retry tests ──
+
+def test_place_order_first_timeout_then_success(fake_shioaji, monkeypatch):
+    """第一次 timeout、第二次成功 → submit 應該成功，stats.retry_success +1"""
+    fake_shioaji._next_api = _FakeShioajiAPI()
+    fake_shioaji._next_api._trade_to_return = _FakeTrade("Filled", 1, 900.0)
+    fake_shioaji._next_api._place_order_timeouts_left = 1
+    # 加速測試：sleep 改 0
+    monkeypatch.setattr("brokers.sinopac.time.sleep", lambda *_: None)
+
+    b = _new_broker(fake_shioaji)
+    r = b.submit(symbol="2330.TW", action="BUY", qty_shares=1000,
+                 limit_price=900.0, client_order_id="x", sector_id="semiconductor")
+    assert r.ok is True
+    stats = b.get_stats()
+    assert stats["place_order_retry_success"] == 1
+    assert stats["place_order_success"] == 0
+    assert stats["place_order_failed"] == 0
+    assert stats["consecutive_failures"] == 0
+
+
+def test_place_order_persistent_timeout_fails(fake_shioaji, monkeypatch):
+    """連續 timeout → max_retries 用完仍失敗 → stats.failed +1, consecutive_failures +1"""
+    fake_shioaji._next_api = _FakeShioajiAPI()
+    fake_shioaji._next_api._place_order_always_timeout = True
+    monkeypatch.setattr("brokers.sinopac.time.sleep", lambda *_: None)
+
+    b = _new_broker(fake_shioaji)
+    r = b.submit(symbol="2330.TW", action="BUY", qty_shares=1000,
+                 limit_price=900.0, client_order_id="x", sector_id="semiconductor")
+    assert r.ok is False
+    assert r.fill_status == "rejected"
+    assert "place_order_error" in r.reason
+    stats = b.get_stats()
+    assert stats["place_order_failed"] == 1
+    assert stats["consecutive_failures"] == 1
+
+
+def test_place_order_non_timeout_not_retried(fake_shioaji, monkeypatch):
+    """ValueError 不是 timeout → 立刻 fail，不 retry。"""
+    fake_shioaji._next_api = _FakeShioajiAPI()
+    fake_shioaji._next_api._place_order_value_error = True
+    # 監控 sleep 不該被叫到（沒進 retry）
+    sleep_count = {"n": 0}
+    monkeypatch.setattr("brokers.sinopac.time.sleep",
+                        lambda *_: sleep_count.__setitem__("n", sleep_count["n"] + 1))
+
+    b = _new_broker(fake_shioaji)
+    r = b.submit(symbol="2330.TW", action="BUY", qty_shares=1000,
+                 limit_price=900.0, client_order_id="x", sector_id="semiconductor")
+    assert r.ok is False
+    assert sleep_count["n"] == 0   # 沒進 retry loop
+
+
+def test_consecutive_failures_reset_on_success(fake_shioaji, monkeypatch):
+    """失敗後成功 → consecutive_failures 應重置為 0"""
+    monkeypatch.setattr("brokers.sinopac.time.sleep", lambda *_: None)
+
+    fake_shioaji._next_api = _FakeShioajiAPI()
+    fake_shioaji._next_api._place_order_always_timeout = True
+    b = _new_broker(fake_shioaji)
+    b.submit(symbol="2330.TW", action="BUY", qty_shares=1000,
+             limit_price=900.0, client_order_id="x", sector_id="semiconductor")
+    assert b.get_stats()["consecutive_failures"] == 1
+
+    # 接下來一次成功
+    b.api._place_order_always_timeout = False
+    b.api._trade_to_return = _FakeTrade("Filled", 1, 900.0)
+    b.submit(symbol="2454.TW", action="BUY", qty_shares=1000,
+             limit_price=900.0, client_order_id="y", sector_id="semiconductor")
+    assert b.get_stats()["consecutive_failures"] == 0
+    assert b.get_stats()["place_order_success"] == 1

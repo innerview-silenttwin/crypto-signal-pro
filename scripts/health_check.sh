@@ -178,7 +178,27 @@ else
     echo "(沒有 skipped_trades.jsonl)"
 fi
 
-# ── 6. 設定檢查 ──
+# ── 6. Sinopac place_order 健康度（從 log 解析）──
+echo ""
+echo "▶ Sinopac place_order 健康度 (今日)"
+echo "─────────────────────────────────────────"
+LOG="$LOG_DIR/crypto-signal-pro.log"
+if [ -f "$LOG" ]; then
+    # log 沒按日期切，用 wc + grep 估今日（自服務啟動以來）
+    TIMEOUT_COUNT=$(grep -c "place_order timeout (attempt" "$LOG" 2>/dev/null || echo 0)
+    AFTER_RETRY_FAIL=$(grep -c "place_order timeout after.*attempts" "$LOG" 2>/dev/null || echo 0)
+    NOT_READY=$(grep -c "sol.cpp.*Not ready" "$LOG" 2>/dev/null || echo 0)
+    SESSION_UP=$(grep -c "Event: Session up" "$LOG" 2>/dev/null || echo 0)
+    echo "  Solace 'Session up' 次數: $SESSION_UP（健康 1-2 次；> 5 表示連線抖動）"
+    echo "  Solace 'Not ready' 錯誤: $NOT_READY"
+    echo "  place_order timeout（觸發 retry）: $TIMEOUT_COUNT"
+    echo "  retry 後仍失敗: $AFTER_RETRY_FAIL"
+    if [ "$AFTER_RETRY_FAIL" -gt 0 ]; then
+        echo "  ⚠️  仍有 $AFTER_RETRY_FAIL 筆完全失敗，請檢查永豐 simulation 主機狀態"
+    fi
+fi
+
+# ── 7. 設定檢查 ──
 echo ""
 echo "▶ Broker 模式設定 (.env)"
 echo "─────────────────────────────────────────"

@@ -102,10 +102,102 @@ class SinopacBroker:
         # in-flight: client_order_id → Trade 物件（shioaji 用）
         self._in_flight: dict[str, object] = {}
 
+        # place_order 統計 + 連續失敗計數（in-memory；process 重啟會 reset）
+        # 用於：health_check 顯示、連續 N 次失敗發 Telegram 警告
+        self._stats_lock = threading.Lock()
+        self._stats = {
+            "place_order_success": 0,        # 一發即成功
+            "place_order_retry_success": 0,  # retry 後成功
+            "place_order_failed": 0,         # retry 後仍失敗
+        }
+        self._consecutive_failures = 0       # 全 sector 連續失敗計數
+        self._last_failure_alert_at = 0.0    # 上次發警告時間（避免洗版）
+
         logger.info(
             "SinopacBroker ready (simulation=%s, fill_timeout=%ds)",
             self._simulation, self._fill_timeout_s,
         )
+
+    # ── 統計 (給 health_check / 外部觀察) ──
+    def get_stats(self) -> dict:
+        with self._stats_lock:
+            return dict(self._stats, consecutive_failures=self._consecutive_failures)
+
+    def _place_order_with_retry(self, contract, order, max_retries: int = 1,
+                                 retry_sleep_s: float = 2.0):
+        """包裝 api.place_order — TimeoutError 自動 retry 1 次。
+
+        為什麼要 retry？
+          - Solace MQ session 偶爾會掉到 "Not ready" 狀態（永豐 simulation 主機側問題）
+          - 此時 place_order 會丟 TimeoutError
+          - 通常 2 秒後 Solace 自動重連，再試一次往往成功
+
+        Args:
+            max_retries: 額外重試次數（不含第一次）。預設 1 → 最多 2 次嘗試
+            retry_sleep_s: 失敗後等待秒數，讓 Solace 重連
+
+        Returns:
+            (trade, retry_used: bool) — retry_used 表示是否用到 retry 才成功
+
+        Raises:
+            最後一次 attempt 的例外（不吞）
+        """
+        last_err = None
+        for attempt in range(max_retries + 1):
+            try:
+                trade = self.api.place_order(contract, order)
+                return trade, (attempt > 0)
+            except Exception as e:
+                last_err = e
+                err_name = e.__class__.__name__
+                # 只有 timeout 類錯誤才重試；其他直接 raise
+                if "Timeout" not in err_name:
+                    raise
+                if attempt < max_retries:
+                    logger.warning(
+                        "place_order timeout (attempt %d/%d), sleep %.1fs then retry",
+                        attempt + 1, max_retries + 1, retry_sleep_s,
+                    )
+                    time.sleep(retry_sleep_s)
+                else:
+                    logger.error(
+                        "place_order timeout after %d attempts",
+                        max_retries + 1,
+                    )
+        # 不會到這（finally raise），保險
+        raise last_err if last_err else RuntimeError("unknown place_order failure")
+
+    def _on_place_order_success(self, retry_used: bool) -> None:
+        """成功時更新統計、重置連續失敗計數。"""
+        with self._stats_lock:
+            if retry_used:
+                self._stats["place_order_retry_success"] += 1
+            else:
+                self._stats["place_order_success"] += 1
+            self._consecutive_failures = 0
+
+    def _on_place_order_failure(self) -> None:
+        """失敗時更新統計、累計連續失敗；連續 ≥ 3 次發 Telegram 警告（每 10 分鐘最多一次）。"""
+        with self._stats_lock:
+            self._stats["place_order_failed"] += 1
+            self._consecutive_failures += 1
+            count = self._consecutive_failures
+            now = time.time()
+            should_alert = (count >= 3 and (now - self._last_failure_alert_at) > 600)
+            if should_alert:
+                self._last_failure_alert_at = now
+        if should_alert:
+            try:
+                # lazy import 避免 broker 模組依賴 notifier
+                from notifier import send_telegram
+                send_telegram(
+                    f"🚨 <b>Sinopac 連線異常</b>\n"
+                    f"place_order 連續失敗 {count} 次\n"
+                    f"可能是 Solace session 掛了 / 永豐 simulation 主機問題\n"
+                    f"系統會持續重試；若仍持續發生請手動 csp restart"
+                )
+            except Exception as e:
+                logger.warning("Telegram alert failed: %s", e.__class__.__name__)
 
     # ── callback（safe to be called from another thread）──
 
@@ -170,10 +262,12 @@ class SinopacBroker:
 
         with self._lock:
             try:
-                trade = self.api.place_order(contract, order)
+                trade, retry_used = self._place_order_with_retry(contract, order)
             except Exception as e:
                 logger.error("place_order failed: %s", e.__class__.__name__)
+                self._on_place_order_failure()
                 return BrokerResult(ok=False, fill_status="rejected", reason="place_order_error")
+            self._on_place_order_success(retry_used)
             self._in_flight[client_order_id] = trade
 
         # 取得 broker order id（避免 callback 競態：盡量早記錄）
