@@ -374,9 +374,14 @@ class SectorTradingManager:
         unrealized_loss = 0.0
         holdings_detail = {}
 
+        import math
         for symbol, hold in self.state["holdings"].items():
             if hold["qty"] > 0:
                 cur_price = current_prices.get(symbol, hold["avg_price"])
+                # NaN 守衛：若 yfinance 回傳 NaN（下市/抓不到資料），fallback 到 avg_price
+                # 不擋下整個 sector summary 因為一檔資料異常就 500
+                if cur_price is None or (isinstance(cur_price, float) and math.isnan(cur_price)):
+                    cur_price = float(hold.get("avg_price") or 0)
                 market_value = hold["qty"] * cur_price
                 # 買進總成本（含手續費）：優先用 total_cost，舊資料則估算
                 total_cost = hold.get("total_cost", hold["qty"] * hold["avg_price"] + round(hold["qty"] * hold["avg_price"] * 0.001425))
@@ -498,6 +503,10 @@ class SectorTradingManager:
                 lot_rec = chrono[lot[0]]
                 lot_id = id(lot_rec)
                 cur_price = current_prices.get(sym, lot_rec["price"])
+                # NaN 守衛：避免 round(NaN) 拋 ValueError
+                import math as _math
+                if cur_price is None or (isinstance(cur_price, float) and _math.isnan(cur_price)):
+                    cur_price = float(lot_rec.get("price") or 0)
                 market_value = lot[1] * cur_price
                 sell_fee = round(market_value * 0.001425)
                 sell_tax = round(market_value * 0.003)
