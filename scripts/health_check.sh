@@ -157,7 +157,7 @@ echo "▶ 今日 RiskGate 擋下的單 (skipped_trades.jsonl)"
 echo "─────────────────────────────────────────"
 SKIPPED="$DATA_DIR/skipped_trades.jsonl"
 if [ -f "$SKIPPED" ]; then
-    TODAY_COUNT=$(grep -c "$TODAY" "$SKIPPED" 2>/dev/null || echo 0)
+    TODAY_COUNT=$(grep -c "$TODAY" "$SKIPPED" 2>/dev/null || true)
     echo "📊 今日被擋: $TODAY_COUNT 筆"
     if [ "$TODAY_COUNT" -gt 0 ]; then
         grep "$TODAY" "$SKIPPED" | tail -10 | python3 -c "
@@ -186,10 +186,10 @@ LOG="$LOG_DIR/crypto-signal-pro.log"
 if [ -f "$LOG" ]; then
     # log 沒按日期切，用 grep 估自服務啟動以來
     # 用 ${VAR:-0} 預設值避免 set -u 撞 unbound、用 ${} braces 隔開全形字元
-    TIMEOUT_COUNT=$(grep -c "place_order timeout (attempt" "$LOG" 2>/dev/null || echo 0)
-    AFTER_RETRY_FAIL=$(grep -c "place_order timeout after.*attempts" "$LOG" 2>/dev/null || echo 0)
-    NOT_READY=$(grep -c "sol.cpp.*Not ready" "$LOG" 2>/dev/null || echo 0)
-    SESSION_UP=$(grep -c "Event: Session up" "$LOG" 2>/dev/null || echo 0)
+    TIMEOUT_COUNT=$(grep -c "place_order timeout (attempt" "$LOG" 2>/dev/null || true)
+    AFTER_RETRY_FAIL=$(grep -c "place_order timeout after.*attempts" "$LOG" 2>/dev/null || true)
+    NOT_READY=$(grep -c "sol.cpp.*Not ready" "$LOG" 2>/dev/null || true)
+    SESSION_UP=$(grep -c "Event: Session up" "$LOG" 2>/dev/null || true)
     echo "  Solace 'Session up' 次數: ${SESSION_UP:-0}（健康 1-2 次；> 5 表示連線抖動）"
     echo "  Solace 'Not ready' 錯誤: ${NOT_READY:-0}"
     echo "  place_order timeout（觸發 retry）: ${TIMEOUT_COUNT:-0}"
