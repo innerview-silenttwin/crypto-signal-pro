@@ -1197,6 +1197,8 @@
                         btn.classList.add('active');
                         renderSector();
                         refreshHistory();
+                        refreshRegime();
+                        refreshFundamental();
                     };
                 });
             }
@@ -1230,6 +1232,7 @@
             }
 
             async function refreshHistory() {
+                const reqSector = currentSector;
                 try {
                     const startDate = document.getElementById('filter-start').value || '';
                     const endDate = document.getElementById('filter-end').value || '';
@@ -1242,8 +1245,9 @@
                         ...(symbol && { symbol }),
                         ...(tradeType && { tradeType }),
                     });
-                    const res = await fetch(API + `/api/sector-trading/${currentSector}/history?${params}`);
+                    const res = await fetch(API + `/api/sector-trading/${reqSector}/history?${params}`);
                     const data = await res.json();
+                    if (reqSector !== currentSector) return;
                     renderHistory(data);
                 } catch (e) { }
             }
@@ -1282,9 +1286,11 @@
             }
 
             async function refreshRegime() {
+                const reqSector = currentSector;
                 try {
-                    const res = await fetch(API + `/api/sector-trading/${currentSector}/regime`);
+                    const res = await fetch(API + `/api/sector-trading/${reqSector}/regime`);
                     const data = await res.json();
+                    if (reqSector !== currentSector) return;
                     renderRegime(data);
                 } catch (e) {
                     console.error('refreshRegime error:', e);
@@ -1349,9 +1355,11 @@
             };
 
             async function refreshFundamental() {
+                const reqSector = currentSector;
                 try {
-                    const res = await fetch(API + `/api/sector-trading/${currentSector}/fundamental`);
+                    const res = await fetch(API + `/api/sector-trading/${reqSector}/fundamental`);
                     const data = await res.json();
+                    if (reqSector !== currentSector) return;
                     renderFundamental(data);
                 } catch (e) {
                     console.error('refreshFundamental error:', e);
