@@ -941,6 +941,7 @@ class SectorTradingManager:
             notify_trade(
                 self.sector_name, symbol, self.stocks.get(symbol, symbol),
                 "BUY", actual_price, actual_qty, signal_desc,
+                broker=broker.name,
             )
         else:
             print(
@@ -951,6 +952,7 @@ class SectorTradingManager:
                 self.sector_name, symbol, self.stocks.get(symbol, symbol),
                 "SELL", actual_price, actual_qty, signal_desc,
                 profit=profit_twd, profit_pct=profit_pct,
+                broker=broker.name,
             )
         return True
 

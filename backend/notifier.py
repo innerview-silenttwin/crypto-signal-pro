@@ -81,7 +81,7 @@ def send_telegram(message: str) -> bool:
 def notify_trade(sector_name: str, symbol: str, stock_name: str,
                  trade_type: str, price: float, qty: int,
                  signal_desc: str, profit: float = None,
-                 profit_pct: float = None) -> bool:
+                 profit_pct: float = None, broker: str = "") -> bool:
     """交易通知格式化並發送
 
     Args:
@@ -94,6 +94,7 @@ def notify_trade(sector_name: str, symbol: str, stock_name: str,
         signal_desc: 信號描述
         profit: 已實現損益（賣出時才有）
         profit_pct: 已實現損益百分比（賣出時才有）
+        broker: broker 名稱（"sinopac" / "virtual"），用來標註交易來源
     """
     emoji = "\U0001f7e2" if trade_type == "BUY" else "\U0001f534"
     action = "買入" if trade_type == "BUY" else "賣出"
@@ -102,8 +103,16 @@ def notify_trade(sector_name: str, symbol: str, stock_name: str,
     code = symbol.replace(".TW", "").replace(".TWO", "")
     stock_url = f"https://tw.stock.yahoo.com/quote/{code}.TW"
 
+    # 來源標籤：永豐單明確標出來、虛擬單低調標
+    if broker == "sinopac":
+        source_tag = "🏦 永豐 simulation"
+    elif broker == "virtual":
+        source_tag = "📒 系統虛擬"
+    else:
+        source_tag = ""
+
     lines = [
-        f"{emoji} <b>{action}通知</b> [{sector_name}]",
+        f"{emoji} <b>{action}通知</b> [{sector_name}]" + (f" · {source_tag}" if source_tag else ""),
         f"標的：<a href=\"{stock_url}\">{stock_name}({code})</a>",
         f"價格：{price:.2f} × {qty}股",
         f"金額：${amount:,}",
