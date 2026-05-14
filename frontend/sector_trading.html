@@ -1591,9 +1591,20 @@
                     body.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:30px">暫無交易紀錄</td></tr>';
                 } else {
                     body.innerHTML = data.data.map(h => {
+                        const fmtPct = (p) => (p == null) ? '' : ` <small style="color:var(--text-muted)">(${p >= 0 ? '+' : ''}${p.toFixed(2)}%)</small>`;
+                        if (h.type === 'DEPOSIT' || h.type === 'WITHDRAW') {
+                            const amt = h.amount || 0;
+                            const isIn = h.type === 'DEPOSIT';
+                            const color = isIn ? 'var(--buy-color)' : 'var(--sell-color)';
+                            return `<tr style="background:rgba(148,163,184,0.04)">
+                                <td>${h.time}</td>
+                                <td colspan="4" style="color:var(--text-muted)">${isIn ? '加碼本金' : '提領'} <small>${h.signal || ''}</small></td>
+                                <td><span style="color:${color}; font-weight:700">${isIn ? '+' : '-'}${Math.abs(amt).toLocaleString()}</span></td>
+                                <td style="font-size:11px; color:var(--text-muted)">餘額: ${(h.balance_after || 0).toLocaleString()}</td>
+                            </tr>`;
+                        }
                         const isBuy = h.type === 'BUY';
                         let plText;
-                        const fmtPct = (p) => (p == null) ? '' : ` <small style="color:var(--text-muted)">(${p >= 0 ? '+' : ''}${p.toFixed(2)}%)</small>`;
                         if (isBuy) {
                             if (h.pnl_status && h.pnl_status !== 'realized') {
                                 const pnl = h.pnl || 0;
