@@ -30,23 +30,22 @@ def _make_gate(store, *, equity=2_000_000.0, balance=2_000_000.0, position=None,
 
 # ── BUY 規則 ──
 
-def test_buy_below_min_lot_under_10_shares(store):
-    """qty_shares < 10 → below_min_lot；零股下限是 10 股。"""
+def test_buy_below_min_lot_zero_shares(store):
+    """qty_shares < 1 → below_min_lot（永豐零股支援 1+ 股）"""
     gate = _make_gate(store)
     d = gate.allow(sector_id="semiconductor", symbol="2330.TW",
-                   action="BUY", qty_shares=9, limit_price=1845.0)
+                   action="BUY", qty_shares=0, limit_price=1845.0)
     assert d.ok is False
     assert d.reason == "below_min_lot"
-    # needed_twd ≈ 買 10 股 + 手續費
-    assert 10 * 1845.0 < d.needed_twd < 10 * 1845.0 * 1.01
+    # needed_twd ≈ 買 1 股 + 手續費
+    assert 1845.0 <= d.needed_twd < 1845.0 * 1.01
 
 
 def test_buy_odd_lot_allowed(store):
-    """108 股（< 1000）以前會被 below_min_lot 擋；零股開放後 ≥10 股應通過此規則。"""
+    """零股 ≥1 股應通過此規則（可能因 over_max_order / min_order_amount 等其他規則擋）"""
     gate = _make_gate(store)
     d = gate.allow(sector_id="semiconductor", symbol="2330.TW",
                    action="BUY", qty_shares=108, limit_price=1845.0)
-    # 不應因股數不足 1 張而被擋；可能因 over_max_order 等其他規則擋（看 cfg）
     assert d.reason != "below_min_lot"
 
 
@@ -194,22 +193,21 @@ def test_sell_no_position_blocks(store):
     assert d.reason == "no_position"
 
 
-def test_sell_dust_position_blocks(store):
-    """持倉 < 10 股（dust）→ 永豐不收，RiskGate 應主動擋下並標記原因"""
-    gate = _make_gate(store, holding={"qty": 5, "avg_price": 800.0})
+def test_sell_dust_position_zero_blocks(store):
+    """持倉 0 股（完全無 dust 可賣）→ 應該擋下"""
+    gate = _make_gate(store, holding={"qty": 0, "avg_price": 800.0})
     d = gate.allow(sector_id="semiconductor", symbol="2474.TW",
-                   action="SELL", qty_shares=5, limit_price=200.0)
+                   action="SELL", qty_shares=0, limit_price=200.0)
     assert d.ok is False
-    assert d.reason.startswith("dust_position")
-    # qty 應該被回報出來方便 telegram 顯示
-    assert "qty=5" in d.reason
+    # qty=0 會走 no_position 路徑（hold.qty <= 0），不是 dust_position
+    assert d.reason == "no_position"
 
 
-def test_sell_exactly_10_shares_passes(store):
-    """剛好 10 股應該通過（10 是 dust 的邊界）"""
-    gate = _make_gate(store, holding={"qty": 10, "avg_price": 800.0})
+def test_sell_one_share_passes(store):
+    """1 股應該通過（永豐零股支援 1+ 股）"""
+    gate = _make_gate(store, holding={"qty": 1, "avg_price": 800.0})
     d = gate.allow(sector_id="semiconductor", symbol="2474.TW",
-                   action="SELL", qty_shares=10, limit_price=200.0)
+                   action="SELL", qty_shares=1, limit_price=200.0)
     assert d.ok is True
 
 

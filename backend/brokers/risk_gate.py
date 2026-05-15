@@ -129,10 +129,11 @@ class RiskGate:
         limit_price: float,
         today: str,
     ) -> RiskDecision:
-        # 5a. 股數下限：允許零股，但至少 10 股；買不到 10 股才擋
-        if qty_shares < 10:
+        # 5a. 股數下限：永豐零股支援到 1 股；買不到 1 股才擋
+        # TODO(Phase 2 真錢): 真錢上線前可考慮改回 ≥10 避免不經濟的 dust 買入
+        if qty_shares < 1:
             equity, balance = self.equity_provider(sector_id)
-            needed = 10 * limit_price * 1.001425  # 買 10 股的成本（含手續費）
+            needed = limit_price * 1.001425  # 買 1 股的成本（含手續費）
             return RiskDecision(
                 ok=False,
                 reason="below_min_lot",
@@ -197,10 +198,10 @@ class RiskGate:
         if not hold or (hold.get("qty", 0) or 0) <= 0:
             return RiskDecision(ok=False, reason="no_position")
 
-        # Dust position：持倉 < 10 股，永豐不收（< 整股最低門檻）
-        # 這種尾數通常來自過去零股部分成交留下的渣，需要手動處理
+        # Dust position：持倉 < 1 股才擋（永豐零股最少 1 股）
+        # TODO(Phase 2 真錢): 真錢上線前可考慮改回 < 10，避免無意義的 dust SELL
         current_qty = qty_shares if qty_shares > 0 else (hold.get("qty", 0) or 0)
-        if current_qty < 10:
+        if current_qty < 1:
             return RiskDecision(
                 ok=False,
                 reason=f"dust_position_qty={current_qty}",

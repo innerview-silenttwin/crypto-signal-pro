@@ -221,9 +221,10 @@ class SinopacBroker:
         sector_id: str,
         signal_desc: str = "",
     ) -> BrokerResult:
-        # 股數至少 10 股；< 1000 走盤中零股 (IntradayOdd)，>= 1000 走整股 (Common)
+        # 股數至少 1 股；< 1000 走盤中零股 (IntradayOdd)，>= 1000 走整股 (Common)
         # 不做混合（>=1000 + 餘數零股），實際 qty_shares 帶整千的部分過去；零股走 odd
-        if qty_shares < 10:
+        # TODO(Phase 2 真錢): 真錢上線前，考慮把這條改回 ≥10，避免不經濟的 dust 交易
+        if qty_shares < 1:
             return BrokerResult(
                 ok=False,
                 fill_status="rejected",
