@@ -521,8 +521,12 @@ class SectorTradingManager:
                                        "sold_qty": 0, "total_qty": lot_rec["qty"]}
 
         # 將 pnl 資訊寫入副本（不改原始 history）
+        # 過濾掉非 BUY/SELL（例如 SYNC、DEPOSIT）— 這些是內部記帳，前端不顯示
+        # 若要看 audit log，去 JSON 看原始 history
         annotated = []
         for rec in history:
+            if rec.get("type", "") not in ("BUY", "SELL"):
+                continue
             rec_copy = dict(rec)
             info = pnl_map.get(id(rec))
             if info and rec["type"] == "BUY":
