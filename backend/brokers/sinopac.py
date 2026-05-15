@@ -321,13 +321,8 @@ class SinopacBroker:
             final_status = self._read_trade_status(trade)
         deal_qty = final_status.get("deal_quantity") or 0
         if deal_qty > 0:
-            # 部分成交：取消剩餘 + 回報 partial
-            try:
-                with self._lock:
-                    self.api.cancel_order(trade)
-                    self._in_flight.pop(client_order_id, None)
-            except Exception as e:
-                logger.warning("cancel after partial fill failed: %s", e.__class__.__name__)
+            # 部分成交：取消剩餘 + 回報 partial（套 timeout 防止 hang）
+            self._safe_cancel(trade, client_order_id, label="partial")
             actual_price = float(final_status.get("avg_price") or limit_price)
             return BrokerResult(
                 ok=True,
@@ -337,13 +332,8 @@ class SinopacBroker:
                 fill_status="partial",
             )
 
-        # timeout → cancel
-        try:
-            with self._lock:
-                self.api.cancel_order(trade)
-                self._in_flight.pop(client_order_id, None)
-        except Exception as e:
-            logger.warning("cancel after timeout failed: %s", e.__class__.__name__)
+        # timeout → cancel（套 timeout 防止 Solace 不穩時永久 hang）
+        self._safe_cancel(trade, client_order_id, label="timeout")
         return BrokerResult(
             ok=False,
             fill_status="timeout",
@@ -433,6 +423,47 @@ class SinopacBroker:
             return ol == self._sj.constant.StockOrderLot.IntradayOdd
         except Exception:
             return False
+
+    def _safe_cancel(self, trade, client_order_id: str, *, label: str,
+                     timeout_s: float = 5.0) -> bool:
+        """套 timeout 包裝 api.cancel_order，避免 Solace 不穩時 cancel 永久 hang。
+
+        Args:
+            label: 給 log 辨識的標籤（"timeout" / "partial" / "external"）
+            timeout_s: cancel 最多等多久；超過就放棄等待（thread 仍在背景跑）
+
+        Returns:
+            True 表示 cancel 成功且 in-flight 已清；False 表示掛掉或 timeout
+        """
+        result = {"ok": False, "err": None}
+
+        def _do_cancel():
+            try:
+                with self._lock:
+                    self.api.cancel_order(trade)
+                    self._in_flight.pop(client_order_id, None)
+                result["ok"] = True
+            except Exception as e:
+                result["err"] = e.__class__.__name__
+
+        t = threading.Thread(target=_do_cancel, daemon=True,
+                             name=f"sinopac-cancel-{label}-{client_order_id[:8]}")
+        t.start()
+        t.join(timeout=timeout_s)
+        if t.is_alive():
+            # cancel 仍在等回應 → 不再等，留在背景跑（會 leak thread 但不會 leak pending）
+            logger.warning(
+                "cancel after %s timed out (>%ds), abandoning to background",
+                label, int(timeout_s),
+            )
+            # 主動把 in-flight 清掉（即使 cancel 沒成功，至少我們系統不再追蹤）
+            with self._lock:
+                self._in_flight.pop(client_order_id, None)
+            return False
+        if result["err"]:
+            logger.warning("cancel after %s failed: %s", label, result["err"])
+            return False
+        return True
 
     def _resolve_contract(self, symbol: str):
         """symbol 形如 '2330.TW'；取出 4 碼代號，找 self.api.Contracts.Stocks."""

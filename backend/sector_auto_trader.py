@@ -890,7 +890,9 @@ class SectorAutoTrader:
         return market_hours.is_signal_window()
 
     def _reconcile_brokers(self) -> None:
-        """同步所有 broker 的 in-flight 訂單。重啟後或 partial fill 兜底用。"""
+        """同步所有 broker 的 in-flight 訂單。重啟後或 partial fill 兜底用。
+        順便清理 state_store 內超過 2× fill_timeout 還沒回的 stale pending（broker submit hang 造成）。
+        """
         if not self._broker_setup:
             return
         for sid, broker in self._broker_setup.brokers_by_sector.items():
@@ -900,6 +902,29 @@ class SectorAutoTrader:
                     logger.info("[reconcile] %s: %d 筆 in-flight 訂單已完成", sid, len(completed))
             except Exception as e:
                 logger.warning("[reconcile] %s failed: %s", sid, e.__class__.__name__)
+
+        # stale pending 清理（跨 sector 統一掃）
+        store = self._broker_setup.state_store
+        # 取 max fill_timeout × 2 + 30 秒緩衝 作為 stale 門檻
+        max_fill_timeout = 30  # 預設；若 broker 有暴露 fill_timeout_s 可動態查
+        for b in self._broker_setup.brokers_by_sector.values():
+            t = getattr(b, "_fill_timeout_s", 0)
+            if t and t > max_fill_timeout:
+                max_fill_timeout = t
+        stale_threshold = max_fill_timeout * 2 + 30
+        now_ts = time.time()
+        try:
+            for p in list(store.list_pending()):
+                age = now_ts - (p.submitted_at or now_ts)
+                if age > stale_threshold:
+                    logger.warning(
+                        "[reconcile] stale pending %s (%s %s %d股 @%.2f) age=%.0fs > %ds, force removing",
+                        p.client_order_id, p.symbol, p.action, p.qty_shares, p.limit_price,
+                        age, stale_threshold,
+                    )
+                    store.remove_pending(p.client_order_id)
+        except Exception as e:
+            logger.warning("[reconcile] stale pending cleanup failed: %s", e.__class__.__name__)
 
     def _run_once(self):
         """執行一輪所有類股檢查"""
