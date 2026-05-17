@@ -53,38 +53,55 @@ _REV_RETRY_COOLDOWN = 300
 _rev_last_api_attempt: float = 0.0
 
 
-def _load_fundamental_cache(filepath: str) -> dict:
-    """從本地檔案讀取快取"""
-    if os.path.exists(filepath):
-        try:
-            with open(filepath, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {}
+def _load_fundamental_cache(filepath: str) -> tuple[dict, float]:
+    """從本地檔案讀取快取，回 (data, fetched_at_unix_ts)。
+
+    向下相容：舊格式檔內只有 data dict（沒 wrapper），讀回 ts=0 表示「未知時間」。
+    新格式：{"data": {...}, "time": 12345.67}
+    """
+    if not os.path.exists(filepath):
+        return {}, 0.0
+    try:
+        with open(filepath, "r", encoding="utf-8") as f:
+            obj = json.load(f)
+        # 新格式：有 data + time
+        if isinstance(obj, dict) and "data" in obj and "time" in obj:
+            return obj["data"] or {}, float(obj.get("time", 0))
+        # 舊格式：整個就是 data dict
+        if isinstance(obj, dict):
+            return obj, 0.0
+    except Exception:
+        pass
+    return {}, 0.0
 
 
-def _save_fundamental_cache(filepath: str, data: dict):
-    """將快取寫入本地檔案"""
+def _save_fundamental_cache(filepath: str, data: dict, fetched_at: float = None):
+    """將快取寫入本地檔案，含 fetched_at 時間戳用於 staleness 判斷"""
     try:
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        payload = {"data": data, "time": float(fetched_at if fetched_at is not None else time.time())}
         with open(filepath, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False)
+            json.dump(payload, f, ensure_ascii=False)
     except Exception as e:
         logger.warning(f"基本面快取寫入失敗 ({filepath}): {e}")
 
 
 def _preload_fundamental_caches():
-    """啟動時從本地檔案預載 P/E 和營收快取，確保 API 失敗時仍有資料可用"""
+    """啟動時從本地檔案預載 P/E 和營收快取，確保 API 失敗時仍有資料可用。
+    時間戳從檔案還原，用於後續 staleness guard 判斷資料是否過舊。
+    """
     for cache, filepath, label in [
         (_pe_cache, _PE_CACHE_FILE, "P/E"),
         (_rev_cache, _REV_CACHE_FILE, "營收"),
     ]:
-        saved = _load_fundamental_cache(filepath)
+        saved, fetched_at = _load_fundamental_cache(filepath)
         if saved:
             cache["data"] = saved
-            cache["time"] = 0  # 標記為過期，下次呼叫會嘗試更新
-            logger.info(f"基本面 {label}：從本地快取預載 {len(saved)} 筆")
+            # 還原磁碟記錄的「上次成功 fetch 時間」（舊格式檔無此資訊 → 0）
+            cache["time"] = fetched_at
+            cache["fetched_at"] = fetched_at   # 額外保留，避免 cache["time"] 被 hot-fetch 蓋掉
+            age_days = (time.time() - fetched_at) / 86400 if fetched_at > 0 else -1
+            logger.info(f"基本面 {label}：從本地快取預載 {len(saved)} 筆 (age={age_days:.1f}d)")
 
 
 _preload_fundamental_caches()
@@ -121,7 +138,8 @@ def fetch_twse_revenue_all() -> Dict[str, dict]:
         if result:
             _rev_cache["data"] = result
             _rev_cache["time"] = now
-            _save_fundamental_cache(_REV_CACHE_FILE, result)
+            _rev_cache["fetched_at"] = now   # 用於 staleness guard
+            _save_fundamental_cache(_REV_CACHE_FILE, result, fetched_at=now)
             logger.info(f"TWSE 營收資料已更新: {len(result)} 筆")
             return result
     except Exception as e:
@@ -182,7 +200,8 @@ def fetch_twse_pe_all() -> Dict[str, dict]:
             if result:
                 _pe_cache["data"] = result
                 _pe_cache["time"] = now
-                _save_fundamental_cache(_PE_CACHE_FILE, result)
+                _pe_cache["fetched_at"] = now   # 用於 staleness guard
+                _save_fundamental_cache(_PE_CACHE_FILE, result, fetched_at=now)
                 logger.info(f"TWSE P/E 資料已更新 (OpenAPI): {len(result)} 筆")
                 return result
     except Exception as e:
@@ -434,6 +453,17 @@ class FundamentalLayer(BaseLayer):
         if not all_pe:
             return LayerModifier(layer_name=self.name, active=False,
                                  reason="無法取得 TWSE P/E 資料")
+
+        # ── Staleness guard：基本面資料 > 14 天舊 → 不參與評分 ──
+        # Why: 基本面 cache 抓失敗時會 fallback 到磁碟快取，可能是好幾週前資料；
+        #     繼續套乘數會用過時資料做交易決定。寧可關掉這層也不要靜默誤導。
+        FUND_MAX_STALE_DAYS = 14
+        pe_age_s = time.time() - float(_pe_cache.get("fetched_at", 0) or 0)
+        if _pe_cache.get("fetched_at", 0) > 0 and pe_age_s > FUND_MAX_STALE_DAYS * 86400:
+            return LayerModifier(
+                layer_name=self.name, active=False,
+                reason=f"基本面資料過舊（{pe_age_s/86400:.0f} 天 > {FUND_MAX_STALE_DAYS} 天上限），暫不參與評分",
+            )
 
         code = _strip_tw(symbol)
         info = all_pe.get(code)

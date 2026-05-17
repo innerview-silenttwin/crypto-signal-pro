@@ -638,6 +638,28 @@ class ChipFlowLayer(BaseLayer):
                 reason=f"{symbol} 無籌碼資料",
             )
 
+        # ── Staleness guard：法人資料 > 3 天舊 → 不參與評分 ──
+        # Why: TWSE OpenAPI 失敗 / FinMind 失敗 → fallback 到磁碟快取，可能是上週資料。
+        #     用 stale 法人資料做交易決定（買賣超方向已過時）會誤導。寧可關掉。
+        CHIP_MAX_STALE_DAYS = 3
+        latest_date = summary.get("latest_date", "")
+        if latest_date:
+            try:
+                from datetime import datetime as _dt
+                import pytz as _pytz
+                latest_dt = _dt.strptime(latest_date, "%Y-%m-%d").date()
+                today_tw = _dt.now(_pytz.timezone("Asia/Taipei")).date()
+                age_days = (today_tw - latest_dt).days
+                if age_days > CHIP_MAX_STALE_DAYS:
+                    return LayerModifier(
+                        layer_name=self.name, active=False,
+                        reason=f"籌碼資料過舊（最新 {latest_date}，距今 {age_days} 天 > {CHIP_MAX_STALE_DAYS} 天上限），暫不參與評分",
+                        details={"latest_date": latest_date, "age_days": age_days},
+                    )
+            except Exception:
+                # 日期格式異常不擋，繼續走原流程（避免一個解析失敗 kill 整個層）
+                pass
+
         # 計算籌碼分數
         chip = compute_chip_score(summary)
         score = chip["score"]

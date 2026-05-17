@@ -226,6 +226,8 @@ async def startup_event():
     asyncio.create_task(preload_tw_ticker_data())
     # 每日 14:35 自動刷新台股 ticker 資料（避免資料停滯）
     asyncio.create_task(daily_tw_data_refresh())
+    # 每日 08:30 盤前資料健康檢查（K 線、基本面新鮮度 → Telegram）
+    asyncio.create_task(premarket_data_health_check())
     # 主動 ETF 持股分數獨立刷新（每 4 小時，避免被 daily-refresh 拖累或漏跑）
     asyncio.create_task(active_etf_refresh_worker())
     # 背景消化過期 CSV 刷新佇列（用戶訪問時觸發）
@@ -340,6 +342,136 @@ async def daily_tw_data_refresh():
             print("[daily-refresh] Daily TW stock data refresh complete.")
         else:
             print("[daily-refresh] Weekend, skipping TW data refresh.")
+
+
+async def premarket_data_health_check():
+    """每個交易日 08:30（盤前 30 分鐘）檢查所有資料新鮮度，發 Telegram 報告。
+
+    檢查項目：
+      1. K 線（本地 CSV 最新日期）— 應該至少有昨日資料
+      2. 基本面 P/E 與營收快取時間戳 — 14 天內為健康
+      3. （法人 / 籌碼是 lazy fetch，靠 staleness guard 兜底，不在這邊查）
+
+    結果以 Telegram 推給用戶，讓你開盤前知道哪些資料缺，可決定是否手動補。
+    """
+    import pytz
+    tw_tz = pytz.timezone("Asia/Taipei")
+
+    while True:
+        now = datetime.now(tw_tz)
+        target = now.replace(hour=8, minute=30, second=0, microsecond=0)
+        if now >= target:
+            target = target + timedelta(days=1)
+        wait_seconds = (target - now).total_seconds()
+        print(f"[premarket-check] Next check in {int(wait_seconds/3600)}h {int((wait_seconds%3600)/60)}m")
+        await asyncio.sleep(wait_seconds)
+
+        today = datetime.now(tw_tz).date()
+        if today.weekday() >= 5:
+            print("[premarket-check] Weekend, skipping")
+            continue
+
+        try:
+            report = await asyncio.to_thread(_compute_data_freshness_report)
+            await asyncio.to_thread(_send_premarket_telegram, report)
+            print(f"[premarket-check] Done. K-line stale: {len(report['stale_kline'])}, "
+                  f"PE age: {report.get('pe_age_days')}, Rev age: {report.get('rev_age_days')}")
+        except Exception as e:
+            print(f"[premarket-check] error: {e}")
+
+
+def _compute_data_freshness_report() -> dict:
+    """掃所有 watch list 標的 + 全市場快取，回傳資料新鮮度摘要。"""
+    import pytz
+    tw_tz = pytz.timezone("Asia/Taipei")
+    today = datetime.now(tw_tz).date()
+    yesterday = today - timedelta(days=1)
+    expected_latest = yesterday  # 開盤前應該有昨日收盤
+
+    report = {
+        "stale_kline": [],     # [{symbol, last_date}]
+        "missing_kline": [],   # [symbol] — 完全沒本地 CSV
+        "pe_age_days": None,
+        "rev_age_days": None,
+        "total_checked": 0,
+    }
+
+    universe = _collect_active_universe()
+    for sym, market in universe:
+        if market == "futures":
+            continue
+        report["total_checked"] += 1
+        local_df = load_local_history(sym)
+        if local_df is None or len(local_df) == 0:
+            report["missing_kline"].append(sym)
+            continue
+        try:
+            last_idx = local_df.index[-1]
+            last_date = last_idx.date() if hasattr(last_idx, "date") else pd.Timestamp(last_idx).date()
+        except Exception:
+            report["missing_kline"].append(sym)
+            continue
+        if last_date < expected_latest:
+            age_days = (today - last_date).days
+            report["stale_kline"].append({"symbol": sym, "last_date": str(last_date), "age_days": age_days})
+
+    # 基本面快取年齡
+    try:
+        from layers.fundamental import _pe_cache, _rev_cache
+        pe_ts = float(_pe_cache.get("fetched_at", 0) or 0)
+        rev_ts = float(_rev_cache.get("fetched_at", 0) or 0)
+        if pe_ts > 0:
+            report["pe_age_days"] = round((time.time() - pe_ts) / 86400, 1)
+        if rev_ts > 0:
+            report["rev_age_days"] = round((time.time() - rev_ts) / 86400, 1)
+    except Exception as e:
+        print(f"[premarket-check] fundamental cache check error: {e}")
+
+    return report
+
+
+def _send_premarket_telegram(report: dict):
+    """把 report 包成易讀的 Telegram 訊息推出去。"""
+    from notifier import send_telegram
+
+    lines = ["\U0001F305 <b>盤前資料健康檢查</b>"]
+    lines.append(f"時間：{datetime.now().strftime('%Y-%m-%d %H:%M')}")
+    lines.append(f"檢查標的：{report['total_checked']} 檔")
+    lines.append("")
+
+    stale = report.get("stale_kline", [])
+    missing = report.get("missing_kline", [])
+    if not stale and not missing:
+        lines.append("✅ K 線：全部到位（含昨日收盤）")
+    else:
+        total_bad = len(stale) + len(missing)
+        lines.append(f"⚠️ K 線：{total_bad} 檔有問題")
+        for x in stale[:5]:
+            lines.append(f"   舊：{x['symbol']} 最新 {x['last_date']}（{x['age_days']} 天前）")
+        if len(stale) > 5:
+            lines.append(f"   ... 還有 {len(stale)-5} 檔過舊")
+        for s in missing[:5]:
+            lines.append(f"   缺：{s}（沒本地檔）")
+        if len(missing) > 5:
+            lines.append(f"   ... 還有 {len(missing)-5} 檔缺")
+
+    pe_age = report.get("pe_age_days")
+    if pe_age is None:
+        lines.append("⚠️ 基本面 P/E：無資料")
+    elif pe_age > 14:
+        lines.append(f"⚠️ 基本面 P/E：{pe_age} 天舊（> 14 天，今日將不參與評分）")
+    else:
+        lines.append(f"✅ 基本面 P/E：{pe_age} 天")
+
+    rev_age = report.get("rev_age_days")
+    if rev_age is None:
+        lines.append("⚠️ 基本面 營收：無資料")
+    elif rev_age > 14:
+        lines.append(f"⚠️ 基本面 營收：{rev_age} 天舊（> 14 天，今日將不參與評分）")
+    else:
+        lines.append(f"✅ 基本面 營收：{rev_age} 天")
+
+    send_telegram("\n".join(lines))
 
 
 async def active_etf_refresh_worker():
