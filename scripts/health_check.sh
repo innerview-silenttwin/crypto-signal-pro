@@ -183,13 +183,14 @@ echo ""
 echo "▶ Sinopac place_order 健康度 (今日)"
 echo "─────────────────────────────────────────"
 LOG="$LOG_DIR/crypto-signal-pro.log"
-if [ -f "$LOG" ]; then
-    # log 沒按日期切，用 grep 估自服務啟動以來
+ERR_LOG="$LOG_DIR/crypto-signal-pro-error.log"
+if [ -f "$LOG" ] || [ -f "$ERR_LOG" ]; then
+    # 同時掃正常 log 和 error log（retry 訊息走 stderr 進 error log）
     # 用 ${VAR:-0} 預設值避免 set -u 撞 unbound、用 ${} braces 隔開全形字元
-    TIMEOUT_COUNT=$(grep -c "place_order timeout (attempt" "$LOG" 2>/dev/null || true)
-    AFTER_RETRY_FAIL=$(grep -c "place_order timeout after.*attempts" "$LOG" 2>/dev/null || true)
-    NOT_READY=$(grep -c "sol.cpp.*Not ready" "$LOG" 2>/dev/null || true)
-    SESSION_UP=$(grep -c "Event: Session up" "$LOG" 2>/dev/null || true)
+    TIMEOUT_COUNT=$(grep -hc "place_order timeout (attempt" "$LOG" "$ERR_LOG" 2>/dev/null | awk '{s+=$1} END {print s+0}')
+    AFTER_RETRY_FAIL=$(grep -hc "place_order timeout after.*attempts" "$LOG" "$ERR_LOG" 2>/dev/null | awk '{s+=$1} END {print s+0}')
+    NOT_READY=$(grep -hc "sol.cpp.*Not ready" "$LOG" "$ERR_LOG" 2>/dev/null | awk '{s+=$1} END {print s+0}')
+    SESSION_UP=$(grep -hc "Event: Session up" "$LOG" "$ERR_LOG" 2>/dev/null | awk '{s+=$1} END {print s+0}')
     echo "  Solace 'Session up' 次數: ${SESSION_UP:-0}（健康 1-2 次；> 5 表示連線抖動）"
     echo "  Solace 'Not ready' 錯誤: ${NOT_READY:-0}"
     echo "  place_order timeout（觸發 retry）: ${TIMEOUT_COUNT:-0}"
