@@ -123,18 +123,21 @@ class SinopacBroker:
         with self._stats_lock:
             return dict(self._stats, consecutive_failures=self._consecutive_failures)
 
-    def _place_order_with_retry(self, contract, order, max_retries: int = 1,
-                                 retry_sleep_s: float = 2.0):
-        """包裝 api.place_order — TimeoutError 自動 retry 1 次。
+    def _place_order_with_retry(self, contract, order, max_retries: int = 2,
+                                 retry_sleep_s: float = 3.0):
+        """包裝 api.place_order — TimeoutError 自動 retry。
 
         為什麼要 retry？
           - Solace MQ session 偶爾會掉到 "Not ready" 狀態（永豐 simulation 主機側問題）
           - 此時 place_order 會丟 TimeoutError
-          - 通常 2 秒後 Solace 自動重連，再試一次往往成功
+          - 經驗：2 秒 sleep 不夠（5/18 觀察 364 次 retry 全失敗）→ 改 3 秒 + 多 1 次 retry
 
         Args:
-            max_retries: 額外重試次數（不含第一次）。預設 1 → 最多 2 次嘗試
+            max_retries: 額外重試次數（不含第一次）。預設 2 → 最多 3 次嘗試
             retry_sleep_s: 失敗後等待秒數，讓 Solace 重連
+
+        每次 attempt timeout ~7s（shioaji 內部）+ retry_sleep_s 等待：
+            3 attempts 最壞情況 = 7+3+7+3+7 = 27s
 
         Returns:
             (trade, retry_used: bool) — retry_used 表示是否用到 retry 才成功
