@@ -112,6 +112,10 @@ class SinopacBroker:
         }
         self._consecutive_failures = 0       # 全 sector 連續失敗計數
         self._last_failure_alert_at = 0.0    # 上次發警告時間（避免洗版）
+        # Sector 級熔斷：永豐客服建議「連續多 cycle 失敗 → cooldown 避免被視為異常」
+        # 同一 sector 連續失敗 5 次 → 該 sector 30 分鐘內不再下單
+        self._sector_consec_fail: dict[str, int] = {}     # sector_id → 連續失敗次數
+        self._sector_cooldown_until: dict[str, float] = {} # sector_id → cooldown 結束 unix ts
 
         logger.info(
             "SinopacBroker ready (simulation=%s, fill_timeout=%ds)",
@@ -124,20 +128,21 @@ class SinopacBroker:
             return dict(self._stats, consecutive_failures=self._consecutive_failures)
 
     def _place_order_with_retry(self, contract, order, max_retries: int = 2,
-                                 retry_sleep_s: float = 3.0):
+                                 retry_sleep_s: float = 5.0):
         """包裝 api.place_order — TimeoutError 自動 retry。
 
         為什麼要 retry？
           - Solace MQ session 偶爾會掉到 "Not ready" 狀態（永豐 simulation 主機側問題）
           - 此時 place_order 會丟 TimeoutError
-          - 經驗：2 秒 sleep 不夠（5/18 觀察 364 次 retry 全失敗）→ 改 3 秒 + 多 1 次 retry
+          - 經驗：2-3 秒 sleep 不夠（5/18 觀察 364 次 retry 全失敗）
+          - 永豐客服 2026-05-18 建議「sleep 5+ 秒、最多 1-2 次 retry」，採此參數
 
         Args:
             max_retries: 額外重試次數（不含第一次）。預設 2 → 最多 3 次嘗試
             retry_sleep_s: 失敗後等待秒數，讓 Solace 重連
 
         每次 attempt timeout ~7s（shioaji 內部）+ retry_sleep_s 等待：
-            3 attempts 最壞情況 = 7+3+7+3+7 = 27s
+            3 attempts 最壞情況 = 7+5+7+5+7 = 31s
 
         Returns:
             (trade, retry_used: bool) — retry_used 表示是否用到 retry 才成功
@@ -170,37 +175,86 @@ class SinopacBroker:
         # 不會到這（finally raise），保險
         raise last_err if last_err else RuntimeError("unknown place_order failure")
 
-    def _on_place_order_success(self, retry_used: bool) -> None:
-        """成功時更新統計、重置連續失敗計數。"""
+    # Sector 熔斷參數（永豐客服 2026-05-18 建議）
+    SECTOR_FAIL_THRESHOLD = 5         # 連續失敗 N 次觸發 cooldown
+    SECTOR_COOLDOWN_SECONDS = 30 * 60  # cooldown 持續時間（30 分鐘）
+
+    def is_sector_in_cooldown(self, sector_id: str) -> tuple[bool, float]:
+        """檢查 sector 是否在 cooldown 中。回傳 (in_cooldown, remaining_seconds)。"""
+        with self._stats_lock:
+            until = self._sector_cooldown_until.get(sector_id, 0.0)
+        now = time.time()
+        if until > now:
+            return True, (until - now)
+        return False, 0.0
+
+    def _on_place_order_success(self, retry_used: bool, sector_id: str = "") -> None:
+        """成功時更新統計、重置連續失敗計數（全局 + 該 sector）。"""
         with self._stats_lock:
             if retry_used:
                 self._stats["place_order_retry_success"] += 1
             else:
                 self._stats["place_order_success"] += 1
             self._consecutive_failures = 0
+            if sector_id:
+                self._sector_consec_fail[sector_id] = 0
 
-    def _on_place_order_failure(self) -> None:
-        """失敗時更新統計、累計連續失敗；連續 ≥ 3 次發 Telegram 警告（每 10 分鐘最多一次）。"""
+    def _on_place_order_failure(self, sector_id: str = "") -> None:
+        """失敗時更新統計：
+        - 累計全局連續失敗（≥ 3 次 → Telegram 警告，每 10 分鐘 dedup）
+        - 累計該 sector 連續失敗（≥ 5 次 → 該 sector cooldown 30 分鐘 + Telegram）
+        """
         with self._stats_lock:
             self._stats["place_order_failed"] += 1
             self._consecutive_failures += 1
             count = self._consecutive_failures
             now = time.time()
+
+            # 全局警告（每 10 分鐘 dedup）
             should_alert = (count >= 3 and (now - self._last_failure_alert_at) > 600)
             if should_alert:
                 self._last_failure_alert_at = now
+
+            # Sector 級熔斷
+            sector_alert = False
+            cooldown_until = 0.0
+            sector_count = 0
+            if sector_id:
+                self._sector_consec_fail[sector_id] = self._sector_consec_fail.get(sector_id, 0) + 1
+                sector_count = self._sector_consec_fail[sector_id]
+                if sector_count >= self.SECTOR_FAIL_THRESHOLD:
+                    # 觸發 cooldown（已在 cooldown 中就延後到底，不重複觸發）
+                    cooldown_until = now + self.SECTOR_COOLDOWN_SECONDS
+                    self._sector_cooldown_until[sector_id] = cooldown_until
+                    # 重置計數，避免持續放警告
+                    self._sector_consec_fail[sector_id] = 0
+                    sector_alert = True
+
+        # Telegram alerts（鎖外發以避免持鎖呼叫 IO）
         if should_alert:
             try:
-                # lazy import 避免 broker 模組依賴 notifier
                 from notifier import send_telegram
                 send_telegram(
                     f"🚨 <b>Sinopac 連線異常</b>\n"
                     f"place_order 連續失敗 {count} 次\n"
-                    f"可能是 Solace session 掛了 / 永豐 simulation 主機問題\n"
-                    f"系統會持續重試；若仍持續發生請手動 csp restart"
+                    f"可能是 Solace session 不穩 / 永豐 simulation 主機問題\n"
+                    f"系統會持續 retry；若仍持續發生請手動 csp restart"
                 )
             except Exception as e:
                 logger.warning("Telegram alert failed: %s", e.__class__.__name__)
+
+        if sector_alert:
+            try:
+                from notifier import send_telegram
+                send_telegram(
+                    f"⛔ <b>Sector 熔斷觸發</b>\n"
+                    f"類股：{sector_id}\n"
+                    f"連續 {self.SECTOR_FAIL_THRESHOLD} 次 place_order 失敗\n"
+                    f"暫停該類股 {self.SECTOR_COOLDOWN_SECONDS//60} 分鐘下單，避免被 broker 視為異常\n"
+                    f"重啟服務 (csp restart) 可手動解除"
+                )
+            except Exception as e:
+                logger.warning("Telegram sector cooldown alert failed: %s", e.__class__.__name__)
 
     # ── callback（safe to be called from another thread）──
 
@@ -224,6 +278,15 @@ class SinopacBroker:
         sector_id: str,
         signal_desc: str = "",
     ) -> BrokerResult:
+        # Sector 熔斷檢查（連續失敗 N 次後 cooldown）
+        in_cd, remaining = self.is_sector_in_cooldown(sector_id)
+        if in_cd:
+            return BrokerResult(
+                ok=False,
+                fill_status="rejected",
+                reason=f"sector_cooldown:{int(remaining/60)}min_remaining",
+            )
+
         # 股數至少 1 股；< 1000 走盤中零股 (IntradayOdd)，>= 1000 走整股 (Common)
         # 不做混合（>=1000 + 餘數零股），實際 qty_shares 帶整千的部分過去；零股走 odd
         # TODO(Phase 2 真錢): 真錢上線前，考慮把這條改回 ≥10，避免不經濟的 dust 交易
@@ -269,9 +332,9 @@ class SinopacBroker:
                 trade, retry_used = self._place_order_with_retry(contract, order)
             except Exception as e:
                 logger.error("place_order failed: %s", e.__class__.__name__)
-                self._on_place_order_failure()
+                self._on_place_order_failure(sector_id)
                 return BrokerResult(ok=False, fill_status="rejected", reason="place_order_error")
-            self._on_place_order_success(retry_used)
+            self._on_place_order_success(retry_used, sector_id)
             self._in_flight[client_order_id] = trade
 
         # 取得 broker order id（避免 callback 競態：盡量早記錄）

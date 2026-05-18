@@ -383,3 +383,81 @@ def test_consecutive_failures_reset_on_success(fake_shioaji, monkeypatch):
              limit_price=900.0, client_order_id="y", sector_id="semiconductor")
     assert b.get_stats()["consecutive_failures"] == 0
     assert b.get_stats()["place_order_success"] == 1
+
+
+def test_sector_cooldown_triggers_after_threshold_failures(fake_shioaji, monkeypatch):
+    """同一 sector 連續失敗 5 次 → 觸發 cooldown，後續 submit 立刻被擋"""
+    monkeypatch.setattr("brokers.sinopac.time.sleep", lambda *_: None)
+    monkeypatch.setattr("brokers.sinopac.SinopacBroker.SECTOR_FAIL_THRESHOLD", 3)  # 加速測試
+    monkeypatch.setattr("brokers.sinopac.SinopacBroker.SECTOR_COOLDOWN_SECONDS", 1800)
+
+    fake_shioaji._next_api = _FakeShioajiAPI()
+    fake_shioaji._next_api._place_order_always_timeout = True
+    b = _new_broker(fake_shioaji)
+
+    # 連續 3 次失敗（門檻 3）→ 第 3 次後應該觸發 cooldown
+    for i in range(3):
+        r = b.submit(symbol="2330.TW", action="BUY", qty_shares=1000,
+                     limit_price=900.0, client_order_id=f"x{i}", sector_id="semiconductor")
+        assert r.ok is False
+
+    # 第 4 次應該被 sector_cooldown 擋下（連 api.place_order 都不會打）
+    r = b.submit(symbol="2454.TW", action="BUY", qty_shares=1000,
+                 limit_price=900.0, client_order_id="y", sector_id="semiconductor")
+    assert r.ok is False
+    assert "sector_cooldown" in r.reason
+
+
+def test_sector_cooldown_does_not_affect_other_sectors(fake_shioaji, monkeypatch):
+    """A sector cooldown 不應該影響 B sector"""
+    monkeypatch.setattr("brokers.sinopac.time.sleep", lambda *_: None)
+    monkeypatch.setattr("brokers.sinopac.SinopacBroker.SECTOR_FAIL_THRESHOLD", 2)
+
+    fake_shioaji._next_api = _FakeShioajiAPI()
+    fake_shioaji._next_api._place_order_always_timeout = True
+    b = _new_broker(fake_shioaji)
+
+    # semiconductor 累積失敗到觸發 cooldown
+    for i in range(2):
+        b.submit(symbol="2330.TW", action="BUY", qty_shares=1000,
+                 limit_price=900.0, client_order_id=f"a{i}", sector_id="semiconductor")
+    in_cd, _ = b.is_sector_in_cooldown("semiconductor")
+    assert in_cd is True
+
+    # electronics 還是能下單（仍會失敗但不是被 cooldown 擋）
+    in_cd_e, _ = b.is_sector_in_cooldown("electronics")
+    assert in_cd_e is False
+
+    r = b.submit(symbol="2317.TW", action="BUY", qty_shares=1000,
+                 limit_price=200.0, client_order_id="b", sector_id="electronics")
+    assert "sector_cooldown" not in (r.reason or "")
+
+
+def test_sector_cooldown_reset_on_success(fake_shioaji, monkeypatch):
+    """sector 失敗計數成功後重置 → 不會累積到觸發 cooldown"""
+    monkeypatch.setattr("brokers.sinopac.time.sleep", lambda *_: None)
+    monkeypatch.setattr("brokers.sinopac.SinopacBroker.SECTOR_FAIL_THRESHOLD", 3)
+
+    fake_shioaji._next_api = _FakeShioajiAPI()
+    fake_shioaji._next_api._place_order_always_timeout = True
+    b = _new_broker(fake_shioaji)
+
+    # 失敗 2 次
+    for i in range(2):
+        b.submit(symbol="2330.TW", action="BUY", qty_shares=1000,
+                 limit_price=900.0, client_order_id=f"a{i}", sector_id="semiconductor")
+
+    # 一次成功 → 計數應重置
+    b.api._place_order_always_timeout = False
+    b.api._trade_to_return = _FakeTrade("Filled", 1, 900.0)
+    b.submit(symbol="2454.TW", action="BUY", qty_shares=1000,
+             limit_price=900.0, client_order_id="ok", sector_id="semiconductor")
+
+    # 再失敗 2 次（總共 4 次但中間成功重置）→ 不應觸發 cooldown
+    b.api._place_order_always_timeout = True
+    for i in range(2):
+        b.submit(symbol="2330.TW", action="BUY", qty_shares=1000,
+                 limit_price=900.0, client_order_id=f"b{i}", sector_id="semiconductor")
+
+    in_cd, _ = b.is_sector_in_cooldown("semiconductor")
+    assert in_cd is False
