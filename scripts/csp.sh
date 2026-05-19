@@ -56,6 +56,10 @@ case "$cmd" in
         echo "→ 錯誤 log 最後 30 行"
         tail -30 "$APP_DIR/logs/crypto-signal-pro-error.log"
         ;;
+    diag-sells)
+        shift
+        cd "$APP_DIR" && venv/bin/python3 scripts/diag_sells.py "$@"
+        ;;
     update)
         echo "→ git pull..."
         (cd "$APP_DIR" && git pull)
@@ -73,12 +77,14 @@ case "$cmd" in
     help|*)
         echo "csp — crypto-signal-pro 快捷工具"
         echo ""
-        echo "  csp restart    重啟服務並跑健康檢查"
-        echo "  csp health     健康檢查"
-        echo "  csp logs       即時跟著看 log（Ctrl+C 退出）"
-        echo "  csp errors     錯誤 log 最後 30 行"
-        echo "  csp update     git pull + 重啟服務"
-        echo "  csp status     服務狀態"
-        echo "  csp help       顯示此說明"
+        echo "  csp restart       重啟服務並跑健康檢查（自動 rotate log）"
+        echo "  csp health        健康檢查"
+        echo "  csp logs          即時跟著看 log（Ctrl+C 退出）"
+        echo "  csp errors        錯誤 log 最後 30 行"
+        echo "  csp update        git pull + 重啟服務"
+        echo "  csp status        服務狀態"
+        echo "  csp diag-sells    列出近 N 天 SELL 並標 lag 出場"
+        echo "    例：csp diag-sells --days 3"
+        echo "  csp help          顯示此說明"
         ;;
 esac
