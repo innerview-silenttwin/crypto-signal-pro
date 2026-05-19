@@ -228,6 +228,8 @@ async def startup_event():
     asyncio.create_task(daily_tw_data_refresh())
     # 每日 08:30 盤前資料健康檢查（K 線、基本面新鮮度 → Telegram）
     asyncio.create_task(premarket_data_health_check())
+    # 每日 18:00 法人 + 基本面 daily refresh（晚上能看到當天最新資料）
+    asyncio.create_task(daily_institutional_refresh())
     # 主動 ETF 持股分數獨立刷新（每 4 小時，避免被 daily-refresh 拖累或漏跑）
     asyncio.create_task(active_etf_refresh_worker())
     # 背景消化過期 CSV 刷新佇列（用戶訪問時觸發）
@@ -342,6 +344,103 @@ async def daily_tw_data_refresh():
             print("[daily-refresh] Daily TW stock data refresh complete.")
         else:
             print("[daily-refresh] Weekend, skipping TW data refresh.")
+
+
+async def daily_institutional_refresh():
+    """每交易日 18:00 抓當日三大法人 + 融資融券 + 基本面，讓晚上能看到當天最新資料。
+
+    Why: TWSE 通常 17:00 後公佈當日法人；我們系統盤後 sleep 不會自動抓，
+        所以隔日早上 09:00 第一個 cycle 才會 fetch（用昨日資料算訊號）。
+        排這個 18:00 task 主動補抓，dashboard 晚上看到的就是當日最新。
+
+    流程：
+      1. 清快取時間戳（強制 fetch 不吃 cache）
+      2. P/E + 營收（全市場一次）
+      3. 三大法人（per-symbol，pacing 避免 FinMind rate limit）
+      4. Telegram 報告抓了幾檔、成功幾筆
+    """
+    import pytz
+    tw_tz = pytz.timezone("Asia/Taipei")
+
+    while True:
+        now = datetime.now(tw_tz)
+        target = now.replace(hour=18, minute=0, second=0, microsecond=0)
+        if now >= target:
+            target = target + timedelta(days=1)
+        wait_seconds = (target - now).total_seconds()
+        print(f"[daily-inst-refresh] Next refresh in {int(wait_seconds/3600)}h {int((wait_seconds%3600)/60)}m")
+        await asyncio.sleep(wait_seconds)
+
+        today = datetime.now(tw_tz).date()
+        if today.weekday() >= 5:
+            print("[daily-inst-refresh] Weekend, skipping")
+            continue
+
+        try:
+            await asyncio.to_thread(_run_institutional_refresh)
+        except Exception as e:
+            print(f"[daily-inst-refresh] error: {e}")
+
+
+def _run_institutional_refresh():
+    """同步版本，跑在 thread pool 內。回報 Telegram。"""
+    from notifier import send_telegram
+
+    report_lines = ["📊 <b>18:00 法人/基本面資料 daily refresh</b>"]
+    universe = _collect_active_universe()
+    target_syms = [s for s, m in universe if m != "futures"]
+
+    # 1. 基本面 P/E + 營收（全市場一次）
+    try:
+        from layers.fundamental import (
+            fetch_twse_pe_all, fetch_twse_revenue_all,
+            _pe_cache, _rev_cache,
+        )
+        # 強制 fetch：把 cache time 設 0 讓 TTL 失效
+        _pe_cache["time"] = 0
+        _rev_cache["time"] = 0
+        pe = fetch_twse_pe_all()
+        rev = fetch_twse_revenue_all()
+        report_lines.append(f"✅ 基本面 P/E：{len(pe)} 檔")
+        report_lines.append(f"✅ 基本面 營收：{len(rev)} 檔")
+    except Exception as e:
+        report_lines.append(f"⚠️ 基本面 refresh 失敗：{e.__class__.__name__}")
+        print(f"[daily-inst-refresh] fundamental: {e}")
+
+    # 2. 三大法人（per-symbol，pacing）
+    try:
+        from layers.chipflow import (
+            fetch_chip_summary,
+            _chip_summary_cache, _inst_cache,
+        )
+        _chip_summary_cache["time"] = 0
+        _inst_cache["time"] = 0
+
+        success, fail = 0, 0
+        for sym in target_syms:
+            try:
+                r = fetch_chip_summary(sym)
+                if r:
+                    success += 1
+                else:
+                    fail += 1
+            except Exception:
+                fail += 1
+            time.sleep(0.5)   # FinMind 寬鬆 pacing
+
+        report_lines.append(f"✅ 三大法人：{success}/{success+fail} 檔成功（共 {len(target_syms)} 檔）")
+        if fail > 0:
+            report_lines.append(f"   ⚠️ {fail} 檔 fetch 失敗（可能 FinMind rate limit / 個股 OTC 沒資料）")
+    except Exception as e:
+        report_lines.append(f"⚠️ 法人 refresh 失敗：{e.__class__.__name__}")
+        print(f"[daily-inst-refresh] chipflow: {e}")
+
+    # 3. 推 Telegram
+    try:
+        send_telegram("\n".join(report_lines))
+    except Exception as e:
+        print(f"[daily-inst-refresh] telegram failed: {e}")
+    print("[daily-inst-refresh] Done.")
 
 
 async def premarket_data_health_check():
