@@ -19,8 +19,25 @@ PLIST="$HOME/Library/LaunchAgents/local.crypto-signal-pro.plist"
 
 cmd="${1:-help}"
 
+# 重啟時備份舊 log → health_check 數字 = 「自上次重啟以來」≈ 通常一天
+rotate_logs() {
+    local ts
+    ts=$(date +%Y%m%d_%H%M%S)
+    local logdir="$APP_DIR/logs"
+    for f in crypto-signal-pro.log crypto-signal-pro-error.log; do
+        if [ -s "$logdir/$f" ]; then
+            mv "$logdir/$f" "$logdir/$f.$ts"
+        fi
+    done
+    # 保留最近 7 份備份，其他刪掉避免堆積
+    ls -t "$logdir"/crypto-signal-pro.log.* 2>/dev/null | tail -n +8 | xargs -r rm
+    ls -t "$logdir"/crypto-signal-pro-error.log.* 2>/dev/null | tail -n +8 | xargs -r rm
+}
+
 case "$cmd" in
     restart)
+        echo "→ 備份舊 log..."
+        rotate_logs
         echo "→ 重啟服務..."
         launchctl unload "$PLIST" 2>/dev/null || true
         launchctl load -w "$PLIST"
@@ -42,6 +59,8 @@ case "$cmd" in
     update)
         echo "→ git pull..."
         (cd "$APP_DIR" && git pull)
+        echo "→ 備份舊 log..."
+        rotate_logs
         echo "→ 重啟服務..."
         launchctl unload "$PLIST" 2>/dev/null || true
         launchctl load -w "$PLIST"
