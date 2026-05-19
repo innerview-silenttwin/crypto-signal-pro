@@ -449,6 +449,7 @@ class SectorTradingManager:
     def get_history(self, page: int = 1, page_size: int = 50,
                     symbol: str = "", start_date: str = "", end_date: str = "",
                     trade_type: str = "",
+                    pnl_status: str = "",
                     current_prices: dict = None) -> dict:
         self._sync_from_disk()
         current_prices = current_prices or {}
@@ -555,6 +556,24 @@ class SectorTradingManager:
             annotated = [h for h in annotated if h.get("time", "")[:10] <= end_date]
         if trade_type:
             annotated = [h for h in annotated if h.get("type", "").upper() == trade_type.upper()]
+
+        # 已實現/未實現 篩選：
+        #   - "realized"   = SELL（全部都是已實現） + BUY pnl_status="realized"（買進後已全賣完）
+        #   - "unrealized" = BUY pnl_status="unrealized" 或 "partial"（買進後仍有持倉）
+        if pnl_status:
+            ps = pnl_status.lower()
+            def _match(h):
+                if h.get("type") == "SELL":
+                    # SELL 一律算「已實現」
+                    return ps == "realized"
+                if h.get("type") == "BUY":
+                    st = (h.get("pnl_status") or "").lower()
+                    if ps == "realized":
+                        return st == "realized"
+                    if ps == "unrealized":
+                        return st in ("unrealized", "partial")
+                return False
+            annotated = [h for h in annotated if _match(h)]
 
         total = len(annotated)
         start = (page - 1) * page_size

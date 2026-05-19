@@ -52,8 +52,8 @@ def main():
             continue
 
         print(f"=== {sector} (篩出 {len(sells)} 筆 SELL) ===")
-        print(f"{'時間':<20}{'股票':<10}{'qty':<6}{'價':<10}{'損益':<10}{'%':<8}{'lag?':<6}{'訊號'}")
-        print("-" * 110)
+        print(f"{'時間':<20}{'股票':<22}{'qty':<6}{'價':<10}{'損益':<10}{'%':<8}{'lag?':<6}{'訊號'}")
+        print("-" * 120)
 
         sector_lag_loss = 0
         sector_total = 0
@@ -61,11 +61,16 @@ def main():
             t = s.get("time", "")[11:19]
             d_ = s.get("time", "")[:10]
             sym = s.get("symbol", "")
+            name = s.get("name", "") or ""
             qty = s.get("qty", 0)
             price = s.get("price", 0)
             profit = s.get("profit", 0) or 0
             pct = s.get("profit_pct", 0) or 0
             signal = (s.get("signal") or "")[:50]
+
+            # 顯示「中文名(代號)」格式，例：瑞昱(2379)
+            code = sym.replace(".TW", "").replace(".TWO", "")
+            sym_display = f"{name}({code})" if name and name != sym else sym
 
             # 判斷 lag：停損 / 趨勢破壞 + profit_pct < -10.5%
             is_stop_signal = ("停損" in signal or "趨勢破壞" in signal)
@@ -76,7 +81,7 @@ def main():
             if is_lag:
                 sector_lag_loss += profit  # negative number
 
-            print(f"{d_} {t:<9}{sym:<10}{qty:<6}{price:<10.2f}{profit:<10.0f}{pct:<8.2f}{lag_flag:<6}{signal}")
+            print(f"{d_} {t:<9}{sym_display:<22}{qty:<6}{price:<10.2f}{profit:<10.0f}{pct:<8.2f}{lag_flag:<6}{signal}")
 
         grand_total += sector_total
         total_lag_loss += sector_lag_loss

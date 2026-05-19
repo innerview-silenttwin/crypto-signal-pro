@@ -10,6 +10,7 @@
         rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
     <script>
         (function () {
             var t = localStorage.getItem('csp-theme') || 'kawaii';
@@ -975,21 +976,12 @@
                         </div>
                     </div>
 
-                    <!-- 各類股損益長條圖 — 拆成「已實現」/「未實現」兩張，避免大數字壓縮小數字 -->
+                    <!-- 各類股損益長條圖 — 單張 stacked，每段標數字避免小值被視覺壓縮 -->
                     <div class="glass-panel" style="margin: 0 24px 16px; padding: 12px 20px 8px">
-                        <div style="display:flex; gap:16px">
-                            <div style="flex:1; min-width:0">
-                                <div style="font-size:11px; color:var(--text-muted); margin-bottom:6px; font-weight:700">已實現損益（各類股累計）</div>
-                                <div style="height:150px; position:relative">
-                                    <canvas id="sector-bar-chart-realized"></canvas>
-                                </div>
-                            </div>
-                            <div style="flex:1; min-width:0">
-                                <div style="font-size:11px; color:var(--text-muted); margin-bottom:6px; font-weight:700">未實現損益（當前持倉）</div>
-                                <div style="height:150px; position:relative">
-                                    <canvas id="sector-bar-chart-unrealized"></canvas>
-                                </div>
-                            </div>
+                        <div style="font-size:11px; color:var(--text-muted); margin-bottom:6px; font-weight:700">各類股損益比較
+                        </div>
+                        <div style="height:180px; position:relative">
+                            <canvas id="sector-bar-chart"></canvas>
                         </div>
                     </div>
 
@@ -1053,6 +1045,11 @@
                                         <option value="">全部</option>
                                         <option value="BUY">買進</option>
                                         <option value="SELL">賣出</option>
+                                    </select>
+                                    <select id="filter-pnl" style="padding:4px 8px; border-radius:8px; border:1px solid var(--border-color); background:var(--card-bg); color:var(--text-main); font-size:11px; cursor:pointer" title="損益狀態">
+                                        <option value="">損益:全部</option>
+                                        <option value="realized">僅已實現</option>
+                                        <option value="unrealized">僅未實現</option>
                                     </select>
                                     <button id="btn-filter" class="btn-global" style="padding:4px 14px; font-size:11px">篩選</button>
                                     <button id="btn-filter-clear" class="btn-global" style="padding:4px 10px; font-size:11px; opacity:0.6">清除</button>
@@ -1178,6 +1175,7 @@
                     document.getElementById('filter-end').value = '';
                     document.getElementById('filter-symbol').value = '';
                     document.getElementById('filter-type').value = '';
+                    document.getElementById('filter-pnl').value = '';
                     historyPage = 1;
                     refreshHistory();
                 };
@@ -1186,6 +1184,7 @@
                     document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') { historyPage = 1; refreshHistory(); } });
                 });
                 document.getElementById('filter-type').addEventListener('change', () => { historyPage = 1; refreshHistory(); });
+                document.getElementById('filter-pnl').addEventListener('change', () => { historyPage = 1; refreshHistory(); });
 
                 buildTabs();
                 await refreshAll();
@@ -1249,12 +1248,14 @@
                     const endDate = document.getElementById('filter-end').value || '';
                     const symbol = document.getElementById('filter-symbol').value.trim();
                     const tradeType = document.getElementById('filter-type').value || '';
+                    const pnlStatus = document.getElementById('filter-pnl').value || '';
                     const params = new URLSearchParams({
                         page: historyPage, pageSize: 50,
                         ...(startDate && { startDate }),
                         ...(endDate && { endDate }),
                         ...(symbol && { symbol }),
                         ...(tradeType && { tradeType }),
+                        ...(pnlStatus && { pnlStatus }),
                     });
                     const res = await fetch(API + `/api/sector-trading/${reqSector}/history?${params}`);
                     const data = await res.json();
@@ -1643,7 +1644,9 @@
             }
 
             function renderSectorBarChart() {
-                // 拆成兩張圖：左「已實現」/ 右「未實現」，避免大數字壓縮小數字
+                const ctx = document.getElementById('sector-bar-chart');
+                if (!ctx) return;
+
                 const realizedProfit = [], unrealizedProfit = [];
                 const realizedLoss = [], unrealizedLoss = [];
 
@@ -1656,69 +1659,77 @@
                     unrealizedLoss.push(s.unrealized_loss || 0);
                 });
 
-                const labels = SECTORS.map(id => SECTOR_LABELS[id]);
-                const baseOptions = {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: true, position: 'bottom',
-                            labels: { font: { size: 10 }, color: '#94a3b8', boxWidth: 12, padding: 8 } },
-                        tooltip: { callbacks: {
-                            label: item => ' ' + item.dataset.label + ': ' + Math.round(item.raw).toLocaleString() + ' 元'
-                        } }
-                    },
-                    scales: {
-                        x: { ticks: { font: { size: 11 }, color: '#94a3b8' }, grid: { display: false } },
-                        y: { beginAtZero: true,
-                            ticks: { font: { size: 10 }, color: '#94a3b8',
-                                callback: v => Math.abs(v) >= 1000 ? (v / 1000).toFixed(0) + 'K' : v },
-                            grid: { color: 'rgba(167,139,250,0.06)' } }
-                    }
+                // datalabels formatter — 把 0 或太小（< 100）不顯示，其他顯示 K/萬
+                const labelFmt = v => {
+                    if (!v) return '';
+                    const n = Math.round(v);
+                    if (Math.abs(n) < 100) return '';   // 太小不畫，避免擠
+                    if (Math.abs(n) >= 10000) return (n / 10000).toFixed(1) + '萬';
+                    if (Math.abs(n) >= 1000) return (n / 1000).toFixed(1) + 'K';
+                    return n.toString();
                 };
 
-                // ── 左圖：已實現 ──
-                const ctxR = document.getElementById('sector-bar-chart-realized');
-                if (ctxR) {
-                    const dsR = [
-                        { label: '已實現虧損', data: realizedLoss,
-                          backgroundColor: 'rgba(239,68,68,0.85)', borderColor: '#dc2626', borderWidth: 1, borderRadius: 4 },
-                        { label: '已實現獲利', data: realizedProfit,
-                          backgroundColor: 'rgba(52,211,153,0.85)', borderColor: '#10b981', borderWidth: 1, borderRadius: 4 },
-                    ];
-                    if (sectorBarChartRealized) {
-                        sectorBarChartRealized.data.datasets[0].data = realizedLoss;
-                        sectorBarChartRealized.data.datasets[1].data = realizedProfit;
-                        sectorBarChartRealized.update('none');
-                    } else {
-                        sectorBarChartRealized = new Chart(ctxR, {
-                            type: 'bar',
-                            data: { labels, datasets: dsR },
-                            options: baseOptions,
-                        });
-                    }
+                if (sectorBarChart) {
+                    sectorBarChart.data.datasets[0].data = realizedLoss;
+                    sectorBarChart.data.datasets[1].data = unrealizedLoss;
+                    sectorBarChart.data.datasets[2].data = realizedProfit;
+                    sectorBarChart.data.datasets[3].data = unrealizedProfit;
+                    sectorBarChart.update('none');
+                    return;
                 }
 
-                // ── 右圖：未實現（淡色，獨立 scale 避免被壓縮）──
-                const ctxU = document.getElementById('sector-bar-chart-unrealized');
-                if (ctxU) {
-                    const dsU = [
-                        { label: '未實現虧損', data: unrealizedLoss,
-                          backgroundColor: 'rgba(239,68,68,0.55)', borderColor: '#dc2626', borderWidth: 1, borderRadius: 4 },
-                        { label: '未實現獲利', data: unrealizedProfit,
-                          backgroundColor: 'rgba(52,211,153,0.55)', borderColor: '#10b981', borderWidth: 1, borderRadius: 4 },
-                    ];
-                    if (sectorBarChartUnrealized) {
-                        sectorBarChartUnrealized.data.datasets[0].data = unrealizedLoss;
-                        sectorBarChartUnrealized.data.datasets[1].data = unrealizedProfit;
-                        sectorBarChartUnrealized.update('none');
-                    } else {
-                        sectorBarChartUnrealized = new Chart(ctxU, {
-                            type: 'bar',
-                            data: { labels, datasets: dsU },
-                            options: baseOptions,
-                        });
+                sectorBarChart = new Chart(ctx, {
+                    type: 'bar',
+                    plugins: [ChartDataLabels],   // 注入 datalabels plugin
+                    data: {
+                        labels: SECTORS.map(id => SECTOR_LABELS[id]),
+                        datasets: [
+                            { label: '已實現虧損', data: realizedLoss,
+                              backgroundColor: 'rgba(239,68,68,0.85)', borderColor: '#dc2626',
+                              borderWidth: 1, borderRadius: 4, stack: 'loss',
+                              datalabels: { color: '#ffffff', font: { size: 9, weight: '700' },
+                                  formatter: labelFmt, anchor: 'center', align: 'center' } },
+                            { label: '未實現虧損', data: unrealizedLoss,
+                              backgroundColor: 'rgba(239,68,68,0.35)', borderColor: '#dc2626',
+                              borderWidth: 1, borderRadius: 4, stack: 'loss',
+                              datalabels: { color: '#fca5a5', font: { size: 9, weight: '700' },
+                                  formatter: labelFmt, anchor: 'center', align: 'center' } },
+                            { label: '已實現獲利', data: realizedProfit,
+                              backgroundColor: 'rgba(52,211,153,0.85)', borderColor: '#10b981',
+                              borderWidth: 1, borderRadius: 4, stack: 'profit',
+                              datalabels: { color: '#ffffff', font: { size: 9, weight: '700' },
+                                  formatter: labelFmt, anchor: 'center', align: 'center' } },
+                            { label: '未實現獲利', data: unrealizedProfit,
+                              backgroundColor: 'rgba(52,211,153,0.35)', borderColor: '#10b981',
+                              borderWidth: 1, borderRadius: 4, stack: 'profit',
+                              datalabels: {
+                                  // 未實現獲利常常很小，特別處理：太小就放到 bar 頂端（不放裡面）
+                                  color: '#6ee7b7', font: { size: 9, weight: '700' },
+                                  formatter: labelFmt, anchor: 'end', align: 'top',
+                                  // 強制顯示（即使 bar 很矮也標出來在頂端）
+                                  display: ctx => labelFmt(ctx.dataset.data[ctx.dataIndex]) !== '',
+                              } },
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: true, position: 'bottom',
+                                labels: { font: { size: 10 }, color: '#94a3b8', boxWidth: 12, padding: 8 } },
+                            tooltip: { callbacks: {
+                                label: item => ' ' + item.dataset.label + ': ' + Math.round(item.raw).toLocaleString() + ' 元' } }
+                        },
+                        scales: {
+                            x: { stacked: true, ticks: { font: { size: 11 }, color: '#94a3b8' },
+                                grid: { display: false } },
+                            y: { stacked: true,
+                                ticks: { font: { size: 10 }, color: '#94a3b8',
+                                    callback: v => Math.abs(v) >= 1000 ? (v / 1000).toFixed(0) + 'K' : v },
+                                grid: { color: 'rgba(167,139,250,0.06)' } }
+                        }
                     }
-                }
+                });
             }
 
             // ── Theme ──

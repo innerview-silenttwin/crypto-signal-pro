@@ -1693,8 +1693,12 @@ async def toggle_sector_trading(sector_id: str, active: bool = False):
 @app.get("/api/sector-trading/{sector_id}/history")
 async def get_sector_history(sector_id: str, page: int = 1, pageSize: int = 50,
                               symbol: str = "", startDate: str = "", endDate: str = "",
-                              tradeType: str = ""):
-    """取得單一類股交易歷史"""
+                              tradeType: str = "", pnlStatus: str = ""):
+    """取得單一類股交易歷史
+
+    Args:
+        pnlStatus: 篩選「realized」（已實現）/「unrealized」（未實現）/「」（全部）
+    """
     mgr = get_manager(sector_id)
     if not mgr:
         return {"error": f"未知的類股 ID: {sector_id}"}
@@ -1708,6 +1712,7 @@ async def get_sector_history(sector_id: str, page: int = 1, pageSize: int = 50,
                 current_prices[sym] = price
     return mgr.get_history(page, pageSize, symbol, startDate, endDate,
                            trade_type=tradeType,
+                           pnl_status=pnlStatus,
                            current_prices=current_prices)
 
 @app.post("/api/sector-trading/{sector_id}/strategy")
