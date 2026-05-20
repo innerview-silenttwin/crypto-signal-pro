@@ -1678,98 +1678,124 @@
                     return;
                 }
 
-                // 「太薄就放外面 + 引線」邏輯：
-                //   bar 段 px 高度 < 16 → 標籤推到外面（profit 在 bar 頂、loss 在 bar 底）
-                //   >= 16 → 標籤放中央（位置夠）
-                // 並用 custom plugin 對 tiny 段畫一條細引線連到外標籤
-                const SMALL_PX = 16;
+                // 段內標籤：bar 段 px 高度 >= MIN_PX 才在中央顯示，否則不顯示細節
+                // 整 stack 的「總和」由 stackTotalPlugin 在 bar 端點外另外畫一顆膠囊
+                const MIN_PX = 18;
 
-                const segSmall = (c) => {
+                const segTallEnough = (c) => {
                     const meta = c.chart.getDatasetMeta(c.datasetIndex);
                     const bar = meta?.data?.[c.dataIndex];
                     if (!bar) return false;
                     const h = (typeof bar.height === 'number')
                         ? Math.abs(bar.height)
                         : Math.abs((bar.y || 0) - (bar.base || 0));
-                    return h < SMALL_PX;
+                    return h >= MIN_PX;
                 };
 
-                // 單一 datalabels 設定，靠 anchor/align/offset 的 callback 自動切位置
-                const smartLabel = (innerColor, outerColor, isProfit) => ({
+                const innerLabel = (color) => ({
                     formatter: labelFmt,
-                    font: { size: 9, weight: '700' },
-                    display: (c) => labelFmt(c.dataset.data[c.dataIndex]) !== '',
-                    color: (c) => segSmall(c) ? outerColor : innerColor,
-                    anchor: (c) => segSmall(c) ? 'end' : 'center',
-                    align:  (c) => segSmall(c) ? (isProfit ? 'top' : 'bottom') : 'center',
-                    offset: (c) => segSmall(c) ? 10 : 0,
-                    clamp: false,
+                    font: { size: 10, weight: '700' },
+                    color,
+                    anchor: 'center',
+                    align: 'center',
+                    display: (c) => segTallEnough(c) && labelFmt(c.dataset.data[c.dataIndex]) !== '',
                 });
 
-                // 自訂 plugin：對「太薄段」畫一條細線從 bar 頂/底連到外標籤
-                const leaderLinePlugin = {
-                    id: 'leaderLine',
+                // 自訂 plugin：每個類別只在 profit / loss stack 端點外畫「總和膠囊」一顆
+                const stackTotalPlugin = {
+                    id: 'stackTotal',
                     afterDatasetsDraw(chart) {
                         const cv = chart.ctx;
+                        const cats = chart.data.labels.length;
+                        const stacks = { profit: [], loss: [] };
                         chart.data.datasets.forEach((ds, dsIdx) => {
                             const meta = chart.getDatasetMeta(dsIdx);
-                            const isProfitStack = ds.stack === 'profit';
-                            meta.data.forEach((bar, i) => {
-                                if (!bar) return;
-                                const h = (typeof bar.height === 'number')
-                                    ? Math.abs(bar.height)
-                                    : Math.abs((bar.y || 0) - (bar.base || 0));
-                                if (h >= SMALL_PX) return;
-                                const v = ds.data[i];
-                                if (!v || labelFmt(v) === '') return;
-
-                                // bar 的「靠近外側」邊：profit 朝上 → bar.y；loss 朝下 → bar.base
-                                const x = bar.x;
-                                const barEdge = isProfitStack ? bar.y : bar.base;
-                                const labelY = isProfitStack ? (barEdge - 10) : (barEdge + 10);
-
-                                cv.save();
-                                cv.strokeStyle = isProfitStack ? 'rgba(110,231,183,0.7)' : 'rgba(252,165,165,0.7)';
-                                cv.lineWidth = 1;
-                                cv.setLineDash([2, 2]);
-                                cv.beginPath();
-                                cv.moveTo(x, barEdge);
-                                cv.lineTo(x, labelY);
-                                cv.stroke();
-                                cv.restore();
-                            });
+                            (stacks[ds.stack] || (stacks[ds.stack] = [])).push({ ds, meta });
                         });
+
+                        const drawPill = (x, y, text, isProfit) => {
+                            cv.save();
+                            cv.font = '700 11px -apple-system, "Segoe UI", system-ui, sans-serif';
+                            const padX = 6, padY = 3;
+                            const w = cv.measureText(text).width + padX * 2;
+                            const h = 16;
+                            const rx = x - w / 2;
+                            const ry = isProfit ? (y - h - 4) : (y + 4);
+                            const r = 8;
+
+                            cv.beginPath();
+                            cv.moveTo(rx + r, ry);
+                            cv.arcTo(rx + w, ry, rx + w, ry + h, r);
+                            cv.arcTo(rx + w, ry + h, rx, ry + h, r);
+                            cv.arcTo(rx, ry + h, rx, ry, r);
+                            cv.arcTo(rx, ry, rx + w, ry, r);
+                            cv.closePath();
+                            cv.fillStyle = isProfit ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)';
+                            cv.strokeStyle = isProfit ? 'rgba(16,185,129,0.55)' : 'rgba(239,68,68,0.55)';
+                            cv.lineWidth = 1;
+                            cv.fill();
+                            cv.stroke();
+
+                            cv.fillStyle = isProfit ? '#059669' : '#dc2626';
+                            cv.textAlign = 'center';
+                            cv.textBaseline = 'middle';
+                            cv.fillText(text, x, ry + h / 2);
+                            cv.restore();
+                        };
+
+                        for (let i = 0; i < cats; i++) {
+                            ['profit', 'loss'].forEach(stackName => {
+                                const arr = stacks[stackName] || [];
+                                let total = 0;
+                                let edgeY = null, x = null;
+                                arr.forEach(({ ds, meta }) => {
+                                    const v = ds.data[i] || 0;
+                                    total += v;
+                                    const bar = meta.data[i];
+                                    if (!bar) return;
+                                    x = bar.x;
+                                    // 對 profit：取最頂端（最小 y）；對 loss：取最底端（最大 y）
+                                    const tip = stackName === 'profit' ? bar.y : (bar.base || bar.y);
+                                    if (edgeY === null) edgeY = tip;
+                                    else edgeY = stackName === 'profit' ? Math.min(edgeY, tip) : Math.max(edgeY, tip);
+                                });
+                                if (!total || x === null || edgeY === null) return;
+                                const text = labelFmt(total);
+                                if (!text) return;
+                                drawPill(x, edgeY, text, stackName === 'profit');
+                            });
+                        }
                     }
                 };
 
                 sectorBarChart = new Chart(ctx, {
                     type: 'bar',
-                    plugins: [ChartDataLabels, leaderLinePlugin],
+                    plugins: [ChartDataLabels, stackTotalPlugin],
                     data: {
                         labels: SECTORS.map(id => SECTOR_LABELS[id]),
                         datasets: [
                             { label: '已實現虧損', data: realizedLoss,
                               backgroundColor: 'rgba(239,68,68,0.85)', borderColor: '#dc2626',
                               borderWidth: 1, borderRadius: 4, stack: 'loss',
-                              datalabels: smartLabel('#ffffff', '#fca5a5', false) },
+                              datalabels: innerLabel('#ffffff') },
                             { label: '未實現虧損', data: unrealizedLoss,
                               backgroundColor: 'rgba(239,68,68,0.35)', borderColor: '#dc2626',
                               borderWidth: 1, borderRadius: 4, stack: 'loss',
-                              datalabels: smartLabel('#fca5a5', '#fca5a5', false) },
+                              datalabels: innerLabel('#7f1d1d') },
                             { label: '已實現獲利', data: realizedProfit,
                               backgroundColor: 'rgba(52,211,153,0.85)', borderColor: '#10b981',
                               borderWidth: 1, borderRadius: 4, stack: 'profit',
-                              datalabels: smartLabel('#ffffff', '#6ee7b7', true) },
+                              datalabels: innerLabel('#ffffff') },
                             { label: '未實現獲利', data: unrealizedProfit,
                               backgroundColor: 'rgba(52,211,153,0.35)', borderColor: '#10b981',
                               borderWidth: 1, borderRadius: 4, stack: 'profit',
-                              datalabels: smartLabel('#6ee7b7', '#6ee7b7', true) },
+                              datalabels: innerLabel('#065f46') },
                         ]
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        layout: { padding: { top: 20, bottom: 20 } },   // 給外標籤 + 引線預留空間
+                        layout: { padding: { top: 28, bottom: 28 } },   // 給總和膠囊預留空間
                         plugins: {
                             legend: { display: true, position: 'bottom',
                                 labels: { font: { size: 10 }, color: '#94a3b8', boxWidth: 12, padding: 8 } },
