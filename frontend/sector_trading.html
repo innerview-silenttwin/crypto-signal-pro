@@ -1714,13 +1714,18 @@
                         });
 
                         const drawPill = (x, y, text, isProfit) => {
+                            const docStyle = getComputedStyle(document.documentElement);
+                            const themeBuyColor = docStyle.getPropertyValue('--buy-color').trim() || '#10b981';
+                            const themeSellColor = docStyle.getPropertyValue('--sell-color').trim() || '#ef4444';
+                            const themeBgDark = docStyle.getPropertyValue('--bg-dark').trim() || '#ffffff';
+
                             cv.save();
                             cv.font = '700 11px -apple-system, "Segoe UI", system-ui, sans-serif';
                             const padX = 6, padY = 3;
                             const w = cv.measureText(text).width + padX * 2;
                             const h = 16;
                             const rx = x - w / 2;
-                            const ry = isProfit ? (y - h - 4) : (y + 4);
+                            const ry = y - h - 4; // 始終在長條圖頂部外側繪製膠囊，避免與 X 軸標籤重疊
                             const r = 8;
 
                             cv.beginPath();
@@ -1730,13 +1735,24 @@
                             cv.arcTo(rx, ry + h, rx, ry, r);
                             cv.arcTo(rx, ry, rx + w, ry, r);
                             cv.closePath();
-                            cv.fillStyle = isProfit ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)';
-                            cv.strokeStyle = isProfit ? 'rgba(16,185,129,0.55)' : 'rgba(239,68,68,0.55)';
-                            cv.lineWidth = 1;
+
+                            // 1. 使用主題實心背景色遮擋後方的網格線
+                            cv.fillStyle = themeBgDark;
                             cv.fill();
+
+                            // 2. 疊加對應主題的半透明 tint 顏色
+                            cv.save();
+                            cv.globalAlpha = 0.12;
+                            cv.fillStyle = isProfit ? themeBuyColor : themeSellColor;
+                            cv.fill();
+                            cv.restore();
+
+                            // 3. 繪製邊框與文字
+                            cv.strokeStyle = isProfit ? themeBuyColor : themeSellColor;
+                            cv.lineWidth = 1;
                             cv.stroke();
 
-                            cv.fillStyle = isProfit ? '#059669' : '#dc2626';
+                            cv.fillStyle = isProfit ? themeBuyColor : themeSellColor;
                             cv.textAlign = 'center';
                             cv.textBaseline = 'middle';
                             cv.fillText(text, x, ry + h / 2);
@@ -1754,10 +1770,11 @@
                                     const bar = meta.data[i];
                                     if (!bar) return;
                                     x = bar.x;
-                                    // 對 profit：取最頂端（最小 y）；對 loss：取最底端（最大 y）
-                                    const tip = stackName === 'profit' ? bar.y : (bar.base || bar.y);
+                                    // 由於損與益皆為正值，Chart.js 中兩者皆是往上增長（Y 軸值變小）
+                                    // 因此最頂端皆為最小的 Y 座標值 (bar.y)
+                                    const tip = bar.y;
                                     if (edgeY === null) edgeY = tip;
-                                    else edgeY = stackName === 'profit' ? Math.min(edgeY, tip) : Math.max(edgeY, tip);
+                                    else edgeY = Math.min(edgeY, tip);
                                 });
                                 if (!total || x === null || edgeY === null) return;
                                 const text = labelFmt(total);

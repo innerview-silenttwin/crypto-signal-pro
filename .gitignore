@@ -73,3 +73,6 @@ shioaji.log
 
 # Singleton scheduler lock (per-process, regenerated on start)
 backend/data/scheduler.lock
+
+# 架構文件（本地維護，不入 git）
+docs/architecture.md
