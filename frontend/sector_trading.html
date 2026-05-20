@@ -1678,42 +1678,98 @@
                     return;
                 }
 
+                // 「太薄就放外面 + 引線」邏輯：
+                //   bar 段 px 高度 < 16 → 標籤推到外面（profit 在 bar 頂、loss 在 bar 底）
+                //   >= 16 → 標籤放中央（位置夠）
+                // 並用 custom plugin 對 tiny 段畫一條細引線連到外標籤
+                const SMALL_PX = 16;
+
+                const segSmall = (c) => {
+                    const meta = c.chart.getDatasetMeta(c.datasetIndex);
+                    const bar = meta?.data?.[c.dataIndex];
+                    if (!bar) return false;
+                    const h = (typeof bar.height === 'number')
+                        ? Math.abs(bar.height)
+                        : Math.abs((bar.y || 0) - (bar.base || 0));
+                    return h < SMALL_PX;
+                };
+
+                // 單一 datalabels 設定，靠 anchor/align/offset 的 callback 自動切位置
+                const smartLabel = (innerColor, outerColor, isProfit) => ({
+                    formatter: labelFmt,
+                    font: { size: 9, weight: '700' },
+                    display: (c) => labelFmt(c.dataset.data[c.dataIndex]) !== '',
+                    color: (c) => segSmall(c) ? outerColor : innerColor,
+                    anchor: (c) => segSmall(c) ? 'end' : 'center',
+                    align:  (c) => segSmall(c) ? (isProfit ? 'top' : 'bottom') : 'center',
+                    offset: (c) => segSmall(c) ? 10 : 0,
+                    clamp: false,
+                });
+
+                // 自訂 plugin：對「太薄段」畫一條細線從 bar 頂/底連到外標籤
+                const leaderLinePlugin = {
+                    id: 'leaderLine',
+                    afterDatasetsDraw(chart) {
+                        const cv = chart.ctx;
+                        chart.data.datasets.forEach((ds, dsIdx) => {
+                            const meta = chart.getDatasetMeta(dsIdx);
+                            const isProfitStack = ds.stack === 'profit';
+                            meta.data.forEach((bar, i) => {
+                                if (!bar) return;
+                                const h = (typeof bar.height === 'number')
+                                    ? Math.abs(bar.height)
+                                    : Math.abs((bar.y || 0) - (bar.base || 0));
+                                if (h >= SMALL_PX) return;
+                                const v = ds.data[i];
+                                if (!v || labelFmt(v) === '') return;
+
+                                // bar 的「靠近外側」邊：profit 朝上 → bar.y；loss 朝下 → bar.base
+                                const x = bar.x;
+                                const barEdge = isProfitStack ? bar.y : bar.base;
+                                const labelY = isProfitStack ? (barEdge - 10) : (barEdge + 10);
+
+                                cv.save();
+                                cv.strokeStyle = isProfitStack ? 'rgba(110,231,183,0.7)' : 'rgba(252,165,165,0.7)';
+                                cv.lineWidth = 1;
+                                cv.setLineDash([2, 2]);
+                                cv.beginPath();
+                                cv.moveTo(x, barEdge);
+                                cv.lineTo(x, labelY);
+                                cv.stroke();
+                                cv.restore();
+                            });
+                        });
+                    }
+                };
+
                 sectorBarChart = new Chart(ctx, {
                     type: 'bar',
-                    plugins: [ChartDataLabels],   // 注入 datalabels plugin
+                    plugins: [ChartDataLabels, leaderLinePlugin],
                     data: {
                         labels: SECTORS.map(id => SECTOR_LABELS[id]),
                         datasets: [
                             { label: '已實現虧損', data: realizedLoss,
                               backgroundColor: 'rgba(239,68,68,0.85)', borderColor: '#dc2626',
                               borderWidth: 1, borderRadius: 4, stack: 'loss',
-                              datalabels: { color: '#ffffff', font: { size: 9, weight: '700' },
-                                  formatter: labelFmt, anchor: 'center', align: 'center' } },
+                              datalabels: smartLabel('#ffffff', '#fca5a5', false) },
                             { label: '未實現虧損', data: unrealizedLoss,
                               backgroundColor: 'rgba(239,68,68,0.35)', borderColor: '#dc2626',
                               borderWidth: 1, borderRadius: 4, stack: 'loss',
-                              datalabels: { color: '#fca5a5', font: { size: 9, weight: '700' },
-                                  formatter: labelFmt, anchor: 'center', align: 'center' } },
+                              datalabels: smartLabel('#fca5a5', '#fca5a5', false) },
                             { label: '已實現獲利', data: realizedProfit,
                               backgroundColor: 'rgba(52,211,153,0.85)', borderColor: '#10b981',
                               borderWidth: 1, borderRadius: 4, stack: 'profit',
-                              datalabels: { color: '#ffffff', font: { size: 9, weight: '700' },
-                                  formatter: labelFmt, anchor: 'center', align: 'center' } },
+                              datalabels: smartLabel('#ffffff', '#6ee7b7', true) },
                             { label: '未實現獲利', data: unrealizedProfit,
                               backgroundColor: 'rgba(52,211,153,0.35)', borderColor: '#10b981',
                               borderWidth: 1, borderRadius: 4, stack: 'profit',
-                              datalabels: {
-                                  // 未實現獲利常常很小，特別處理：太小就放到 bar 頂端（不放裡面）
-                                  color: '#6ee7b7', font: { size: 9, weight: '700' },
-                                  formatter: labelFmt, anchor: 'end', align: 'top',
-                                  // 強制顯示（即使 bar 很矮也標出來在頂端）
-                                  display: ctx => labelFmt(ctx.dataset.data[ctx.dataIndex]) !== '',
-                              } },
+                              datalabels: smartLabel('#6ee7b7', '#6ee7b7', true) },
                         ]
                     },
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
+                        layout: { padding: { top: 20, bottom: 20 } },   // 給外標籤 + 引線預留空間
                         plugins: {
                             legend: { display: true, position: 'bottom',
                                 labels: { font: { size: 10 }, color: '#94a3b8', boxWidth: 12, padding: 8 } },
