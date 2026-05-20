@@ -84,10 +84,10 @@ def test_manager_sell_full_position(isolated_manager, monkeypatch):
     mgr = isolated_manager
     mgr.attach_broker(VirtualBroker())
 
-    # 先買，再賣
+    # 先買，再賣（測試 broker 流程；is_auto_stop=True 繞過「同日 BUY 不立即 SELL」守衛）
     mgr.execute_trade("2330.TW", "BUY", 900.0, "buy", ratio=0.10)
     qty_before = mgr.state["holdings"]["2330.TW"]["qty"]
-    ok = mgr.execute_trade("2330.TW", "SELL", 1000.0, "sell")
+    ok = mgr.execute_trade("2330.TW", "SELL", 1000.0, "sell", is_auto_stop=True)
     assert ok is True
     # 全賣 → 持倉移除
     assert "2330.TW" not in mgr.state["holdings"]
@@ -95,6 +95,39 @@ def test_manager_sell_full_position(isolated_manager, monkeypatch):
     assert sell_log["type"] == "SELL"
     assert sell_log["qty"] == qty_before
     assert sell_log["profit"] > 0  # 從 900 賣到 1000
+
+
+def test_same_day_buy_blocks_normal_sell(isolated_manager, monkeypatch):
+    """同日 BUY 後立刻 SELL（非 auto_stop）→ A 守衛擋下，避免買賣矛盾"""
+    import notifier
+    monkeypatch.setattr(notifier, "send_telegram", lambda *a, **kw: True)
+
+    mgr = isolated_manager
+    mgr.attach_broker(VirtualBroker())
+
+    mgr.execute_trade("2330.TW", "BUY", 900.0, "buy", ratio=0.10)
+    qty_before = mgr.state["holdings"]["2330.TW"]["qty"]
+
+    # 同日 SELL（非 auto_stop）→ 應該被擋
+    ok = mgr.execute_trade("2330.TW", "SELL", 1000.0, "trend_break_sell")
+    assert ok is False
+    # 持倉不變
+    assert mgr.state["holdings"]["2330.TW"]["qty"] == qty_before
+
+
+def test_same_day_buy_allows_auto_stop_sell(isolated_manager, monkeypatch):
+    """同日 BUY 後觸發停損/停利（is_auto_stop=True）→ A 守衛例外，允許 SELL 保護資金"""
+    import notifier
+    monkeypatch.setattr(notifier, "send_telegram", lambda *a, **kw: True)
+
+    mgr = isolated_manager
+    mgr.attach_broker(VirtualBroker())
+
+    mgr.execute_trade("2330.TW", "BUY", 900.0, "buy", ratio=0.10)
+    # 模擬同日停損觸發
+    ok = mgr.execute_trade("2330.TW", "SELL", 1000.0, "停損觸發 (-10%)", is_auto_stop=True)
+    assert ok is True
+    assert "2330.TW" not in mgr.state["holdings"]
 
 
 def test_manager_buy_blocked_by_zero_qty(isolated_manager, monkeypatch):

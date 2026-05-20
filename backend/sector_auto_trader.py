@@ -741,9 +741,32 @@ def process_sector(manager: SectorTradingManager):
                 manager.execute_trade(symbol, "SELL", price, desc)
             elif trend_break:
                 # 趨勢破壞型：在高檔轉折/盤整 regime 下，連3黑破20MA 或 從高跌3×ATR
+                # B 守衛：只在持有 ≥ 1 個交易日才生效（避免「剛買進就被 trend_break 賣掉」的矛盾）
+                # 用戶 2026-05-20 觀察：近 60 天 trend_break 訊號真破壞率僅 4%，
+                # 強勢上漲 regime 下「跌深」多半是回檔而非反轉。
+                # 但仍保留此邏輯，只是要求過夜（給市場一天驗證是真破壞還是假警報）。
+                from datetime import datetime as _dt
+                hold_time_str = hold.get("time", "")
+                hold_overnight = False
+                if hold_time_str:
+                    try:
+                        hold_dt = _dt.strptime(hold_time_str, "%Y-%m-%d %H:%M:%S")
+                        # 持有超過 16 小時 = 至少跨夜
+                        if (_dt.now() - hold_dt).total_seconds() >= 16 * 3600:
+                            hold_overnight = True
+                    except Exception:
+                        # 解析失敗保守處理 — 允許執行（向下相容無 time 欄位的舊資料）
+                        hold_overnight = True
+                else:
+                    hold_overnight = True  # 老資料沒記時間 → 不擋
                 trig_str = "+".join(tb_detail.get("triggers", []))
-                desc = f"趨勢破壞賣出 ({trig_str}){regime_tag}"
-                manager.execute_trade(symbol, "SELL", price, desc)
+                if hold_overnight:
+                    desc = f"趨勢破壞賣出 ({trig_str}){regime_tag}"
+                    manager.execute_trade(symbol, "SELL", price, desc)
+                else:
+                    logger.info(
+                        f"{symbol} trend_break ({trig_str}) 但持有 < 16 小時，先觀察不賣"
+                    )
         else:
             # 無持倉 → 買入需同時滿足：信號達標 + 綜合 ≥ 50
             standard_buy = (sig["direction"] == "BUY" and sig["confidence"] >= buy_th)

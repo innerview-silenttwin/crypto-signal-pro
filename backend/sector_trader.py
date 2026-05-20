@@ -852,6 +852,25 @@ class SectorTradingManager:
             if not hold or (hold.get("qty", 0) or 0) <= 0:
                 return False
             qty = hold["qty"]
+
+            # 守衛 A：同日剛 BUY 過的不立刻 SELL（避免 09:24 買 09:40 賣 矛盾）
+            # 邏輯：今天有 BUY 紀錄就跳過本次 SELL（除非是 auto_stop 緊急停損/停利）
+            # 例外：is_auto_stop=True（價格觸停損%/停利%）允許賣，因為這是保護資金
+            if not is_auto_stop:
+                today_str = datetime.now().strftime("%Y-%m-%d")
+                today_buys = [
+                    h for h in self.state.get("history", [])
+                    if h.get("symbol") == symbol
+                    and h.get("type") == "BUY"
+                    and (h.get("time") or "").startswith(today_str)
+                ]
+                if today_buys:
+                    self._handle_skipped(
+                        symbol, "SELL", "same_day_buy_blocks_sell",
+                        qty=qty, price=price,
+                        signal_desc=signal_desc,
+                    )
+                    return False
         else:
             return False
 
