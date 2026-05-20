@@ -1782,6 +1782,63 @@
                                 drawPill(x, edgeY, text, stackName === 'profit');
                             });
                         }
+
+                        // ── 繪製側邊細節標籤與引導線（針對太小而無法在 Bar 內部顯示的數值） ──
+                        const docStyle = getComputedStyle(document.documentElement);
+                        const themeBuyColor = docStyle.getPropertyValue('--buy-color').trim() || '#10b981';
+                        const themeSellColor = docStyle.getPropertyValue('--sell-color').trim() || '#ef4444';
+
+                        for (let i = 0; i < cats; i++) {
+                            chart.data.datasets.forEach((ds, dsIdx) => {
+                                const meta = chart.getDatasetMeta(dsIdx);
+                                const bar = meta.data[i];
+                                if (!bar) return;
+                                const v = ds.data[i] || 0;
+                                if (!v) return;
+
+                                const h = (typeof bar.height === 'number')
+                                    ? Math.abs(bar.height)
+                                    : Math.abs((bar.y || 0) - (bar.base || 0));
+
+                                if (h < MIN_PX) {
+                                    const text = labelFmt(v);
+                                    if (!text) return;
+
+                                    const isLeft = dsIdx < 2;
+                                    const segmentCenterY = (bar.y + bar.base) / 2;
+                                    const barWidth = bar.width;
+                                    const startX = isLeft ? (bar.x - barWidth / 2) : (bar.x + barWidth / 2);
+
+                                    const lineLen = 14;
+                                    const endX = isLeft ? (startX - lineLen) : (startX + lineLen);
+
+                                    // 判斷是該疊加柱的頂部還是底部，微調 Y 座標防重疊
+                                    const isTopSegment = dsIdx === 1 || dsIdx === 3;
+                                    const shiftedY = segmentCenterY + (isTopSegment ? -6 : 6);
+
+                                    // 繪製細膩的引導斜線
+                                    cv.save();
+                                    cv.beginPath();
+                                    cv.moveTo(startX, segmentCenterY);
+                                    cv.lineTo(endX, shiftedY);
+                                    cv.strokeStyle = isLeft ? themeSellColor : themeBuyColor;
+                                    cv.lineWidth = 0.8;
+                                    cv.globalAlpha = 0.45;
+                                    cv.stroke();
+                                    cv.restore();
+
+                                    // 繪製側邊數值文字
+                                    cv.save();
+                                    cv.font = '600 9px -apple-system, "Segoe UI", system-ui, sans-serif';
+                                    cv.fillStyle = isLeft ? themeSellColor : themeBuyColor;
+                                    cv.textAlign = isLeft ? 'right' : 'left';
+                                    cv.textBaseline = 'middle';
+                                    cv.globalAlpha = 0.85;
+                                    cv.fillText(text, isLeft ? (endX - 3) : (endX + 3), shiftedY);
+                                    cv.restore();
+                                }
+                            });
+                        }
                     }
                 };
 
@@ -1812,7 +1869,7 @@
                     options: {
                         responsive: true,
                         maintainAspectRatio: false,
-                        layout: { padding: { top: 28, bottom: 28 } },   // 給總和膠囊預留空間
+                        layout: { padding: { top: 28, bottom: 28, left: 32, right: 32 } },   // 給總和膠囊與側邊標籤預留空間
                         plugins: {
                             legend: { display: true, position: 'bottom',
                                 labels: { font: { size: 10 }, color: '#94a3b8', boxWidth: 12, padding: 8 } },
