@@ -85,6 +85,65 @@ def _build_sector_report() -> str:
 
 
 # ═══════════════════════════════════════════════
+# F3 + S1 狀態（驗證上線後行為）
+# ═══════════════════════════════════════════════
+
+def _build_f3_s1_status() -> str:
+    """簡短彙整 F3/S1 上線後狀態"""
+    from sector_auto_trader import fetch_taiex_regime
+    from sector_trader import get_all_managers
+
+    regime = fetch_taiex_regime()
+    regime_label = {"bull": "多頭", "neutral": "盤整 ⚠F3啟用",
+                    "bear": "空頭"}.get(regime, regime)
+
+    # 持倉 highest_since_entry 覆蓋率
+    total = 0
+    has_highest = 0
+    for sector_id, mgr in get_all_managers().items():
+        for sym, h in mgr.state.get("holdings", {}).items():
+            if h.get("qty", 0) > 0:
+                total += 1
+                if h.get("highest_since_entry") is not None:
+                    has_highest += 1
+
+    # 今日 SELL trigger 分佈（從 history 抓今日）
+    today = datetime.now(TZ).strftime('%Y-%m-%d')
+    s1_cnt = s9_cnt = stoploss_cnt = takeprofit_cnt = std_cnt = 0
+    for sector_id, mgr in get_all_managers().items():
+        for h in mgr.state.get("history", []):
+            if not h.get("time", "").startswith(today):
+                continue
+            if h.get("type") != "SELL":
+                continue
+            sig = h.get("signal", "")
+            if "S1從持倉高" in sig:
+                s1_cnt += 1
+            elif "S9連3黑" in sig:
+                s9_cnt += 1
+            elif "停損觸發" in sig:
+                stoploss_cnt += 1
+            elif "停利觸發" in sig:
+                takeprofit_cnt += 1
+            elif "賣出信號" in sig:
+                std_cnt += 1
+
+    lines = ["\n\U0001f527 <b>F3 + S1 狀態</b>"]
+    lines.append(f"TAIEX regime：{regime_label}")
+    lines.append(f"持倉 highest 追蹤：{has_highest}/{total} 已建立")
+    today_total = s1_cnt + s9_cnt + stoploss_cnt + takeprofit_cnt + std_cnt
+    if today_total > 0:
+        parts = []
+        if s1_cnt: parts.append(f"S1×{s1_cnt}")
+        if s9_cnt: parts.append(f"S9×{s9_cnt}")
+        if stoploss_cnt: parts.append(f"停損×{stoploss_cnt}")
+        if takeprofit_cnt: parts.append(f"停利×{takeprofit_cnt}")
+        if std_cnt: parts.append(f"標準×{std_cnt}")
+        lines.append(f"今日 SELL：{', '.join(parts)}")
+    return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════════
 # BTC 交易中心績效
 # ═══════════════════════════════════════════════
 
@@ -159,7 +218,13 @@ def send_daily_report() -> bool:
         logger.error(f"BTC 績效報告產生失敗: {e}")
         btc_report = "\u26a0\ufe0f BTC 績效報告產生失敗"
 
-    message = f"{sector_report}\n{'─' * 28}\n{btc_report}"
+    try:
+        f3_s1_status = _build_f3_s1_status()
+    except Exception as e:
+        logger.error(f"F3/S1 狀態產生失敗: {e}")
+        f3_s1_status = ""
+
+    message = f"{sector_report}{f3_s1_status}\n{'─' * 28}\n{btc_report}"
     ok = send_telegram(message)
     if ok:
         logger.info("每日績效報告已發送")
