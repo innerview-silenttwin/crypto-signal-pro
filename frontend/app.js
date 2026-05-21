@@ -824,8 +824,14 @@ async function fetchTwSignals(symbol, market) {
 
         const modeLabel = market === 'futures' ? '台股期貨' : '台股';
 
-        // 價格
-        if (ui.btc && ui.btc.price) ui.btc.price.textContent = formatPrice(s.price);
+        // 價格：走勢圖（yfinance intraday）比信號層（TWSE 日線 + 60s 快取）即時，
+        // 因此優先用 cachedCandles 最後一根 close；無圖表資料時才 fallback 到 s.price
+        if (ui.btc && ui.btc.price) {
+            const chartLast = (Array.isArray(cachedCandles) && cachedCandles.length > 0)
+                ? cachedCandles[cachedCandles.length - 1].close
+                : null;
+            ui.btc.price.textContent = formatPrice(chartLast != null ? chartLast : s.price);
+        }
         if (ui.status) ui.status.textContent = `${modeLabel}盤後信號（日線）`;
 
         // 1D 環形圖
