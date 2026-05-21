@@ -29,6 +29,52 @@ logger = logging.getLogger(__name__)
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "sector_accounts")
 os.makedirs(DATA_DIR, exist_ok=True)
 
+
+def _broker_reason_zh(reason: str) -> tuple[str, str, bool]:
+    """把 broker_* reason 翻成中文 + 判斷是否屬於「正常市況」。
+
+    Returns: (telegram_header, zh_reason, is_normal)
+      is_normal=True → 用 ⏱ 偏資訊；False → 用 🚨 偏警告
+    """
+    # broker_timeout:unfilled_after_30s_status=orderstatus.submitted
+    if reason.startswith("broker_timeout"):
+        return (
+            "⏱ <b>限價單未成交（自動取消）</b>",
+            "30 秒內未撮合到對手價（限價過遠或盤中流動性不足，simulation 模式特別常見）",
+            True,
+        )
+    if reason.startswith("broker_cancelled"):
+        return (
+            "⏱ <b>下單已取消</b>",
+            "訂單在成交前被取消（可能為盤中重送或被券商系統取消）",
+            True,
+        )
+    if reason.startswith("broker_partial"):
+        return (
+            "ℹ️ <b>部分成交</b>",
+            "在 30 秒內僅成交部分張數，剩餘未成交已取消",
+            True,
+        )
+    if reason.startswith("broker_rejected:place_order_error"):
+        return (
+            "🚨 <b>券商下單失敗</b>",
+            "呼叫 place_order API 失敗（連線/權限/參數錯誤）",
+            False,
+        )
+    if reason.startswith("broker_rejected"):
+        return (
+            "🚨 <b>券商拒單</b>",
+            "永豐風控/委託條件拒絕本筆委託",
+            False,
+        )
+    if reason.startswith("broker_exception"):
+        return (
+            "🚨 <b>券商下單異常</b>",
+            "broker.submit 拋出例外（請檢查 log 詳情）",
+            False,
+        )
+    return ("🚨 <b>券商下單異常</b>", reason, False)
+
 # ── 預設策略（來自回測最佳結果）──
 
 # 權重依據：chipflow_backtest_20260410 指標歸因分析（2019-2026 七年回測）
@@ -809,15 +855,20 @@ class SectorTradingManager:
                     f"剩餘交易暫停至明日"
                 )
         elif reason.startswith("broker_"):
-            if self._should_notify_once_today("broker_error", symbol):
-                send_telegram(
-                    f"🚨 <b>券商下單異常</b> [{self.sector_name}]\n"
+            header, zh_reason, is_normal = _broker_reason_zh(reason)
+            dedup_key = "broker_timeout" if is_normal else "broker_error"
+            if self._should_notify_once_today(dedup_key, symbol):
+                msg = (
+                    f"{header} [{self.sector_name}]\n"
                     f"標的：<a href=\"{stock_url}\">{stock_name}({code})</a>\n"
                     f"{order_line}\n"
-                    f"原因：{reason}\n"
-                    f"觸發信號：{signal_desc}\n"
-                    f"⚠️ 連續發生請檢查 Shioaji API 相容性 / 網路 / 帳號狀態"
+                    f"原因：{zh_reason}\n"
+                    f"觸發信號：{signal_desc}"
                 )
+                if not is_normal:
+                    msg += "\n⚠️ 連續發生請檢查 Shioaji API 相容性 / 網路 / 帳號狀態"
+                msg += f"\n<i>內部代碼：{reason}</i>"
+                send_telegram(msg)
 
     def execute_trade(
         self,
