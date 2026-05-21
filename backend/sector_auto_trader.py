@@ -501,22 +501,26 @@ def is_strong_pullback(sig: dict) -> tuple[bool, dict]:
 
 # ── 趨勢破壞型賣出（價量型出場觸發）──
 
-def is_trend_break_sell(df: pd.DataFrame, sig: dict) -> tuple[bool, dict]:
+def is_trend_break_sell(df: pd.DataFrame, sig: dict,
+                        hold: Optional[dict] = None) -> tuple[bool, dict]:
     """
     判斷是否觸發「趨勢破壞型賣出」（補強 RegimeLayer 對中段破線的遲鈍）
 
-    觸發條件（S8 OR S9，且 regime ∈ {高檔轉折, 盤整, 多頭}）：
-    - S8: 從近 20 日高點下跌 ≥ 3×ATR（波動度自適應停損）
+    觸發條件（S1 OR S9，且 regime ∈ {高檔轉折, 盤整, 多頭}）：
+    - S1: 從持倉以來最高價回落 ≥ 3×ATR（個股級 trailing stop）
+          fallback：舊持倉無 highest_since_entry → 用 max(avg_price, 近20日高)
     - S9: 連續 3 黑 K + 收盤跌破 20MA（K 棒型態破壞）
 
-    回測（2024-01 ~ 2026-04，76 檔）：
-    - S9 在「高檔轉折」: n=284, +10d=+1.06%, 賣對率 70.9%, 全踏空 2.6%
-    - S8 在「高檔轉折」: n=663, +10d=+2.07%, 賣對率 68.9%, 全踏空 4.1%
-    - S9 在「多頭」: n=322, +10d=+1.53%, P10=-8.66%, 跌≥10% 比例 8.1%（與高檔轉折相當）
-    - S8 在「多頭」: n=874, +10d=+1.24%, 採用觸發淨效益 +0.59% vs 持有
+    研究背景：scripts/backtest_exits/REPORT.md
+    回測 S1 取代原 S8（從 20 日高點 3×ATR）+ F3 entry filter 組合：
+    全期 +63.5% / MDD -59.6% (vs 原 baseline +45.6% / -84.8%)。
 
-    用途：在多頭/中段位置開始破線時即觸發賣出，避開 RegimeLayer 等到 LOW zone 才轉 BEAR 的遲鈍。
     「強勢多頭」不納入（樣本不足且本身已有 sell ×0.5 防護）。
+
+    Args:
+        df: 個股 OHLCV（含技術指標）
+        sig: 信號 dict（含 regime）
+        hold: 持倉狀態 dict，含 highest_since_entry / avg_price
 
     Returns:
         (是否觸發, 細節 dict)
@@ -544,8 +548,17 @@ def is_trend_break_sell(df: pd.DataFrame, sig: dict) -> tuple[bool, dict]:
     s9_red3 = all(closes[i - k] < opens[i - k] for k in range(3))
     s9 = s9_red3 and c < ma20
 
-    # S8: 從近 20 日高點下跌 ≥ 3×ATR
-    high_20d = float(np.max(highs[i - 19:i + 1]))
+    # S1: 從持倉以來最高價回落 ≥ 3×ATR
+    # 取 highest_since_entry；舊資料 fallback 到 max(avg_price, 近20日收盤高)
+    if hold and hold.get("highest_since_entry"):
+        highest = float(hold["highest_since_entry"])
+    elif hold and hold.get("avg_price"):
+        # backward compat：用 max(avg_price, 近20日收盤高) 當保守 proxy
+        highest = max(float(hold["avg_price"]),
+                      float(np.max(closes[max(0, i - 19):i + 1])))
+    else:
+        highest = float(np.max(highs[max(0, i - 19):i + 1]))
+
     # 簡化 ATR(14)
     tr_list = []
     for k in range(14):
@@ -554,22 +567,22 @@ def is_trend_break_sell(df: pd.DataFrame, sig: dict) -> tuple[bool, dict]:
         pc = closes[i - k - 1] if i - k - 1 >= 0 else closes[i - k]
         tr_list.append(max(h - l, abs(h - pc), abs(l - pc)))
     atr14 = float(np.mean(tr_list))
-    s8 = atr14 > 0 and (high_20d - c) >= 3.0 * atr14
+    s1 = atr14 > 0 and (highest - c) >= 3.0 * atr14
 
-    if not (s8 or s9):
+    if not (s1 or s9):
         return False, {}
 
     triggered = []
     if s9:
         triggered.append("S9連3黑破20MA")
-    if s8:
-        triggered.append(f"S8從高點{high_20d:.1f}跌{(high_20d-c)/atr14:.1f}×ATR")
+    if s1:
+        triggered.append(f"S1從持倉高{highest:.1f}跌{(highest-c)/atr14:.1f}×ATR")
 
     return True, {
         "triggers": triggered,
         "regime": regime,
         "ma20": round(ma20, 2),
-        "high_20d": round(high_20d, 2),
+        "highest_since_entry": round(highest, 2),
         "atr14": round(atr14, 2),
     }
 
@@ -766,6 +779,11 @@ def process_sector(manager: SectorTradingManager):
         # 4. 檢查停損/停利（已持倉）
         hold = manager.state["holdings"].get(symbol)
         if hold and hold["qty"] > 0:
+            # 更新 highest_since_entry（S1 trailing stop 基準，每日跟價更新）
+            cur_high = float(hold.get("highest_since_entry") or hold["avg_price"])
+            if price > cur_high:
+                hold["highest_since_entry"] = round(price, 2)
+
             pnl_pct = (price - hold["avg_price"]) / hold["avg_price"] * 100
 
             if pnl_pct <= -stop_loss:
@@ -792,7 +810,7 @@ def process_sector(manager: SectorTradingManager):
         if hold and hold["qty"] > 0:
             # 已持倉 → 賣出觸發兩條：標準信號 + 趨勢破壞型
             standard_sell = (sig["direction"] == "SELL" and sig["confidence"] >= sell_th)
-            trend_break, tb_detail = is_trend_break_sell(df, sig)
+            trend_break, tb_detail = is_trend_break_sell(df, sig, hold=hold)
 
             if standard_sell:
                 desc = f"賣出信號 (技術{sig['confidence']:.0f},{comp_tag}, {sig['signal_level']}){regime_tag}"

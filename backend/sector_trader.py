@@ -682,16 +682,20 @@ class SectorTradingManager:
             new_total_cost = old.get(
                 "total_cost", old["qty"] * old["avg_price"] * 1.001425
             ) + actual_cost
+            # 加倉時保留歷史最高（S1 trailing stop 基準）
+            old_high = float(old.get("highest_since_entry", old["avg_price"]))
             self.state["holdings"][symbol] = {
                 "qty": new_qty, "avg_price": round(new_avg, 2),
                 "total_cost": round(new_total_cost, 2),
                 "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "highest_since_entry": round(max(old_high, price), 2),
             }
         else:
             self.state["holdings"][symbol] = {
                 "qty": qty, "avg_price": price,
                 "total_cost": round(actual_cost, 2),
                 "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "highest_since_entry": price,  # S1 trailing stop 基準
             }
 
         self.state["history"].insert(0, {
