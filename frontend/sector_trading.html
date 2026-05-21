@@ -1788,6 +1788,40 @@
                         const themeBuyColor = docStyle.getPropertyValue('--buy-color').trim() || '#10b981';
                         const themeSellColor = docStyle.getPropertyValue('--sell-color').trim() || '#ef4444';
 
+                        const drawnLabels = [];
+                        // 避空防重疊演算法：計算非重疊的 Y 座標
+                        const getResolvedY = (startX, targetY, isLeft, textWidth) => {
+                            let resolvedY = targetY;
+                            let attempts = 0;
+                            const labelHeight = 11; // 最小垂直間距
+
+                            const hasCollision = (y) => {
+                                return drawnLabels.some(other => {
+                                    const yOverlap = Math.abs(other.y - y) < labelHeight;
+
+                                    const selfLeft = isLeft ? (startX - textWidth) : startX;
+                                    const selfRight = isLeft ? startX : (startX + textWidth);
+
+                                    const otherLeft = other.isLeft ? (other.x - other.width) : other.x;
+                                    const otherRight = other.isLeft ? other.x : (other.x + other.width);
+
+                                    const xOverlap = selfLeft < otherRight && selfRight > otherLeft;
+
+                                    return yOverlap && xOverlap;
+                                });
+                            };
+
+                            const step = 11;
+                            while (hasCollision(resolvedY) && attempts < 10) {
+                                attempts++;
+                                const direction = attempts % 2 === 0 ? 1 : -1;
+                                const multiplier = Math.ceil(attempts / 2);
+                                resolvedY = targetY + direction * multiplier * step;
+                            }
+
+                            return resolvedY;
+                        };
+
                         for (let i = 0; i < cats; i++) {
                             chart.data.datasets.forEach((ds, dsIdx) => {
                                 const meta = chart.getDatasetMeta(dsIdx);
@@ -1816,11 +1850,20 @@
                                     const isTopSegment = dsIdx === 1 || dsIdx === 3;
                                     const shiftedY = segmentCenterY + (isTopSegment ? -6 : 6);
 
+                                    // 計算文字寬度與最終非重疊的 Y 座標
+                                    cv.save();
+                                    cv.font = '600 9px -apple-system, "Segoe UI", system-ui, sans-serif';
+                                    const textWidth = cv.measureText(text).width;
+                                    cv.restore();
+
+                                    const textX = isLeft ? (endX - 3) : (endX + 3);
+                                    const resolvedY = getResolvedY(textX, shiftedY, isLeft, textWidth);
+
                                     // 繪製細膩的引導斜線
                                     cv.save();
                                     cv.beginPath();
                                     cv.moveTo(startX, segmentCenterY);
-                                    cv.lineTo(endX, shiftedY);
+                                    cv.lineTo(endX, resolvedY);
                                     cv.strokeStyle = isLeft ? themeSellColor : themeBuyColor;
                                     cv.lineWidth = 0.8;
                                     cv.globalAlpha = 0.45;
@@ -1834,8 +1877,11 @@
                                     cv.textAlign = isLeft ? 'right' : 'left';
                                     cv.textBaseline = 'middle';
                                     cv.globalAlpha = 0.85;
-                                    cv.fillText(text, isLeft ? (endX - 3) : (endX + 3), shiftedY);
+                                    cv.fillText(text, textX, resolvedY);
                                     cv.restore();
+
+                                    // 紀錄已繪製的標籤以供碰撞偵測
+                                    drawnLabels.push({ x: textX, y: resolvedY, isLeft, width: textWidth });
                                 }
                             });
                         }
