@@ -355,6 +355,35 @@ def test_place_order_persistent_timeout_fails(fake_shioaji, monkeypatch):
     assert stats["consecutive_failures"] == 1
 
 
+def test_place_order_exhausted_connection_triggers_relogin(fake_shioaji, monkeypatch):
+    """全部 retry 都是 ConnectionError → 觸發 re-login + 最後一次嘗試"""
+    monkeypatch.setattr("brokers.sinopac.time.sleep", lambda *_: None)
+    fake_shioaji._next_api = _FakeShioajiAPI()
+    # 前 3 次（含 retry）都失敗，re-login 後第 4 次成功
+    fake_shioaji._next_api._place_order_conn_errs_left = 3
+    fake_shioaji._next_api._trade_to_return = _FakeTrade("Filled", 1, 900.0)
+
+    b = _new_broker(fake_shioaji)
+    # 把 cooldown 設 0 讓 re-login 立刻可呼叫
+    b._last_relogin_at = 0
+    monkeypatch.setattr("brokers.sinopac.SinopacBroker.RELOGIN_COOLDOWN_S", 0)
+
+    r = b.submit(symbol="2330.TW", action="BUY", qty_shares=1000,
+                 limit_price=900.0, client_order_id="x", sector_id="semiconductor")
+    assert r.ok is True   # re-login 後第 4 次成功
+
+
+def test_relogin_rate_limited(fake_shioaji, monkeypatch):
+    """5 分鐘冷卻內不重複 re-login"""
+    monkeypatch.setattr("brokers.sinopac.time.sleep", lambda *_: None)
+    fake_shioaji._next_api = _FakeShioajiAPI()
+    b = _new_broker(fake_shioaji)
+    # 假設 1 秒前剛 re-login 過 → 應該被冷卻擋
+    b._last_relogin_at = __import__("time").time() - 1
+    ok = b._attempt_relogin()
+    assert ok is False
+
+
 def test_place_order_connection_error_retried(fake_shioaji, monkeypatch):
     """ShioajiConnectionError (5/21 起出現的錯誤類型) 第一次拋、第二次成功 → 應 retry 並成功"""
     monkeypatch.setattr("brokers.sinopac.time.sleep", lambda *_: None)

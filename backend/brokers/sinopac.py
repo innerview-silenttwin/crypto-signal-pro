@@ -73,6 +73,20 @@ class SinopacBroker:
         self._state_store = state_store
         self._person_id = person_id   # 給某些 API 需要時用；不寫入 log
 
+        # ── 儲存 credentials 供 re-login 用 ──
+        # 永豐客服 5/21 建議：ShioajiConnectionError 連續失敗應 re-login
+        # 這些值純記憶體保存，不寫 disk、不 log（log 防護見 _redact 與 logger 設定）
+        self._creds = {
+            "api_key": api_key,
+            "secret_key": secret_key,
+            "person_id": person_id,
+            "ca_path": ca_path,
+            "ca_password": ca_password,
+        }
+        # re-login rate limit：避免狂登入觸發 broker ban
+        self._last_relogin_at = 0.0
+        self._relogin_lock = threading.Lock()
+
         self.api = sj.Shioaji(simulation=self._simulation)
         try:
             self.api.login(api_key=api_key, secret_key=secret_key)
@@ -154,31 +168,53 @@ class SinopacBroker:
         # 共通點：都是「短暫的連線/通訊問題」，sleep 後再試很可能成功
         # 不重試：認證錯誤、參數錯誤、權限問題 — 重試也是白費
         RETRYABLE_KEYWORDS = ("Timeout", "Connection", "Solace", "Network", "Disconnect")
+        # 永豐客服 5/21 建議 exponential backoff：1s, 2s, 4s
+        BACKOFF_SCHEDULE = [1.0, 2.0, 4.0]
 
         last_err = None
+        last_err_name = ""
         for attempt in range(max_retries + 1):
             try:
                 trade = self.api.place_order(contract, order)
                 return trade, (attempt > 0)
             except Exception as e:
                 last_err = e
-                err_name = e.__class__.__name__
+                last_err_name = e.__class__.__name__
                 # 只有「短暫連線類」錯誤才重試
-                is_retryable = any(kw in err_name for kw in RETRYABLE_KEYWORDS)
+                is_retryable = any(kw in last_err_name for kw in RETRYABLE_KEYWORDS)
                 if not is_retryable:
-                    logger.error("place_order non-retryable error: %s", err_name)
+                    logger.error("place_order non-retryable error: %s", last_err_name)
                     raise
                 if attempt < max_retries:
+                    # exponential backoff（schedule 不夠長就 fallback 到 retry_sleep_s）
+                    sleep_s = BACKOFF_SCHEDULE[attempt] if attempt < len(BACKOFF_SCHEDULE) else retry_sleep_s
                     logger.warning(
-                        "place_order %s (attempt %d/%d), sleep %.1fs then retry",
-                        err_name, attempt + 1, max_retries + 1, retry_sleep_s,
+                        "place_order %s (attempt %d/%d), backoff %.1fs",
+                        last_err_name, attempt + 1, max_retries + 1, sleep_s,
                     )
-                    time.sleep(retry_sleep_s)
+                    time.sleep(sleep_s)
                 else:
                     logger.error(
                         "place_order %s after %d attempts",
-                        err_name, max_retries + 1,
+                        last_err_name, max_retries + 1,
                     )
+
+        # ── 最後手段：如果是 Connection 類錯誤且全部 retry 失敗 → 嘗試 re-login + 再一次 ──
+        if last_err and "Connection" in last_err_name:
+            logger.warning(
+                "place_order exhausted retries with %s; attempting re-login",
+                last_err_name,
+            )
+            if self._attempt_relogin():
+                # re-login 成功 → 最後一次嘗試
+                try:
+                    trade = self.api.place_order(contract, order)
+                    logger.info("place_order succeeded after re-login")
+                    return trade, True
+                except Exception as e2:
+                    logger.error("place_order still fails after re-login: %s", e2.__class__.__name__)
+                    last_err = e2
+
         # 不會到這（finally raise），保險
         raise last_err if last_err else RuntimeError("unknown place_order failure")
 
@@ -262,6 +298,70 @@ class SinopacBroker:
                 )
             except Exception as e:
                 logger.warning("Telegram sector cooldown alert failed: %s", e.__class__.__name__)
+
+    # ── Re-login（恢復連線後 reconcile） ──
+
+    RELOGIN_COOLDOWN_S = 5 * 60   # 兩次 re-login 至少間隔 5 分鐘（避免狂登入觸發 ban）
+
+    def _attempt_relogin(self) -> bool:
+        """嘗試重新 login。永豐客服 5/21 建議：連續 ConnectionError 失敗應 re-login。
+
+        Rate limit：兩次 re-login 至少間隔 5 分鐘，避免被 broker 視為異常。
+        成功後立即跑 reconcile 補對帳。
+
+        Returns:
+            True = re-login 成功；False = 跳過（冷卻中）或失敗
+        """
+        now = time.time()
+        with self._relogin_lock:
+            if now - self._last_relogin_at < self.RELOGIN_COOLDOWN_S:
+                logger.info(
+                    "re-login skipped: cooldown (last %.0fs ago, need ≥%ds)",
+                    now - self._last_relogin_at, self.RELOGIN_COOLDOWN_S,
+                )
+                return False
+            self._last_relogin_at = now
+
+        logger.warning("Attempting re-login due to persistent connection errors")
+        try:
+            with self._lock:
+                self.api.login(
+                    api_key=self._creds["api_key"],
+                    secret_key=self._creds["secret_key"],
+                )
+                if not self._simulation and self._creds.get("ca_path"):
+                    self.api.activate_ca(
+                        ca_path=self._creds["ca_path"],
+                        ca_passwd=self._creds["ca_password"],
+                        person_id=self._creds["person_id"],
+                    )
+            logger.info("Re-login successful")
+            # 重新對帳 in-flight 狀態
+            try:
+                self.reconcile()
+            except Exception as e:
+                logger.warning("post-relogin reconcile failed: %s", e.__class__.__name__)
+            try:
+                from notifier import send_telegram
+                send_telegram(
+                    "🔄 <b>Sinopac 自動 re-login 成功</b>\n"
+                    "因連續 ConnectionError 觸發；已執行 reconcile 補對帳"
+                )
+            except Exception:
+                pass
+            return True
+        except Exception as e:
+            logger.error("Re-login failed: %s", e.__class__.__name__)
+            try:
+                from notifier import send_telegram
+                send_telegram(
+                    f"❌ <b>Sinopac 自動 re-login 失敗</b>\n"
+                    f"錯誤類型：{e.__class__.__name__}\n"
+                    f"請手動 csp restart 重啟服務"
+                )
+            except Exception:
+                pass
+            return False
 
     # ── callback（safe to be called from another thread）──
 
