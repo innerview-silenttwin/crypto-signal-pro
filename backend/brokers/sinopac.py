@@ -150,6 +150,11 @@ class SinopacBroker:
         Raises:
             最後一次 attempt 的例外（不吞）
         """
+        # 可重試的錯誤類型（5/21 觀察：rshioaji 1.5.13 開始拋 ShioajiConnectionError）
+        # 共通點：都是「短暫的連線/通訊問題」，sleep 後再試很可能成功
+        # 不重試：認證錯誤、參數錯誤、權限問題 — 重試也是白費
+        RETRYABLE_KEYWORDS = ("Timeout", "Connection", "Solace", "Network", "Disconnect")
+
         last_err = None
         for attempt in range(max_retries + 1):
             try:
@@ -158,19 +163,21 @@ class SinopacBroker:
             except Exception as e:
                 last_err = e
                 err_name = e.__class__.__name__
-                # 只有 timeout 類錯誤才重試；其他直接 raise
-                if "Timeout" not in err_name:
+                # 只有「短暫連線類」錯誤才重試
+                is_retryable = any(kw in err_name for kw in RETRYABLE_KEYWORDS)
+                if not is_retryable:
+                    logger.error("place_order non-retryable error: %s", err_name)
                     raise
                 if attempt < max_retries:
                     logger.warning(
-                        "place_order timeout (attempt %d/%d), sleep %.1fs then retry",
-                        attempt + 1, max_retries + 1, retry_sleep_s,
+                        "place_order %s (attempt %d/%d), sleep %.1fs then retry",
+                        err_name, attempt + 1, max_retries + 1, retry_sleep_s,
                     )
                     time.sleep(retry_sleep_s)
                 else:
                     logger.error(
-                        "place_order timeout after %d attempts",
-                        max_retries + 1,
+                        "place_order %s after %d attempts",
+                        err_name, max_retries + 1,
                     )
         # 不會到這（finally raise），保險
         raise last_err if last_err else RuntimeError("unknown place_order failure")

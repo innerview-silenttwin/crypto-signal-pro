@@ -120,7 +120,12 @@ class _FakeShioajiAPI:
         if getattr(self, "_place_order_always_timeout", False):
             raise TimeoutError("simulated persistent timeout")
         if getattr(self, "_place_order_value_error", False):
-            raise ValueError("non-timeout error should not retry")
+            raise ValueError("non-retryable error should not retry")
+        # ShioajiConnectionError 系列：模擬 rshioaji 1.5.13 抛的連線錯誤
+        if hasattr(self, "_place_order_conn_errs_left") and self._place_order_conn_errs_left > 0:
+            self._place_order_conn_errs_left -= 1
+            exc = type("ShioajiConnectionError", (Exception,), {})
+            raise exc("simulated shioaji connection error")
         return self._trade_to_return
 
     def cancel_order(self, trade):
@@ -152,7 +157,8 @@ class _FakeShioajiModule(types.ModuleType):
             # 把 retry test 用的 flags 也複製過去
             for attr in ("_place_order_timeouts_left",
                          "_place_order_always_timeout",
-                         "_place_order_value_error"):
+                         "_place_order_value_error",
+                         "_place_order_conn_errs_left"):
                 if hasattr(cfg, attr):
                     setattr(api, attr, getattr(cfg, attr))
         return api
@@ -349,8 +355,24 @@ def test_place_order_persistent_timeout_fails(fake_shioaji, monkeypatch):
     assert stats["consecutive_failures"] == 1
 
 
+def test_place_order_connection_error_retried(fake_shioaji, monkeypatch):
+    """ShioajiConnectionError (5/21 起出現的錯誤類型) 第一次拋、第二次成功 → 應 retry 並成功"""
+    monkeypatch.setattr("brokers.sinopac.time.sleep", lambda *_: None)
+    fake_shioaji._next_api = _FakeShioajiAPI()
+    fake_shioaji._next_api._trade_to_return = _FakeTrade("Filled", 1, 900.0)
+    fake_shioaji._next_api._place_order_conn_errs_left = 1
+
+    b = _new_broker(fake_shioaji)
+    r = b.submit(symbol="2330.TW", action="BUY", qty_shares=1000,
+                 limit_price=900.0, client_order_id="x", sector_id="semiconductor")
+    assert r.ok is True
+    stats = b.get_stats()
+    assert stats["place_order_retry_success"] == 1
+    assert stats["place_order_failed"] == 0
+
+
 def test_place_order_non_timeout_not_retried(fake_shioaji, monkeypatch):
-    """ValueError 不是 timeout → 立刻 fail，不 retry。"""
+    """ValueError 不在 retryable 關鍵字清單 → 立刻 fail，不 retry。"""
     fake_shioaji._next_api = _FakeShioajiAPI()
     fake_shioaji._next_api._place_order_value_error = True
     # 監控 sleep 不該被叫到（沒進 retry）

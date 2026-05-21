@@ -187,8 +187,10 @@ ERR_LOG="$LOG_DIR/crypto-signal-pro-error.log"
 if [ -f "$LOG" ] || [ -f "$ERR_LOG" ]; then
     # 同時掃正常 log 和 error log（retry 訊息走 stderr 進 error log）
     # 用 ${VAR:-0} 預設值避免 set -u 撞 unbound、用 ${} braces 隔開全形字元
-    TIMEOUT_COUNT=$(grep -hc "place_order timeout (attempt" "$LOG" "$ERR_LOG" 2>/dev/null | awk '{s+=$1} END {print s+0}')
-    AFTER_RETRY_FAIL=$(grep -hc "place_order timeout after.*attempts" "$LOG" "$ERR_LOG" 2>/dev/null | awk '{s+=$1} END {print s+0}')
+    # 抓 retry 訊息：「place_order XXX (attempt N/M)」/「place_order XXX after N attempts」
+    # XXX 可能是 TimeoutError / ShioajiConnectionError / ConnectionError 等
+    TIMEOUT_COUNT=$(grep -hcE "place_order [A-Za-z]+ \(attempt" "$LOG" "$ERR_LOG" 2>/dev/null | awk '{s+=$1} END {print s+0}')
+    AFTER_RETRY_FAIL=$(grep -hcE "place_order [A-Za-z]+ after [0-9]+ attempts" "$LOG" "$ERR_LOG" 2>/dev/null | awk '{s+=$1} END {print s+0}')
     NOT_READY=$(grep -hc "sol.cpp.*Not ready" "$LOG" "$ERR_LOG" 2>/dev/null | awk '{s+=$1} END {print s+0}')
     SESSION_UP=$(grep -hc "Event: Session up" "$LOG" "$ERR_LOG" 2>/dev/null | awk '{s+=$1} END {print s+0}')
     echo "  Solace 'Session up' 次數: ${SESSION_UP:-0}（健康 1-2 次；> 5 表示連線抖動）"
