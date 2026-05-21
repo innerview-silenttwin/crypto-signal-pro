@@ -219,6 +219,58 @@ def fetch_live_price(symbol: str, prev_close: Optional[float] = None) -> Optiona
         return None
 
 
+# ── TAIEX 大盤 regime（給 F3 entry filter 用）──────────────────────
+# 研究背景：scripts/backtest_exits/REPORT.md
+# 「持續盤整」段 134 筆全策略漏血 -107K~-143K，主因是 TAIEX neutral 時
+# 低分（buy_score 40-50）進場 → 75 筆吃掉 70% 漏血。
+# F3：TAIEX neutral 時把 buy 門檻提到 50。回測 +9.9pp 全期報酬 / +24pp MDD。
+
+_taiex_regime_cache = {"time": 0.0, "regime": None}
+_TAIEX_CACHE_TTL = 600  # 10 分鐘（每個 process_sector 共用）
+
+
+def fetch_taiex_regime() -> str:
+    """取得 TAIEX 大盤 regime: bull / neutral / bear
+
+    判定（與回測 scripts/backtest_exits 一致）：
+      bull   = TAIEX close > MA200 且 MA50 > MA200
+      bear   = TAIEX close < MA200 且 MA50 < MA200
+      其它   = neutral（盤整）
+    """
+    now = time.time()
+    cached = _taiex_regime_cache.get("regime")
+    if cached is not None and now - _taiex_regime_cache["time"] < _TAIEX_CACHE_TTL:
+        return cached
+
+    try:
+        df = fetch_signal_data("^TWII", lookback_days=300)
+        if df is None or len(df) < 200:
+            return "neutral"  # 資料不足保守處理（會啟用 F3 嚴格門檻）
+        close = float(df['close'].iloc[-1])
+        ma50 = float(df['close'].rolling(50).mean().iloc[-1])
+        ma200 = float(df['close'].rolling(200).mean().iloc[-1])
+        if pd.isna(ma200) or ma200 <= 0:
+            regime = "neutral"
+        elif close > ma200 and ma50 > ma200:
+            regime = "bull"
+        elif close < ma200 and ma50 < ma200:
+            regime = "bear"
+        else:
+            regime = "neutral"
+
+        # 只在 regime 變化或首次計算時 log（避免洗版）
+        prev = _taiex_regime_cache.get("regime")
+        if prev != regime:
+            logger.info(f"TAIEX regime: {prev or '(初始)'} → {regime} "
+                        f"(close={close:.0f}, MA50={ma50:.0f}, MA200={ma200:.0f})")
+        _taiex_regime_cache["time"] = now
+        _taiex_regime_cache["regime"] = regime
+        return regime
+    except Exception as e:
+        logger.warning(f"fetch_taiex_regime 失敗: {e}，保守用 neutral")
+        return "neutral"
+
+
 def fetch_signal_data(symbol: str, lookback_days: int = 250) -> Optional[pd.DataFrame]:
     """取得用於信號計算的歷史數據（本地 CSV 優先、yfinance 備援）"""
     now = time.time()
@@ -632,6 +684,12 @@ def process_sector(manager: SectorTradingManager):
     stop_loss = strategy["stop_loss_pct"]
     take_profit = strategy["take_profit_pct"]
 
+    # F3 entry filter（見 scripts/backtest_exits/REPORT.md）
+    # TAIEX 盤整時把 BUY 門檻提到 50，避免在橫盤期低分進場被洗。
+    # log 由 fetch_taiex_regime 在 regime 變化時印一次；這裡只計算 effective_buy_th。
+    taiex_regime = fetch_taiex_regime()
+    effective_buy_th = max(buy_th, 50) if taiex_regime == "neutral" else buy_th
+
     # 建立分析層
     layers = build_layers(strategy)
 
@@ -769,7 +827,9 @@ def process_sector(manager: SectorTradingManager):
                     )
         else:
             # 無持倉 → 買入需同時滿足：信號達標 + 綜合 ≥ 50
-            standard_buy = (sig["direction"] == "BUY" and sig["confidence"] >= buy_th)
+            # F3：TAIEX neutral 時用 effective_buy_th (≥50)，其它情境維持 sector buy_th
+            standard_buy = (sig["direction"] == "BUY"
+                            and sig["confidence"] >= effective_buy_th)
             pullback_buy, pb_detail = is_strong_pullback(sig)
             rebound_buy, rb_detail = is_oversold_rebound(df, sig)
 
