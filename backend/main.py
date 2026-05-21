@@ -413,8 +413,9 @@ def _run_institutional_refresh():
             fetch_chip_summary,
             _chip_summary_cache, _inst_cache,
         )
-        _chip_summary_cache["time"] = 0
-        _inst_cache["time"] = 0
+        # cache 改 per-symbol 結構，直接清空整個 dict 等同於強制全部 refetch
+        _chip_summary_cache.clear()
+        _inst_cache.clear()
 
         success, fail = 0, 0
         for sym in target_syms:
@@ -897,10 +898,15 @@ def _analyze_tw_df(symbol: str, market: str, df, data_source: str):
         data_date = ""
 
     # 寫入 L1 cache
+    # data_kind: 盤中當日的 partial snapshot 標 "intraday"，其他（盤後 EOD、歷史日）標 "eod"
+    # 用途：盤後讀取時拒絕 intraday cache，避免盤中 snapshot 蓋過正式收盤價
+    today_tw_str = datetime.now(pytz.timezone('Asia/Taipei')).strftime("%Y-%m-%d")
+    data_kind = "intraday" if (market_open and data_date == today_tw_str) else "eod"
     signals_cache[f"signals_{symbol}"] = {
         "data": result_data,
         "fetched_at": time.time(),
         "data_date": data_date,
+        "data_kind": data_kind,
     }
     # 記錄台股更新時間
     last_update_timestamps["tw_stock"] = datetime.now().strftime("%H:%M:%S")
@@ -967,19 +973,27 @@ async def get_tw_signals(symbol: str, market: str = "stock"):
         cached = signals_cache[cache_key]
         age = now - cached["fetched_at"]
         cached_data_date = cached.get("data_date", "")
+        cached_kind = cached.get("data_kind", "eod")  # 舊資料無此欄位視為 eod
         latest_trading_day = latest_closed_tw_trading_day()
-        # 盤中：60 秒內 TTL
-        # 盤後：資料日期 == 最近收盤日才視為新鮮，否則重抓（避免跨日後仍回舊快取）
-        is_fresh_intraday = market_open and age < TW_RATE_LIMIT_SEC
-        is_fresh_overnight = (not market_open) and cached_data_date and cached_data_date >= latest_trading_day
-        if is_fresh_intraday or is_fresh_overnight:
-            print(f"[signals L1] {symbol} (age={int(age)}s, open={market_open}, data_date={cached_data_date})")
+        today_tw_str = datetime.now(pytz.timezone('Asia/Taipei')).strftime("%Y-%m-%d")
+        # 盤中：必須是今日 intraday 且 60 秒內
+        # 盤後：必須是 eod 且資料日期 == 最近收盤日
+        #   → 盤中存的 intraday 在盤後一律作廢，避免 partial snapshot 蓋過真正收盤價
+        if market_open:
+            is_fresh = (cached_kind == "intraday"
+                        and cached_data_date == today_tw_str
+                        and age < TW_RATE_LIMIT_SEC)
+        else:
+            is_fresh = (cached_kind == "eod"
+                        and cached_data_date == latest_trading_day)
+        if is_fresh:
+            print(f"[signals L1] {symbol} kind={cached_kind} age={int(age)}s data_date={cached_data_date}")
             result = dict(cached["data"])
             result["next_update_in"] = remaining
             result["data_source"] = cached["data"]["data_source"] + ("" if market_open else "_closed")
             return result
         else:
-            print(f"[signals L1 stale] {symbol} data_date={cached_data_date} < latest={latest_trading_day}, refetch")
+            print(f"[signals L1 stale] {symbol} kind={cached_kind} open={market_open} data_date={cached_data_date} latest={latest_trading_day}, refetch")
 
     # --- L3: TWSE API (盤中可抓，盤後只在無任何快取時抓一次；同步 IO 丟 thread pool) ---
     df = await asyncio.to_thread(_fetch_tw_df, symbol, market)

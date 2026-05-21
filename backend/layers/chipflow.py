@@ -34,10 +34,32 @@ logger = logging.getLogger(__name__)
 
 # ── 快取設定 ──
 
-_inst_cache: Dict = {}       # 三大法人快取 {"data": {date_str: {code: {...}}}, "time": float}
+_inst_cache: Dict = {}       # 三大法人快取 per-symbol：{cache_key: {"data": {date: {...}}, "time": float}}
 _margin_cache: Dict = {}     # 融資融券快取
-_chip_summary_cache: Dict = {}  # 彙整後的籌碼摘要 {"data": {code: {...}}, "time": float}
+_chip_summary_cache: Dict = {}  # 彙整後籌碼摘要 per-symbol：{cache_key: {"data": summary, "time": float}}
 CHIP_CACHE_TTL = 3600 * 4    # 4 小時
+
+
+def latest_published_t86_date() -> str:
+    """回傳「最近一次應已公布」的 T86 三大法人資料日期（YYYYMMDD）。
+
+    TWSE T86 約 16:00 後公布當日資料。
+    - 週一~五 16:00 後 → today
+    - 週一~五 16:00 前 → 上一個工作日
+    - 週末 → 上週五
+    用於判斷 cached summary 的 latest_date 是否落後（落後就強制 refetch）。
+    """
+    import pytz
+    tz = pytz.timezone('Asia/Taipei')
+    now = datetime.now(tz)
+    candidate = now.date()
+    publish_cutoff = now.replace(hour=16, minute=0, second=0, microsecond=0)
+    if now.weekday() < 5 and now >= publish_cutoff:
+        return candidate.strftime("%Y%m%d")
+    candidate = candidate - timedelta(days=1)
+    while candidate.weekday() >= 5:
+        candidate = candidate - timedelta(days=1)
+    return candidate.strftime("%Y%m%d")
 
 # 本地持久快取檔案（累積每日歷史資料）
 _DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
@@ -188,10 +210,16 @@ def fetch_institutional_for_stock(symbol: str, days: int = 10) -> Dict[str, dict
     code = _strip_tw(symbol)
     cache_key = f"inst_{code}"
 
-    # 記憶體快取
-    cached = _inst_cache.get("data", {}).get(cache_key)
-    if cached and time.time() - _inst_cache.get("time", 0) < CHIP_CACHE_TTL:
-        return cached
+    # 記憶體快取（per-symbol time）
+    # 失效條件：TTL 過期，或 cache 內最新日期落後於「應已公布」日期 → 強制 refetch
+    entry = _inst_cache.get(cache_key)
+    if entry:
+        age = time.time() - entry.get("time", 0)
+        if age < CHIP_CACHE_TTL:
+            cached_data = entry.get("data") or {}
+            cache_latest = max(cached_data.keys()) if cached_data else ""
+            if cache_latest >= latest_published_t86_date():
+                return cached_data
 
     # 計算日期範圍
     end_date = datetime.now().strftime("%Y-%m-%d")
@@ -199,13 +227,14 @@ def fetch_institutional_for_stock(symbol: str, days: int = 10) -> Dict[str, dict
 
     result = _fetch_finmind_institutional(code, start_date, end_date)
     if result:
-        if "data" not in _inst_cache:
-            _inst_cache["data"] = {}
-        _inst_cache["data"][cache_key] = result
-        _inst_cache["time"] = time.time()
+        _inst_cache[cache_key] = {"data": result, "time": time.time()}
         logger.info(f"三大法人 {code}: {len(result)} 天 (FinMind)")
+        return result
 
-    return result
+    # fetch 失敗：回舊 cache（若有）避免畫面瞬間空白；下次仍會嘗試重抓
+    if entry:
+        return entry.get("data") or {}
+    return {}
 
 
 # ── TWSE 融資融券 ──
@@ -342,9 +371,16 @@ def fetch_chip_summary(symbol: str, days: int = 5) -> Optional[dict]:
     """
     now = time.time()
     cache_key = f"{symbol}_{days}"
-    cached = _chip_summary_cache.get("data", {}).get(cache_key)
-    if cached and now - _chip_summary_cache.get("time", 0) < CHIP_CACHE_TTL:
-        return cached
+    # per-symbol TTL，且若 cached summary 的 latest_date 落後於應公布日就強制 refetch
+    entry = _chip_summary_cache.get(cache_key)
+    if entry:
+        age = now - entry.get("time", 0)
+        if age < CHIP_CACHE_TTL:
+            cached_summary = entry.get("data") or {}
+            cached_latest = cached_summary.get("latest_date", "")
+            if cached_latest and cached_latest >= latest_published_t86_date():
+                return cached_summary
+            # else 落後 → fall through 重抓
 
     code = _strip_tw(symbol)
 
@@ -443,10 +479,7 @@ def fetch_chip_summary(symbol: str, days: int = 5) -> Optional[dict]:
     }
 
     # 存入快取
-    if "data" not in _chip_summary_cache:
-        _chip_summary_cache["data"] = {}
-    _chip_summary_cache["data"][cache_key] = summary
-    _chip_summary_cache["time"] = now
+    _chip_summary_cache[cache_key] = {"data": summary, "time": now}
 
     return summary
 
