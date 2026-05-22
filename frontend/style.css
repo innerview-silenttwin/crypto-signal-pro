@@ -752,6 +752,20 @@ h1, h2, h3, .glow-text {
     color: #ef4444;
 }
 
+.position-info .pi-multi {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 100%;
+}
+
+.position-info .pi-line {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
 .timeframe-sections {
     display: flex;
     flex-direction: column;

@@ -759,52 +759,81 @@ function applyChangeBadge(el, change, baseCls) {
     el.className = baseCls + (chg > 0 ? ' up' : chg < 0 ? ' down' : '');
 }
 
-function updateMainPriceChange(change) {
-    applyChangeBadge(document.getElementById('price-change-main'), change, 'price-change');
+function updateMainPriceChange(change, currentPrice) {
+    const el = document.getElementById('price-change-main');
+    if (!el) return;
+    const chg = parseFloat(change);
+    if (isNaN(chg)) {
+        if (el._lastKey !== '__na') { el.textContent = '--'; el.className = 'price-change'; el._lastKey = '__na'; }
+        return;
+    }
+    // 由現價反推前一收盤價，算出絕對漲跌金額；只在拿得到現價時才顯示
+    let amtText = '';
+    const px = parseFloat(currentPrice);
+    if (!isNaN(px) && px > 0 && chg !== 0) {
+        const prevClose = px / (1 + chg / 100);
+        const amt = px - prevClose;
+        // 大於 1000 不要小數、否則 2 位
+        amtText = (Math.abs(amt) >= 1000 ? Math.round(amt).toLocaleString() : amt.toFixed(2)) + ' ';
+    }
+    const key = chg + ':' + (amtText || '');
+    if (el._lastKey === key) return;
+    el._lastKey = key;
+    const prefix = chg > 0 ? '▲' : chg < 0 ? '▼' : '';
+    const sign = chg > 0 ? '+' : '';
+    el.textContent = `${prefix}${amtText}${sign}${chg.toFixed(2)}%`;
+    el.className = 'price-change' + (chg > 0 ? ' up' : chg < 0 ? ' down' : '');
 }
 
 async function refreshPositionDisplay(symbol) {
     const el = document.getElementById('position-info');
     if (!el) return;
     try {
-        // BTC 自動交易引擎只可能持有 crypto；TW 股票就別打那條端點（內部會做 10s Binance 同步呼叫）
-        const includeBtcAcct = currentMarket === 'crypto';
+        const isCrypto = currentMarket === 'crypto';
         const fetchOpts = { cache: 'no-store' };
-        const tasks = [
-            fetch('/api/trading/status', fetchOpts).then(r => r.ok ? r.json() : null).catch(() => null),
-            includeBtcAcct
-                ? fetch('/api/btc-trading/status', fetchOpts).then(r => r.ok ? r.json() : null).catch(() => null)
-                : Promise.resolve(null),
-        ];
-        const [mainStatus, btcStatus] = await Promise.all(tasks);
+        // 台股 → 查 6 個 sector 帳戶（用戶實際下單處）；crypto → 查 BTC 自動帳戶
+        // 舊「主帳戶」trading_account.json 因混雜早期測試資料，不再納入主頁顯示
+        const tasks = isCrypto
+            ? [Promise.resolve(null),
+               fetch('/api/btc-trading/status', fetchOpts).then(r => r.ok ? r.json() : null).catch(() => null)]
+            : [fetch('/api/sector-trading/sectors', fetchOpts).then(r => r.ok ? r.json() : null).catch(() => null),
+               Promise.resolve(null)];
+        const [sectorList, btcStatus] = await Promise.all(tasks);
 
-        // BTC 自動帳戶的 holdings key 是 `${symbol}_${strat_id}`，需按 symbol 前綴聚合各策略持倉
-        let qty = 0;
-        let costSum = 0;
-        let source = null;
-        const mainHoldings = (mainStatus && mainStatus.holdings) || {};
-        if (mainHoldings[symbol] && mainHoldings[symbol].qty > 0) {
-            qty += mainHoldings[symbol].qty;
-            costSum += mainHoldings[symbol].qty * mainHoldings[symbol].avg_price;
-            source = '主帳戶';
+        // 收集所有持有此 symbol 的來源（per-source 列表，符合用戶要求每帳戶一行）
+        const sources = []; // {label, qty, avgPrice, totalCost}
+        if (Array.isArray(sectorList)) {
+            for (const s of sectorList) {
+                const h = s && s.holdings && s.holdings[symbol];
+                if (h && h.qty > 0) {
+                    sources.push({
+                        label: s.sector_name,
+                        qty: h.qty,
+                        avgPrice: h.avg_price,
+                        totalCost: h.total_cost || (h.qty * h.avg_price),
+                    });
+                }
+            }
         }
-        const btcHoldings = (btcStatus && btcStatus.holdings) || {};
-        for (const key in btcHoldings) {
-            if (key.split('_')[0] !== symbol) continue;
-            const h = btcHoldings[key];
-            if (!h || h.qty <= 0) continue;
-            qty += h.qty;
-            costSum += h.qty * h.avg_price;
-            source = source ? `${source} + BTC自動` : 'BTC自動';
+        // BTC 自動：holdings key 是 `${symbol}_${strat_id}`，聚合所有策略為一筆
+        if (btcStatus && btcStatus.holdings) {
+            let bQty = 0, bCost = 0;
+            for (const key in btcStatus.holdings) {
+                if (key.split('_')[0] !== symbol) continue;
+                const h = btcStatus.holdings[key];
+                if (h && h.qty > 0) { bQty += h.qty; bCost += h.qty * h.avg_price; }
+            }
+            if (bQty > 0) {
+                sources.push({ label: 'BTC自動', qty: bQty, avgPrice: bCost / bQty, totalCost: bCost });
+            }
         }
 
-        if (qty <= 0) {
+        if (sources.length === 0) {
             el.style.display = 'none';
             return;
         }
 
-        const avgPrice = costSum / qty;
-        // 即時價優先用 cachedCandles 最後一根 close（與主價格顯示同源，避免從 DOM 刮 formatted 字串損失精度）
+        // 即時價優先用 cachedCandles 最後一根 close（與主價格顯示同源）
         let curPrice = null;
         if (Array.isArray(cachedCandles) && cachedCandles.length > 0) {
             curPrice = cachedCandles[cachedCandles.length - 1].close;
@@ -813,23 +842,34 @@ async function refreshPositionDisplay(symbol) {
             curPrice = btcStatus.btc_price;
         }
 
-        const isCrypto = currentMarket === 'crypto';
-        const qtyStr = isCrypto ? qty.toFixed(6) : Math.round(qty).toString();
         const unitLabel = isCrypto ? '' : '股';
+        const fmtQty = (q) => isCrypto ? q.toFixed(6) : Math.round(q).toString();
+        const renderPL = (avg) => {
+            if (curPrice == null || avg <= 0) return '';
+            const plPct = ((curPrice - avg) / avg) * 100;
+            const cls = plPct > 0 ? 'up' : plPct < 0 ? 'down' : '';
+            const sign = plPct > 0 ? '+' : '';
+            return `<span class="pi-pl ${cls}">${sign}${plPct.toFixed(2)}%</span>`;
+        };
 
-        let plHtml = '';
-        if (curPrice != null && avgPrice > 0) {
-            const plPct = ((curPrice - avgPrice) / avgPrice) * 100;
-            const plCls = plPct > 0 ? 'up' : plPct < 0 ? 'down' : '';
-            const plPrefix = plPct > 0 ? '+' : '';
-            plHtml = `<span class="pi-pl ${plCls}">未實現 ${plPrefix}${plPct.toFixed(2)}%</span>`;
+        // 單一來源：一行緊湊；多來源：逐行列出
+        if (sources.length === 1) {
+            const s = sources[0];
+            el.innerHTML = `
+                <span class="pi-label">💼 ${s.label} 持倉</span>
+                <span class="pi-detail">${fmtQty(s.qty)}${unitLabel} @均價 ${formatPrice(s.avgPrice)}</span>
+                ${renderPL(s.avgPrice)}
+            `;
+        } else {
+            const lines = sources.map(s => `
+                <div class="pi-line">
+                    <span class="pi-label">💼 ${s.label}</span>
+                    <span class="pi-detail">${fmtQty(s.qty)}${unitLabel} @${formatPrice(s.avgPrice)}</span>
+                    ${renderPL(s.avgPrice)}
+                </div>
+            `).join('');
+            el.innerHTML = `<div class="pi-multi">${lines}</div>`;
         }
-
-        el.innerHTML = `
-            <span class="pi-label">💼 ${source}持倉</span>
-            <span class="pi-detail">${qtyStr}${unitLabel} @均價 ${formatPrice(avgPrice)}</span>
-            ${plHtml}
-        `;
         el.style.display = 'flex';
     } catch (e) {
         console.warn('[refreshPositionDisplay] failed:', e);
@@ -923,13 +963,14 @@ async function fetchTwSignals(symbol, market) {
 
         // 價格：走勢圖（yfinance intraday）比信號層（TWSE 日線 + 60s 快取）即時，
         // 因此優先用 cachedCandles 最後一根 close；無圖表資料時才 fallback 到 s.price
+        const chartLast = (Array.isArray(cachedCandles) && cachedCandles.length > 0)
+            ? cachedCandles[cachedCandles.length - 1].close
+            : null;
+        const livePrice = chartLast != null ? chartLast : s.price;
         if (ui.btc && ui.btc.price) {
-            const chartLast = (Array.isArray(cachedCandles) && cachedCandles.length > 0)
-                ? cachedCandles[cachedCandles.length - 1].close
-                : null;
-            ui.btc.price.textContent = formatPrice(chartLast != null ? chartLast : s.price);
+            ui.btc.price.textContent = formatPrice(livePrice);
         }
-        updateMainPriceChange(s.change_24h);
+        updateMainPriceChange(s.change_24h, livePrice);
         refreshPositionDisplay(symbol);
         if (ui.status) ui.status.textContent = `${modeLabel}盤後信號（日線）`;
 
@@ -2611,7 +2652,7 @@ function processData(serverData) {
         if (symbol === currentSymbol) {
             const currencyPrefix = (currentMarket === 'crypto') ? '$' : '';
             if (ui.btc && ui.btc.price) ui.btc.price.textContent = `${currencyPrefix}${formatPrice(price)}`;
-            updateMainPriceChange(d1.change_24h);
+            updateMainPriceChange(d1.change_24h, price);
             if (ui.status) ui.status.textContent = `最後更新: ${d1.timestamp}`;
 
             // Crypto 模式：恢復 4H 區塊顯示
