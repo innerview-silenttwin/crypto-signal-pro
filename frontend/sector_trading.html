@@ -1322,8 +1322,7 @@
                 const sym = symbol.includes('.') ? symbol : symbol + '.TW';
                 localStorage.setItem('csp-pending-symbol', sym);
                 localStorage.setItem('csp-pending-market', 'stock');
-                // 同步：下次進台股交易中心時自動查分數（背景同步機制）
-                localStorage.setItem('csp-pending-stock-query', sym);
+                // pending-stock-query 不在此寫：index.html 的 changeSymbol 會接手（單一寫入點）
                 window.location.href = 'index.html';
             };
 
@@ -2055,11 +2054,10 @@
                     }
                 }
 
-                // 跳轉按鈕
+                // 跳轉按鈕（pending-stock-query 由 index.html 的 changeSymbol 接手寫入）
                 document.getElementById('arc-goto-btn').onclick = () => {
                     localStorage.setItem('csp-pending-symbol', sym);
                     localStorage.setItem('csp-pending-market', 'stock');
-                    localStorage.setItem('csp-pending-stock-query', sym);
                     window.location.href = 'index.html';
                 };
 
@@ -2332,8 +2330,11 @@
                         const match = await lookupByName(raw.trim());
                         if (!match) throw new Error('找不到「' + raw.trim() + '」對應的股票');
                         sym = match.symbol;
-                        // 更新輸入框顯示代碼
-                        document.getElementById('stock-search-input').value = sym.replace('.TW', '') + ' ' + match.name;
+                        // 補上股票名稱：但若使用者已在輸入框打新東西就別蓋掉
+                        const inputEl = document.getElementById('stock-search-input');
+                        if (inputEl.value === raw) {
+                            inputEl.value = sym.replace(/\.(TW|TWO)$/, '') + ' ' + match.name;
+                        }
                     }
 
                     lastSymbol = sym;
@@ -2365,16 +2366,13 @@
                 if (e.key === 'Enter') doSearch();
             });
 
-            // 自動查詢：消費 changeSymbol/股票連結點擊時 queue 的 symbol（1-shot，消費後清除）
+            // 自動查詢：消費 changeSymbol queue 的 symbol（1-shot，消費後清除避免 reload 重觸發）
+            // 名稱會在 doSearch 內 lookup 完成後自動補上，這裡只放代碼即可
             try {
                 const pending = localStorage.getItem('csp-pending-stock-query');
                 if (pending) {
                     localStorage.removeItem('csp-pending-stock-query');
-                    const input = document.getElementById('stock-search-input');
-                    const display = pending.replace('.TW', '');
-                    input.value = (window.stockNames && window.stockNames[pending])
-                        ? `${display} ${window.stockNames[pending]}`
-                        : display;
+                    document.getElementById('stock-search-input').value = pending.replace(/\.(TW|TWO)$/, '');
                     doSearch();
                 }
             } catch (_) { /* localStorage 不可用就跳過 */ }

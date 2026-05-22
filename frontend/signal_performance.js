@@ -192,9 +192,9 @@ function renderTable() {
         a.addEventListener('click', (e) => {
             e.preventDefault();
             const sym = a.dataset.symbol;
+            // pending-stock-query 由 index.html 的 changeSymbol 接手寫入（單一寫入點）
             localStorage.setItem('csp-pending-symbol', sym);
             localStorage.setItem('csp-pending-market', 'stock');
-            localStorage.setItem('csp-pending-stock-query', sym);
             window.location.href = 'index.html';
         });
     });
