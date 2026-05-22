@@ -1162,6 +1162,15 @@
 
             // ── Init ──
             async function init() {
+                // 預填交易歷史的股票篩選：消費 changeSymbol queue 的 pending symbol
+                // 不在此 removeItem，由第二段 IIFE 的查詢分數 auto-fire 統一清除（單一所有權）
+                try {
+                    const pending = localStorage.getItem('csp-pending-stock-query');
+                    if (pending) {
+                        document.getElementById('filter-symbol').value = pending.replace(/\.(TW|TWO)$/, '');
+                    }
+                } catch (_) { /* localStorage 不可用就跳過 */ }
+
                 // 先綁定按鈕事件（確保即使 API 失敗按鈕仍可用）
                 document.getElementById('btn-start-auto').onclick = startAutoTrader;
                 document.getElementById('btn-stop-auto').onclick = stopAutoTrader;
