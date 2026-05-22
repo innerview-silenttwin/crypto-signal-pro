@@ -228,6 +228,8 @@ async def startup_event():
     asyncio.create_task(daily_tw_data_refresh())
     # 每日 08:30 盤前資料健康檢查（K 線、基本面新鮮度 → Telegram）
     asyncio.create_task(premarket_data_health_check())
+    # 每日 21:00 盤後摘要（心跳通知 + 今日下單/損益/連線健康）
+    asyncio.create_task(daily_evening_summary())
     # 每日 18:00 法人 + 基本面 daily refresh（晚上能看到當天最新資料）
     asyncio.create_task(daily_institutional_refresh())
     # 主動 ETF 持股分數獨立刷新（每 4 小時，避免被 daily-refresh 拖累或漏跑）
@@ -571,6 +573,174 @@ def _send_premarket_telegram(report: dict):
     else:
         lines.append(f"✅ 基本面 營收：{rev_age} 天")
 
+    send_telegram("\n".join(lines))
+
+
+async def daily_evening_summary():
+    """每個交易日 21:00 推一份盤後摘要 Telegram，作為心跳通知。
+
+    用戶不在國內時，每天 08:30 + 21:00 兩次 Telegram 都收得到 = 系統健康。
+    收不到 = 出事了（service down / Telegram 壞 / 網路斷）。
+
+    內容：
+    - 服務 / quote source / 連線次數
+    - 今日下單 / 成交 / 已實現損益 / 被擋筆數
+    - 在飛訂單 / 進行中冷卻
+    - kill-switch 是否觸發
+    """
+    import pytz
+    tw_tz = pytz.timezone("Asia/Taipei")
+
+    while True:
+        now = datetime.now(tw_tz)
+        target = now.replace(hour=21, minute=0, second=0, microsecond=0)
+        if now >= target:
+            target = target + timedelta(days=1)
+        wait_seconds = (target - now).total_seconds()
+        print(f"[evening-summary] Next summary in {int(wait_seconds/3600)}h {int((wait_seconds%3600)/60)}m")
+        await asyncio.sleep(wait_seconds)
+
+        today = datetime.now(tw_tz).date()
+        if today.weekday() >= 5:
+            print("[evening-summary] Weekend, skipping")
+            continue
+
+        try:
+            await asyncio.to_thread(_send_evening_summary_telegram)
+            print("[evening-summary] Done.")
+        except Exception as e:
+            print(f"[evening-summary] error: {e}")
+
+
+def _send_evening_summary_telegram():
+    """組裝並送出當日盤後摘要。"""
+    import pytz
+    from notifier import send_telegram
+
+    tw_tz = pytz.timezone("Asia/Taipei")
+    today = datetime.now(tw_tz).date()
+    today_str = today.isoformat()
+    proj_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    lines = [f"\U0001F319 <b>盤後摘要</b> {today_str}"]
+
+    # ── 1. 服務 / quote source ──
+    try:
+        quote_src = os.environ.get("QUOTE_SOURCE", "yfinance")
+        broker_mode = os.environ.get("BROKER_MODE", "virtual")
+        lines.append(f"🟢 服務運行中 (PID {os.getpid()})")
+        lines.append(f"   broker={broker_mode} / quote={quote_src}")
+    except Exception:
+        pass
+
+    # ── 2. broker_state.json：今日下單 / 損益 / 在飛 / cooldown ──
+    state_path = os.path.join(proj_root, "data", "broker_state.json")
+    try:
+        if os.path.exists(state_path):
+            with open(state_path) as f:
+                state = json.load(f)
+            do = state.get("daily_orders", {}).get(today_str, {}) or {}
+            total_orders = do.get("_total", 0) if isinstance(do, dict) else 0
+            per_sector = {k: v for k, v in do.items() if k != "_total"} if isinstance(do, dict) else {}
+            pnl = state.get("daily_realized_pnl", {}).get(today_str, {}) or {}
+            total_pnl = sum(pnl.values()) if isinstance(pnl, dict) else 0
+            pending = state.get("pending_orders", {}) or {}
+            lock = state.get("daily_lock", {}).get(today_str)
+            now_ts = time.time()
+            active_cd = []
+            for key, expires in (state.get("cooldowns", {}) or {}).items():
+                try:
+                    if float(expires) > now_ts:
+                        active_cd.append(key)
+                except (TypeError, ValueError):
+                    continue
+
+            lines.append("")
+            lines.append(f"📊 今日下單：{total_orders} 筆")
+            if per_sector:
+                bits = [f"{k}={v}" for k, v in per_sector.items()]
+                lines.append(f"   {' / '.join(bits)}")
+            sign = "📈" if total_pnl >= 0 else "📉"
+            lines.append(f"{sign} 已實現損益：{total_pnl:+,.0f} TWD")
+            lines.append(f"⏳ 在飛訂單：{len(pending)} 筆")
+            lines.append(f"⏱  進行中冷卻：{len(active_cd)} 筆")
+            if lock:
+                lines.append(f"🛑 KILL-SWITCH 觸發：{lock}")
+    except Exception as e:
+        lines.append(f"⚠️ broker_state 讀取失敗：{e}")
+
+    # ── 3. 持倉摘要（sector_accounts）──
+    try:
+        sector_dir = os.path.join(proj_root, "data", "sector_accounts")
+        total_positions = 0
+        total_equity = 0.0
+        if os.path.isdir(sector_dir):
+            for fn in os.listdir(sector_dir):
+                if not fn.endswith("_account.json") or ".bak" in fn:
+                    continue
+                try:
+                    with open(os.path.join(sector_dir, fn)) as f:
+                        acct = json.load(f)
+                    holdings = acct.get("holdings", {}) or {}
+                    total_positions += sum(1 for h in holdings.values() if (h.get("qty", 0) or 0) > 0)
+                    total_equity += float(acct.get("balance", 0) or 0)
+                    for h in holdings.values():
+                        qty = h.get("qty", 0) or 0
+                        avg = h.get("avg_price", 0) or 0
+                        total_equity += qty * avg
+                except Exception:
+                    continue
+        lines.append("")
+        lines.append(f"💼 跨類股持倉：{total_positions} 檔，帳上總額 ≈ {int(total_equity):,} TWD")
+    except Exception as e:
+        lines.append(f"⚠️ 持倉統計失敗：{e}")
+
+    # ── 4. 今日被擋筆數 ──
+    try:
+        skipped_path = os.path.join(proj_root, "data", "skipped_trades.jsonl")
+        skipped_count = 0
+        top_reasons = {}
+        if os.path.exists(skipped_path):
+            with open(skipped_path, encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        rec = json.loads(line)
+                        if rec.get("time", "").startswith(today_str):
+                            skipped_count += 1
+                            r = (rec.get("reason") or "").split(":")[0]
+                            top_reasons[r] = top_reasons.get(r, 0) + 1
+                    except Exception:
+                        continue
+        lines.append(f"🚫 今日被擋：{skipped_count} 筆")
+        if top_reasons:
+            top3 = sorted(top_reasons.items(), key=lambda x: -x[1])[:3]
+            lines.append("   " + " / ".join(f"{k}={v}" for k, v in top3))
+    except Exception as e:
+        lines.append(f"⚠️ skipped 統計失敗：{e}")
+
+    # ── 5. Sinopac 連線健康度（從 log 數）──
+    try:
+        log_path = os.path.join(proj_root, "logs", "crypto-signal-pro.log")
+        err_path = os.path.join(proj_root, "logs", "crypto-signal-pro-error.log")
+        session_up = 0
+        retry_fail = 0
+        for p in (log_path, err_path):
+            if os.path.exists(p):
+                with open(p, encoding="utf-8", errors="ignore") as f:
+                    for line in f:
+                        if "Event: Session up" in line:
+                            session_up += 1
+                        elif "after" in line and "attempts" in line and "place_order" in line:
+                            retry_fail += 1
+        lines.append("")
+        lines.append(f"🔌 Sinopac Session up：{session_up}（健康 1-4，> 10 表抖動）")
+        if retry_fail > 0:
+            lines.append(f"⚠️ retry 後仍失敗：{retry_fail} 筆 — 請檢查永豐主機")
+    except Exception:
+        pass
+
+    lines.append("")
+    lines.append("<i>明早 08:30 會再送一次盤前摘要</i>")
     send_telegram("\n".join(lines))
 
 
