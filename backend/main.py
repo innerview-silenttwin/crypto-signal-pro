@@ -914,27 +914,27 @@ def _analyze_tw_df(symbol: str, market: str, df, data_source: str):
 
 
 def _fetch_yfinance_df(symbol: str):
-    """用 yfinance 抓取台股日線 DataFrame（自動嘗試 .TW 和 .TWO）。
+    """抓取台股日線 DataFrame（透過 quote_provider 抽象；預設 yfinance，可切 sinopac）。
+    函式名保留 yfinance 為歷史包袱，實際 source 由 QUOTE_SOURCE env 決定。
     回傳格式與 fetch_twse_daily 相容（index=date, columns=open/high/low/close/volume）。
     """
+    from quote_provider import get_quote_provider
+    provider = get_quote_provider()
     base = symbol.split('.')[0] if '.' in symbol else symbol
     for suffix in ['.TW', '.TWO']:
         yf_sym = base + suffix
         try:
-            ticker = yf.Ticker(yf_sym)
-            df = ticker.history(period='1y', interval='1d')
-            if df.empty or len(df) < 30:
+            df = provider.get_history(yf_sym, period_days=365, interval='1d')
+            if df is None or df.empty or len(df) < 30:
                 continue
-            df = df.rename(columns={
-                'Open': 'open', 'High': 'high', 'Low': 'low',
-                'Close': 'close', 'Volume': 'volume',
-            })[['open', 'high', 'low', 'close', 'volume']]
+            df = df[['open', 'high', 'low', 'close', 'volume']].copy()
             df.index.name = 'date'
-            df.index = df.index.tz_localize(None)
-            print(f"[yfinance-df] {yf_sym}: {len(df)} rows")
+            if df.index.tz is not None:
+                df.index = df.index.tz_localize(None)
+            print(f"[quote:{provider.name}-df] {yf_sym}: {len(df)} rows")
             return df
         except Exception as e:
-            print(f"[yfinance-df] {yf_sym} failed: {e}")
+            print(f"[quote:{provider.name}-df] {yf_sym} failed: {e}")
     return None
 
 

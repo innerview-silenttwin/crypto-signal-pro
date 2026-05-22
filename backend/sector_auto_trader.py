@@ -29,7 +29,7 @@ from typing import Dict, Optional
 import numpy as np
 import pandas as pd
 import pytz
-import yfinance as yf
+from quote_provider import get_quote_provider
 
 logger = logging.getLogger(__name__)
 
@@ -144,11 +144,9 @@ def fetch_latest_price(symbol: str) -> Optional[float]:
         return _price_cache[symbol]["price"]
 
     try:
-        ticker = yf.Ticker(symbol)
-        hist = ticker.history(period="5d", interval="1d")
-        if hist.empty:
+        hist = get_quote_provider().get_history(symbol, period_days=5, interval="1d")
+        if hist is None or hist.empty:
             return None
-        hist.columns = [c.lower() for c in hist.columns]
 
         # 去除 NaN 後取最後一筆
         valid = hist['close'].dropna()
@@ -158,14 +156,14 @@ def fetch_latest_price(symbol: str) -> Optional[float]:
         last_date = valid.index[-1]
         price = float(valid.iloc[-1])
 
-        # 若最新收盤日期 < 今日台灣日期，代表 yfinance 資料尚未更新
+        # 若最新收盤日期 < 今日台灣日期，代表資料尚未更新
         # 回傳 None，讓呼叫端改用買入均價，避免跨日比較產生假損益
         tw_tz = pytz.timezone("Asia/Taipei")
         today_tw = datetime.now(tw_tz).date()
         last_date_tw = last_date.astimezone(tw_tz).date() if hasattr(last_date, 'astimezone') else last_date.date()
 
         if last_date_tw < today_tw:
-            logger.debug(f"{symbol} yfinance 最新收盤 {last_date_tw}，今日 {today_tw}，資料未更新，跳過")
+            logger.debug(f"{symbol} 最新收盤 {last_date_tw}，今日 {today_tw}，資料未更新，跳過")
             return None
 
         _price_cache[symbol] = {"price": price, "time": now}
@@ -195,14 +193,13 @@ def fetch_live_price(symbol: str, prev_close: Optional[float] = None) -> Optiona
         return cached["price"]
 
     try:
-        ticker = yf.Ticker(symbol)
-        df = ticker.history(period="1d", interval="1m")
+        df = get_quote_provider().get_history(symbol, period_days=1, interval="1m")
+        if df is None or df.empty:
+            return None
+        df = df.dropna(subset=['close'])
         if df.empty:
             return None
-        df = df.dropna(subset=['Close'])
-        if df.empty:
-            return None
-        price = float(df['Close'].iloc[-1])
+        price = float(df['close'].iloc[-1])
 
         # 合理性檢查：±10% 漲跌停範圍
         if prev_close and prev_close > 0:
@@ -297,18 +294,16 @@ def fetch_signal_data(symbol: str, lookback_days: int = 250) -> Optional[pd.Data
             logger.info(f"{symbol} 使用本地 CSV（{len(local_df)} 筆，最新 {csv_last_date}）")
             return local_df
 
-    # 3. yfinance API
+    # 3. Quote provider API（預設 yfinance；QUOTE_SOURCE=sinopac 走永豐）
     try:
-        ticker = yf.Ticker(symbol)
-        df = ticker.history(period=f"{lookback_days}d", interval="1d")
-        if df.empty or len(df) < 50:
-            # yfinance 也失敗 → fallback 到本地 CSV
+        df = get_quote_provider().get_history(symbol, period_days=lookback_days, interval="1d")
+        if df is None or df.empty or len(df) < 50:
+            # quote provider 也失敗 → fallback 到本地 CSV
             if local_df is not None and len(local_df) >= 50:
                 _update_price_cache(cache_key, local_df, now)
                 return local_df
             return None
 
-        df.columns = [c.lower() for c in df.columns]
         df = df[['open', 'high', 'low', 'close', 'volume']].dropna()
         df = df[df['volume'] > 0]
 
