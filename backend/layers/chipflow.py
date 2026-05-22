@@ -506,10 +506,12 @@ def compute_chip_score(summary: dict, close_price: float = None) -> dict:
         return {"score": 50, "label": "無數據", "advice": "無籌碼資料", "sub_scores": {}}
 
     # ── 1. 外資分數 (30%) ──
+    # 6mo (80檔) 校準：原 5/3 門檻過嚴，大漲股 chip 跟不上（聯電 ret +149% chip 相關 -0.53）
+    # 改為 4/2，急漲股能更快進入高分區
     fc = summary.get("foreign_consec_buy", 0)
-    if fc >= 5:
+    if fc >= 4:
         foreign_score = 90
-    elif fc >= 3:
+    elif fc >= 2:
         foreign_score = 75
     elif fc >= 1:
         foreign_score = 60
@@ -536,11 +538,21 @@ def compute_chip_score(summary: dict, close_price: float = None) -> dict:
         elif ft < -50000:
             foreign_score = max(0, foreign_score - 10)
 
+    # 30 日 momentum 加成：持續性進場潮（解決連買天數抓不到的情境）
+    foreign_30d = summary.get("foreign_30d_net", 0)
+    if close_price and close_price > 0:
+        f30_amount = foreign_30d * close_price
+        if f30_amount > 200_000_000:        # 30 日累計買超 2 億以上 = 強力進場潮
+            foreign_score = min(100, foreign_score + 8)
+        elif f30_amount < -200_000_000:
+            foreign_score = max(0, foreign_score - 8)
+
     # ── 2. 投信分數 (25%) ──
+    # 同樣 5/3 → 4/2，加快反映急漲股的法人介入
     tc = summary.get("trust_consec_buy", 0)
-    if tc >= 5:
+    if tc >= 4:
         trust_score = 92   # 投信連買很強，選股精準
-    elif tc >= 3:
+    elif tc >= 2:
         trust_score = 85
     elif tc >= 1:
         trust_score = 65
@@ -564,20 +576,21 @@ def compute_chip_score(summary: dict, close_price: float = None) -> dict:
     else:
         dealer_score = 30
 
-    # ── 4. 融資增減分數 (20%) — 反向指標 ──
+    # ── 4. 融資增減分數 (20%) — 反向指標（已弱化）──
     # 融資減少 = 散戶離場 = 籌碼沉澱 = 好事
-    # 融資暴增 = 散戶追高 = 風險
+    # 融資暴增原本 = 散戶追高 = 風險，但 6mo 校準發現強多頭時融資跟漲是正常 confirmation，
+    # 不該重扣（聯電 +149%、台積電 +63% 期間融資皆增加而被扣分）。降低懲罰強度
     mc = summary.get("margin_change_sum", 0)
     if mc < -5000:
-        margin_score = 85   # 融資大減，籌碼沉澱
+        margin_score = 80   # 大減，籌碼沉澱
     elif mc < -1000:
-        margin_score = 72
+        margin_score = 65
     elif mc < 1000:
-        margin_score = 50   # 融資持平
+        margin_score = 55   # 略偏正（中性偏好）
     elif mc < 5000:
-        margin_score = 35
+        margin_score = 48
     else:
-        margin_score = 20   # 融資暴增，散戶追高
+        margin_score = 38   # 融資暴增不再重扣到 20，改 38（中性偏負）
 
     # ── 5. 融券分數 (15%) ──
     sb = summary.get("short_balance_latest", 0)
