@@ -557,6 +557,10 @@ window.changeSymbol = async function (sym, market = 'crypto') {
     try {
         localStorage.setItem('csp-last-symbol', sym);
         localStorage.setItem('csp-last-market', market);
+        // 台股：queue 給台股交易中心下次開啟時自動跑「查詢分數」（1-shot，由 sector_trading.html 消費後清除）
+        if (market === 'stock') {
+            localStorage.setItem('csp-pending-stock-query', sym);
+        }
     } catch (_) { /* 隱私模式 / 配額滿 */ }
 
     const baseSym = sym.split('/')[0].split('.')[0];

@@ -1322,6 +1322,8 @@
                 const sym = symbol.includes('.') ? symbol : symbol + '.TW';
                 localStorage.setItem('csp-pending-symbol', sym);
                 localStorage.setItem('csp-pending-market', 'stock');
+                // 同步：下次進台股交易中心時自動查分數（背景同步機制）
+                localStorage.setItem('csp-pending-stock-query', sym);
                 window.location.href = 'index.html';
             };
 
@@ -2057,6 +2059,7 @@
                 document.getElementById('arc-goto-btn').onclick = () => {
                     localStorage.setItem('csp-pending-symbol', sym);
                     localStorage.setItem('csp-pending-market', 'stock');
+                    localStorage.setItem('csp-pending-stock-query', sym);
                     window.location.href = 'index.html';
                 };
 
@@ -2361,6 +2364,20 @@
             document.getElementById('stock-search-input').addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') doSearch();
             });
+
+            // 自動查詢：消費 changeSymbol/股票連結點擊時 queue 的 symbol（1-shot，消費後清除）
+            try {
+                const pending = localStorage.getItem('csp-pending-stock-query');
+                if (pending) {
+                    localStorage.removeItem('csp-pending-stock-query');
+                    const input = document.getElementById('stock-search-input');
+                    const display = pending.replace('.TW', '');
+                    input.value = (window.stockNames && window.stockNames[pending])
+                        ? `${display} ${window.stockNames[pending]}`
+                        : display;
+                    doSearch();
+                }
+            } catch (_) { /* localStorage 不可用就跳過 */ }
         })();
     </script>
     <script src="tooltip.js"></script>

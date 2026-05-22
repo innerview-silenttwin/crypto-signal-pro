@@ -194,6 +194,7 @@ function renderTable() {
             const sym = a.dataset.symbol;
             localStorage.setItem('csp-pending-symbol', sym);
             localStorage.setItem('csp-pending-market', 'stock');
+            localStorage.setItem('csp-pending-stock-query', sym);
             window.location.href = 'index.html';
         });
     });
