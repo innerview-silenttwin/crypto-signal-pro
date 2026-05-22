@@ -63,10 +63,16 @@ class SinopacQuoteProvider:
         period_days: int = 5,
         interval: str = "1d",
     ) -> Optional[pd.DataFrame]:
+        # 指數 / 非個股代號（^TWII 等）永豐 Stocks contract 沒有，直接 fallback 到 yfinance
+        if symbol.startswith("^") or symbol.startswith("00"):
+            # 註：00 開頭暫不強制 fallback（部份 ETF 永豐有），先只處理 ^ 前綴
+            if symbol.startswith("^"):
+                return self._yfinance_fallback(symbol, period_days, interval)
+
         contract = self._resolve_contract(symbol)
         if contract is None:
-            logger.warning("contract not found: %s", symbol)
-            return None
+            logger.warning("contract not found: %s; fallback yfinance", symbol)
+            return self._yfinance_fallback(symbol, period_days, interval)
 
         end = datetime.now(_TW_TZ).date()
         # 1m 只要近 2 個交易日就夠（盤中拿最後一筆）；1d 用 period_days
@@ -97,6 +103,16 @@ class SinopacQuoteProvider:
         return df if not df.empty else None
 
     # ── internals ─────────────────────────────────────────────────
+
+    @staticmethod
+    def _yfinance_fallback(symbol: str, period_days: int, interval: str):
+        """永豐沒有的標的（指數、特殊代號）→ 用 yfinance 補。"""
+        try:
+            from .yfinance_provider import YFinanceProvider
+            return YFinanceProvider().get_history(symbol, period_days=period_days, interval=interval)
+        except Exception as e:
+            logger.warning("yfinance fallback for %s failed: %s", symbol, e)
+            return None
 
     def _resolve_contract(self, symbol: str):
         """symbol 例 '2330.TW' → Contracts.Stocks['2330']."""
