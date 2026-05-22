@@ -200,8 +200,12 @@
                 <div class="signal-card glass-panel" id="card-btc">
                     <div class="card-header">
                         <h2 id="main-idx-title">BTC/USDT</h2>
-                        <span class="price-value glow-text" id="price-btc">Fetching...</span>
+                        <div class="price-block">
+                            <span class="price-value glow-text" id="price-btc">Fetching...</span>
+                            <span class="price-change" id="price-change-main">--</span>
+                        </div>
                     </div>
+                    <div id="position-info" class="position-info" style="display:none;"></div>
                     <div id="screener-presence" class="screener-presence"></div>
 
                     <div class="timeframe-sections">

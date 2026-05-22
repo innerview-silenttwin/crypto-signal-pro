@@ -694,6 +694,64 @@ h1, h2, h3, .glow-text {
     font-weight: 800;
 }
 
+.price-block {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+    line-height: 1.1;
+}
+
+.price-change {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 0.2px;
+}
+
+.price-change.up {
+    color: #10b981;
+}
+
+.price-change.down {
+    color: #ef4444;
+}
+
+.position-info {
+    margin: 0 24px 12px 24px;
+    padding: 10px 14px;
+    background: linear-gradient(90deg, rgba(16, 185, 129, 0.10), rgba(16, 185, 129, 0.04));
+    border: 1px solid rgba(16, 185, 129, 0.35);
+    border-radius: 12px;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.position-info .pi-label {
+    font-weight: 700;
+    color: #10b981;
+}
+
+.position-info .pi-detail {
+    color: var(--text-main);
+}
+
+.position-info .pi-pl {
+    margin-left: auto;
+    font-weight: 700;
+}
+
+.position-info .pi-pl.up {
+    color: #10b981;
+}
+
+.position-info .pi-pl.down {
+    color: #ef4444;
+}
+
 .timeframe-sections {
     display: flex;
     flex-direction: column;

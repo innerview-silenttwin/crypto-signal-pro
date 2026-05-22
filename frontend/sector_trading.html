@@ -2115,7 +2115,7 @@
                     const verdictCls = ts.verdict_class === 'buy' ? 'verdict-buy' : ts.verdict_class === 'sell' ? 'verdict-sell' : '';
                     const vc = verdictColors[ts.verdict_class] || '#94a3b8';
 
-                    function tsBarHTML(label, score, threshold, max, extra) {
+                    function tsBarHTML(label, score, threshold, max, extra, tip) {
                         if (score == null) return '';
                         max = max || 100;
                         const pct = Math.min(100, Math.max(0, score / max * 100));
@@ -2124,16 +2124,27 @@
                         const barColor = pass === null ? '#6366f1' : pass ? '#10b981' : '#ef4444';
                         const thLine = thPct != null ? `<div class="ts-bar-threshold" style="left:${thPct}%" title="門檻 ${threshold}"></div>` : '';
                         const thText = threshold != null ? ` <span style="opacity:0.5;font-size:10px">/ ${threshold}</span>` : '';
+                        // 顯示距離門檻多遠（未達:還差 X.X / 已達:超過 +X.X）
+                        let gapText = '';
+                        if (threshold != null) {
+                            const gap = score - threshold;
+                            if (gap >= 0) {
+                                gapText = ` <span style="color:#10b981;font-size:10px;font-weight:700">(+${gap.toFixed(1)})</span>`;
+                            } else {
+                                gapText = ` <span style="color:#ef4444;font-size:10px;font-weight:700">(還差 ${Math.abs(gap).toFixed(1)})</span>`;
+                            }
+                        }
                         const extraText = extra ? ` <span style="opacity:0.4;font-size:9px">${extra}</span>` : '';
                         const passCls = pass === null ? '' : pass ? 'ts-pass' : 'ts-fail';
+                        const tipIcon = tip ? ` <span class="info-tooltip" data-tip="${tip.replace(/"/g, '&quot;')}"><i>i</i></span>` : '';
                         return `
                         <div class="ts-row">
-                            <span class="ts-label">${label}</span>
+                            <span class="ts-label">${label}${tipIcon}</span>
                             <div class="ts-bar-track">
                                 <div class="ts-bar-fill" style="width:${pct}%;background:${barColor}"></div>
                                 ${thLine}
                             </div>
-                            <span class="ts-value ${passCls}">${score.toFixed(1)}${thText}${extraText}</span>
+                            <span class="ts-value ${passCls}">${score.toFixed(1)}${thText}${gapText}${extraText}</span>
                         </div>`;
                     }
 
@@ -2146,6 +2157,42 @@
                         <span class="ts-cond ${dirOk ? 'ts-cond-pass' : 'ts-cond-fail'}" title="信號方向須為 BUY">方向${ts.direction || '--'} ${dirOk ? '✓' : '✗'}</span>
                         <span class="ts-cond ${buyScoreOk ? 'ts-cond-pass' : 'ts-cond-fail'}" title="技術買分須 ≥ ${ts.buy_threshold}">買分≥${ts.buy_threshold} ${buyScoreOk ? '✓' : '✗'}</span>
                         <span class="ts-cond ${compOk ? 'ts-cond-pass' : 'ts-cond-fail'}" title="綜合分須 ≥ ${ts.composite_threshold}">綜合≥${ts.composite_threshold} ${compOk ? '✓' : '✗'}</span>
+                    </div>`;
+
+                    // ── 距離觸發摘要：清楚顯示離買進/賣出門檻還差多少分 ──
+                    function fmtGap(score, threshold) {
+                        if (score == null || threshold == null) return '<span style="opacity:0.5">--</span>';
+                        const gap = score - threshold;
+                        if (gap >= 0) {
+                            return `<span style="color:#10b981;font-weight:700">已達標 (+${gap.toFixed(1)} 分)</span>`;
+                        }
+                        return `<span style="color:#ef4444;font-weight:700">還差 ${Math.abs(gap).toFixed(1)} 分</span>`;
+                    }
+                    // 買進：需同時達成 技術買分、綜合分、方向=BUY，三者皆滿足才會真正觸發
+                    const buyGapBuy = (ts.tech_buy_score != null && ts.buy_threshold != null)
+                        ? ts.buy_threshold - ts.tech_buy_score : null;
+                    const buyGapComp = (ts.composite_score != null && ts.composite_threshold != null)
+                        ? ts.composite_threshold - ts.composite_score : null;
+                    const sellGap = (ts.tech_sell_score != null && ts.sell_threshold != null)
+                        ? ts.sell_threshold - ts.tech_sell_score : null;
+                    // 取買進條件中「最遠」的那個當代表（最瓶頸的那項）
+                    const buyBlockers = [];
+                    if (!dirOk) buyBlockers.push(`方向需轉為 BUY（目前 ${ts.direction || '--'}）`);
+                    if (buyGapBuy != null && buyGapBuy > 0) buyBlockers.push(`技術買分還差 ${buyGapBuy.toFixed(1)}`);
+                    if (buyGapComp != null && buyGapComp > 0) buyBlockers.push(`綜合分還差 ${buyGapComp.toFixed(1)}`);
+                    const buySummary = buyBlockers.length === 0
+                        ? `<span style="color:#10b981;font-weight:700">✓ 三項條件皆達標</span>`
+                        : `<span style="color:#ef4444;font-weight:700">${buyBlockers.join('、')}</span>`;
+                    const sellSummary = sellGap == null
+                        ? '<span style="opacity:0.5">--</span>'
+                        : sellGap <= 0
+                            ? `<span style="color:#ef4444;font-weight:700">⚠ 已達標 (+${Math.abs(sellGap).toFixed(1)} 分)</span>`
+                            : `<span style="color:#94a3b8;font-weight:700">距離還有 ${sellGap.toFixed(1)} 分</span>`;
+                    const triggerDistanceHtml = `
+                    <div class="ts-trigger-distance" style="background:rgba(99,102,241,0.08); border:1px solid rgba(99,102,241,0.25); border-radius:8px; padding:8px 12px; margin-top:8px; font-size:12px; line-height:1.7">
+                        <div style="font-weight:700; color:var(--text-muted); margin-bottom:4px; font-size:11px">📏 距離觸發</div>
+                        <div>🟢 <span style="opacity:0.8">買進門檻</span>：${buySummary}</div>
+                        <div>🔴 <span style="opacity:0.8">賣出門檻</span>：${sellSummary}</div>
                     </div>`;
 
                     // 五維分數拆解
@@ -2211,9 +2258,14 @@
                             </div>
                         </div>
                         ${conditionsHtml}
-                        ${tsBarHTML('技術買分', ts.tech_buy_score, ts.buy_threshold)}
-                        ${tsBarHTML('技術賣分', ts.tech_sell_score, ts.sell_threshold)}
-                        ${tsBarHTML('綜合分', ts.composite_score, ts.composite_threshold)}
+                        ${tsBarHTML('技術買分', ts.tech_buy_score, ts.buy_threshold, null, null,
+                            '買入需同時滿足三條件：①技術買分≥門檻 ②綜合分≥50 ③信號方向=BUY。三者缺一不會買進。')}
+                        ${tsBarHTML('技術賣分', ts.tech_sell_score, ts.sell_threshold, null, null,
+                            '注意：這只是 4 條賣出路徑中的「標準信號賣出」這條，且需配合方向=SELL 且已持倉才生效。' +
+                            '另外 3 條獨立觸發路徑不看這個分數：(1)停損 ' + ts.stop_loss_pct + '%、(2)停利 ' + ts.take_profit_pct +
+                            '%、(3)趨勢破壞（從高點回落≥3×ATR 或 連3黑破20MA，持有≥16小時）。')}
+                        ${tsBarHTML('綜合分', ts.composite_score, ts.composite_threshold, null, null,
+                            '五維加權後的標的品質分（籌碼+技術+基本面+盤勢+消息）。需≥50 才允許買入。賣出/停損不看此分數。')}
                         ${rawVsAdj}
                         ${dimsHtml}
                         ${modsHtml}
