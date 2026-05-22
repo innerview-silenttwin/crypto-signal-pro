@@ -1743,6 +1743,17 @@ async def list_sectors():
         results.append(mgr.get_summary(current_prices))
     return results
 
+@app.get("/api/symbol-sector")
+async def get_symbol_sector_endpoint(symbol: str):
+    """查詢股票所屬產業 ID（給前端做 symbol→tab 自動切換用）"""
+    from screener import get_symbol_sector
+    # normalize: 純數字 → 加 .TW
+    sym = symbol.strip().upper()
+    if sym.isdigit():
+        sym = f"{sym}.TW"
+    sec = get_symbol_sector(sym)
+    return {"symbol": sym, "sector_id": sec if sec != "default" else None}
+
 # ── 自動交易守護程式控制（必須在 {sector_id} 路由之前）──
 
 @app.post("/api/sector-trading/auto-trader/start")

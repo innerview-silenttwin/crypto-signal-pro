@@ -1162,12 +1162,20 @@
 
             // ── Init ──
             async function init() {
-                // 預填交易歷史的股票篩選：消費 changeSymbol queue 的 pending symbol
+                // 預填交易歷史的股票篩選：消費 changeSymbol queue 的 pending symbol，並同步切到對應產業 tab
                 // 不在此 removeItem，由第二段 IIFE 的查詢分數 auto-fire 統一清除（單一所有權）
                 try {
                     const pending = localStorage.getItem('csp-pending-stock-query');
                     if (pending) {
                         document.getElementById('filter-symbol').value = pending.replace(/\.(TW|TWO)$/, '');
+                        // 先決定 currentSector 再 buildTabs / refreshAll，這樣首次渲染就是正確 sector
+                        try {
+                            const r = await fetch('/api/symbol-sector?symbol=' + encodeURIComponent(pending));
+                            if (r.ok) {
+                                const d = await r.json();
+                                if (d.sector_id && SECTORS.includes(d.sector_id)) currentSector = d.sector_id;
+                            }
+                        } catch (_) { /* API 失敗就維持預設 sector */ }
                     }
                 } catch (_) { /* localStorage 不可用就跳過 */ }
 
@@ -1178,7 +1186,14 @@
                 document.getElementById('btn-toggle-sector').onclick = toggleSector;
                 document.getElementById('btn-prev').onclick = () => { historyPage = Math.max(1, historyPage - 1); refreshHistory(); };
                 document.getElementById('btn-next').onclick = () => { historyPage++; refreshHistory(); };
-                document.getElementById('btn-filter').onclick = () => { historyPage = 1; refreshHistory(); };
+                // 篩選按鈕：若 filter-symbol 有值就先嘗試切到對應產業 tab，再刷新
+                const triggerFilter = async () => {
+                    const sym = document.getElementById('filter-symbol').value.trim();
+                    if (sym) await autoSwitchSectorForSymbol(sym);
+                    historyPage = 1;
+                    refreshHistory();
+                };
+                document.getElementById('btn-filter').onclick = triggerFilter;
                 document.getElementById('btn-filter-clear').onclick = () => {
                     document.getElementById('filter-start').value = '';
                     document.getElementById('filter-end').value = '';
@@ -1188,9 +1203,9 @@
                     historyPage = 1;
                     refreshHistory();
                 };
-                // Enter key on filter inputs triggers search
+                // Enter key on filter inputs triggers search（含自動切 tab）
                 ['filter-start', 'filter-end', 'filter-symbol'].forEach(id => {
-                    document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') { historyPage = 1; refreshHistory(); } });
+                    document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') triggerFilter(); });
                 });
                 document.getElementById('filter-type').addEventListener('change', () => { historyPage = 1; refreshHistory(); });
                 document.getElementById('filter-pnl').addEventListener('change', () => { historyPage = 1; refreshHistory(); });
@@ -1209,17 +1224,35 @@
                 </button>`
                 ).join('');
                 container.querySelectorAll('.sector-tab').forEach(btn => {
-                    btn.onclick = () => {
-                        currentSector = btn.dataset.sector;
-                        historyPage = 1;
-                        document.querySelectorAll('.sector-tab').forEach(b => b.classList.remove('active'));
-                        btn.classList.add('active');
-                        renderSector();
-                        refreshHistory();
-                        refreshRegime();
-                        refreshFundamental();
-                    };
+                    btn.onclick = () => switchToSector(btn.dataset.sector);
                 });
+            }
+
+            // 共用切 tab 邏輯（給 click handler + filter 自動切換用）
+            function switchToSector(sectorId) {
+                if (!SECTORS.includes(sectorId)) return false;
+                if (currentSector === sectorId) return true;
+                currentSector = sectorId;
+                historyPage = 1;
+                document.querySelectorAll('.sector-tab').forEach(b =>
+                    b.classList.toggle('active', b.dataset.sector === sectorId));
+                renderSector();
+                refreshHistory();
+                refreshRegime();
+                refreshFundamental();
+                return true;
+            }
+
+            // 依 symbol 查所屬產業並切到對應 tab。回傳 Promise<boolean>（是否成功切到）
+            async function autoSwitchSectorForSymbol(rawSym) {
+                if (!rawSym) return false;
+                try {
+                    const r = await fetch('/api/symbol-sector?symbol=' + encodeURIComponent(rawSym));
+                    if (!r.ok) return false;
+                    const data = await r.json();
+                    if (data.sector_id) return switchToSector(data.sector_id);
+                    return false;
+                } catch (_) { return false; }
             }
 
             // ── Data ──
