@@ -28,6 +28,20 @@ EXPECTED_ROUTES = [
 
     # api/notifications.py — A2 (分家自 btc_trading)
     ("POST", "/api/daily-report/send"),
+
+    # api/sector_trading.py — A3
+    ("GET",  "/api/sector-trading/sectors"),
+    ("POST", "/api/sector-trading/auto-trader/start"),
+    ("POST", "/api/sector-trading/auto-trader/stop"),
+    ("GET",  "/api/sector-trading/auto-trader/status"),
+    ("POST", "/api/sector-trading/auto-trader/run-once"),
+    ("GET",  "/api/sector-trading/{sector_id}/status"),
+    ("POST", "/api/sector-trading/{sector_id}/toggle"),
+    ("GET",  "/api/sector-trading/{sector_id}/history"),
+    ("POST", "/api/sector-trading/{sector_id}/strategy"),
+    ("POST", "/api/sector-trading/{sector_id}/reset"),
+    ("GET",  "/api/sector-trading/{sector_id}/regime"),
+    ("GET",  "/api/sector-trading/{sector_id}/fundamental"),
 ]
 
 

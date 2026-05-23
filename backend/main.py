@@ -97,6 +97,29 @@ def get_aggregator(market: str = "crypto") -> SignalAggregator:
         return aggregator_futures
     return aggregator_crypto
 
+
+def _sanitize(obj):
+    """將 numpy 類型轉為 Python 原生類型，避免 JSON 序列化錯誤。
+
+    註：api/sector_trading.py 也有同名副本（純函式 + 避免 circular import）；
+    這份保留給其他 endpoint 用，例如 /api/stock-analysis、/api/consultation。
+    """
+    import numpy as np
+    if isinstance(obj, dict):
+        return {k: _sanitize(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [_sanitize(v) for v in obj]
+    elif isinstance(obj, (np.bool_,)):
+        return bool(obj)
+    elif isinstance(obj, (np.integer,)):
+        return int(obj)
+    elif isinstance(obj, (np.floating,)):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    return obj
+
+
 # 全域狀態
 current_signals = {}
 symbols_to_track = ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
@@ -1796,26 +1819,12 @@ app.include_router(trading_router)
 
 
 # ============================================================
-# 類股虛擬交易 API（6 個獨立交易中心）
+# 類股虛擬交易 API — 已搬至 api/sector_trading.py
+# 註：/api/symbol-sector 是 symbol lookup helper，與 sector-trading 路徑無關，留在本檔
 # ============================================================
 
-from sector_trader import get_manager, get_all_managers as get_all_sector_managers, SECTOR_IDS, SECTOR_ID_TO_NAME
-from sector_auto_trader import auto_trader as sector_auto_trader
-
-@app.get("/api/sector-trading/sectors")
-async def list_sectors():
-    """列出所有類股及其摘要"""
-    from sector_auto_trader import get_current_price
-    results = []
-    for sector_id, mgr in get_all_sector_managers().items():
-        current_prices = {}
-        for symbol, hold in mgr.state.get("holdings", {}).items():
-            if hold.get("qty", 0) > 0:
-                price = get_current_price(symbol)
-                if price:
-                    current_prices[symbol] = price
-        results.append(mgr.get_summary(current_prices))
-    return results
+from api.sector_trading import router as sector_trading_router
+app.include_router(sector_trading_router)
 
 @app.get("/api/symbol-sector")
 async def get_symbol_sector_endpoint(symbol: str):
@@ -1828,33 +1837,6 @@ async def get_symbol_sector_endpoint(symbol: str):
     sec = get_symbol_sector(sym)
     return {"symbol": sym, "sector_id": sec if sec != "default" else None}
 
-# ── 自動交易守護程式控制（必須在 {sector_id} 路由之前）──
-
-@app.post("/api/sector-trading/auto-trader/start")
-async def start_auto_trader():
-    """啟動背景自動交易"""
-    ok = sector_auto_trader.start()
-    return {"started": ok, **sector_auto_trader.get_status()}
-
-@app.post("/api/sector-trading/auto-trader/stop")
-async def stop_auto_trader():
-    """停止背景自動交易"""
-    ok = sector_auto_trader.stop()
-    return {"stopped": ok, **sector_auto_trader.get_status()}
-
-@app.get("/api/sector-trading/auto-trader/status")
-async def get_auto_trader_status():
-    """取得自動交易狀態"""
-    return sector_auto_trader.get_status()
-
-@app.post("/api/sector-trading/auto-trader/run-once")
-async def run_auto_trader_once():
-    """手動觸發一次交易檢查"""
-    import threading
-    t = threading.Thread(target=sector_auto_trader.run_once_now, daemon=True)
-    t.start()
-    return {"triggered": True, "message": "已觸發一次交易檢查，請稍後查看結果"}
-
 # ════════════════════════════════════════════════════
 # BTC 自動交易 API — 已搬至 api/btc_trading.py
 # 通知 / 每日報告 API — 已搬至 api/notifications.py
@@ -1864,142 +1846,6 @@ from api.btc_trading import router as btc_trading_router
 from api.notifications import router as notifications_router
 app.include_router(btc_trading_router)
 app.include_router(notifications_router)
-
-# ── 類股個別操作 ──
-
-@app.get("/api/sector-trading/{sector_id}/status")
-async def get_sector_status(sector_id: str):
-    """取得單一類股帳戶摘要"""
-    mgr = get_manager(sector_id)
-    if not mgr:
-        return {"error": f"未知的類股 ID: {sector_id}"}
-    # 統一取價：多來源比較日期，取最新的收盤價
-    from sector_auto_trader import get_current_price
-    current_prices = {}
-    for symbol, hold in mgr.state.get("holdings", {}).items():
-        if hold.get("qty", 0) > 0:
-            price = get_current_price(symbol)
-            if price:
-                current_prices[symbol] = price
-    return mgr.get_summary(current_prices)
-
-@app.post("/api/sector-trading/{sector_id}/toggle")
-async def toggle_sector_trading(sector_id: str, active: bool = False):
-    """啟動/停止單一類股自動交易"""
-    mgr = get_manager(sector_id)
-    if not mgr:
-        return {"error": f"未知的類股 ID: {sector_id}"}
-    is_active = mgr.toggle_active(active)
-    return {"sector_id": sector_id, "is_active": is_active}
-
-@app.get("/api/sector-trading/{sector_id}/history")
-async def get_sector_history(sector_id: str, page: int = 1, pageSize: int = 50,
-                              symbol: str = "", startDate: str = "", endDate: str = "",
-                              tradeType: str = "", pnlStatus: str = ""):
-    """取得單一類股交易歷史
-
-    Args:
-        pnlStatus: 篩選「realized」（已實現）/「unrealized」（未實現）/「」（全部）
-    """
-    mgr = get_manager(sector_id)
-    if not mgr:
-        return {"error": f"未知的類股 ID: {sector_id}"}
-    # 取得目前持倉的即時價格，用於計算未實現損益
-    from sector_auto_trader import get_current_price
-    current_prices = {}
-    for sym, hold in mgr.state.get("holdings", {}).items():
-        if hold.get("qty", 0) > 0:
-            price = get_current_price(sym)
-            if price:
-                current_prices[sym] = price
-    return mgr.get_history(page, pageSize, symbol, startDate, endDate,
-                           trade_type=tradeType,
-                           pnl_status=pnlStatus,
-                           current_prices=current_prices)
-
-@app.post("/api/sector-trading/{sector_id}/strategy")
-async def update_sector_strategy(sector_id: str, strategy: dict):
-    """更新類股策略設定"""
-    mgr = get_manager(sector_id)
-    if not mgr:
-        return {"error": f"未知的類股 ID: {sector_id}"}
-    mgr.update_strategy(strategy)
-    return {"success": True, "strategy": mgr.get_strategy()}
-
-@app.post("/api/sector-trading/{sector_id}/reset")
-async def reset_sector_account(sector_id: str):
-    """重置類股帳戶（保留策略）"""
-    mgr = get_manager(sector_id)
-    if not mgr:
-        return {"error": f"未知的類股 ID: {sector_id}"}
-    mgr.reset_account()
-    return {"success": True}
-
-def _sanitize(obj):
-    """將 numpy 類型轉為 Python 原生類型，避免 JSON 序列化錯誤"""
-    import numpy as np
-    if isinstance(obj, dict):
-        return {k: _sanitize(v) for k, v in obj.items()}
-    elif isinstance(obj, (list, tuple)):
-        return [_sanitize(v) for v in obj]
-    elif isinstance(obj, (np.bool_,)):
-        return bool(obj)
-    elif isinstance(obj, (np.integer,)):
-        return int(obj)
-    elif isinstance(obj, (np.floating,)):
-        return float(obj)
-    elif isinstance(obj, np.ndarray):
-        return obj.tolist()
-    return obj
-
-def _compute_sector_regime(sector_id: str):
-    """同步計算類股盤勢辨識；給 to_thread 用，避免阻塞 event loop。"""
-    mgr = get_manager(sector_id)
-    if not mgr:
-        return {"error": f"未知的類股 ID: {sector_id}"}
-
-    from sector_auto_trader import fetch_signal_data, build_layers
-    from signals.aggregator import SignalAggregator
-
-    strategy = mgr.get_strategy()
-    layers = build_layers(strategy)
-    results = {}
-
-    for symbol in mgr.state.get("stocks", []):
-        df = fetch_signal_data(symbol)
-        if df is None:
-            results[symbol] = {"regime": "無數據", "details": {}}
-            continue
-
-        aggregator = SignalAggregator(weights=strategy["weights"])
-        signal = aggregator.analyze(
-            df.copy(), symbol, "1d",
-            layers=layers, sector_id=sector_id,
-        )
-
-        modifier = signal.layer_modifiers[0] if signal.layer_modifiers else None
-        details = _sanitize(modifier.details) if modifier else {}
-        results[symbol] = {
-            "name": mgr.stocks.get(symbol, symbol),
-            "price": round(float(df['close'].iloc[-1]), 2),
-            "regime": signal.regime or "未知",
-            "buy_score": round(float(signal.buy_score), 1),
-            "sell_score": round(float(signal.sell_score), 1),
-            "raw_buy_score": round(float(signal.raw_buy_score), 1),
-            "raw_sell_score": round(float(signal.raw_sell_score), 1),
-            "direction": signal.direction,
-            "signal_level": signal.signal_level,
-            "details": details,
-            "reason": modifier.reason if modifier else "",
-        }
-
-    return {"sector_id": sector_id, "stocks": results}
-
-
-@app.get("/api/sector-trading/{sector_id}/regime")
-async def get_sector_regime(sector_id: str):
-    """取得類股各標的即時盤勢辨識"""
-    return await asyncio.to_thread(_compute_sector_regime, sector_id)
 
 
 @app.get("/api/stock-lookup")
@@ -2969,29 +2815,7 @@ async def remove_custom_stock_api(symbol: str):
     return {"removed": removed, "symbol": symbol}
 
 
-@app.get("/api/sector-trading/{sector_id}/fundamental")
-async def get_sector_fundamental(sector_id: str):
-    """取得類股各標的基本面 P/E 分析"""
-    mgr = get_manager(sector_id)
-    if not mgr:
-        return {"error": f"未知的類股 ID: {sector_id}"}
-
-    from layers.fundamental import fetch_twse_pe_all, get_sector_pe_stats
-
-    symbols = mgr.state.get("stocks", [])
-    all_pe = fetch_twse_pe_all()
-
-    if not all_pe:
-        return {"sector_id": sector_id, "stocks": {}, "error": "無法取得 TWSE P/E 資料"}
-
-    stats = get_sector_pe_stats(symbols, all_pe)
-
-    # 補上股票中文名
-    for sym in stats:
-        if not stats[sym].get("name"):
-            stats[sym]["name"] = mgr.stocks.get(sym, sym)
-
-    return {"sector_id": sector_id, "stocks": _sanitize(stats)}
+# 註：/api/sector-trading/{sector_id}/fundamental 已搬至 api/sector_trading.py
 
 
 # ── 信號績效統計 API ──
