@@ -147,40 +147,89 @@ def _get_institutional_data(symbol: str) -> Dict[str, dict]:
 
 
 def _compute_chip_day(inst_data: Dict[str, dict], date_str: str) -> dict:
-    """計算某日的籌碼面信號"""
+    """計算某日的籌碼面信號（含連買/連賣天數與 30 日傾向比）"""
+    empty = {"foreign_consec_buy": 0, "trust_consec_buy": 0,
+             "foreign_consec_sell": 0, "trust_consec_sell": 0,
+             "foreign_pos_ratio_30d": 0.5, "trust_pos_ratio_30d": 0.5,
+             "foreign_net": 0, "trust_net": 0}
     if not inst_data:
-        return {"foreign_consec_buy": 0, "trust_consec_buy": 0,
-                "foreign_net": 0, "trust_net": 0}
+        return empty
 
     target = date_str.replace("-", "")
     sorted_dates = sorted([d for d in inst_data.keys() if d <= target])
     if not sorted_dates:
-        return {"foreign_consec_buy": 0, "trust_consec_buy": 0,
-                "foreign_net": 0, "trust_net": 0}
+        return empty
 
-    # 外資連買天數
-    foreign_consec = 0
-    for d in reversed(sorted_dates):
-        if inst_data[d].get("foreign_net", 0) > 0:
-            foreign_consec += 1
-        else:
-            break
+    def consec(positive: bool, key: str) -> int:
+        n = 0
+        for d in reversed(sorted_dates):
+            v = inst_data[d].get(key, 0)
+            if (positive and v > 0) or ((not positive) and v < 0):
+                n += 1
+            else:
+                break
+        return n
 
-    # 投信連買天數
-    trust_consec = 0
-    for d in reversed(sorted_dates):
-        if inst_data[d].get("trust_net", 0) > 0:
-            trust_consec += 1
-        else:
-            break
+    foreign_consec_buy = consec(True, "foreign_net")
+    foreign_consec_sell = consec(False, "foreign_net")
+    trust_consec_buy = consec(True, "trust_net")
+    trust_consec_sell = consec(False, "trust_net")
+
+    # 30 日內買超天數比（catches 持續性買盤，比單日連續更穩定）
+    recent = sorted_dates[-30:]
+    foreign_pos = sum(1 for d in recent if inst_data[d].get("foreign_net", 0) > 0)
+    trust_pos = sum(1 for d in recent if inst_data[d].get("trust_net", 0) > 0)
+    f_ratio = foreign_pos / len(recent) if recent else 0.5
+    t_ratio = trust_pos / len(recent) if recent else 0.5
 
     today_data = inst_data.get(target, {})
     return {
-        "foreign_consec_buy": foreign_consec,
-        "trust_consec_buy": trust_consec,
+        "foreign_consec_buy": foreign_consec_buy,
+        "foreign_consec_sell": foreign_consec_sell,
+        "trust_consec_buy": trust_consec_buy,
+        "trust_consec_sell": trust_consec_sell,
+        "foreign_pos_ratio_30d": f_ratio,
+        "trust_pos_ratio_30d": t_ratio,
         "foreign_net": today_data.get("foreign_net", 0),
         "trust_net": today_data.get("trust_net", 0),
     }
+
+
+def _chip_score_from_day(chip: dict) -> int:
+    """從 _compute_chip_day 的回傳值計算 0-100 籌碼分數
+
+    與 chipflow.compute_chip_score 同精神（5/3 門檻 → 4/2、加 30 日 momentum），
+    但用 signal_performance 能取得的歷史欄位（無融資/融券/自營商，這些
+    backtest 期間 API 取不到）。
+    """
+    score = 50
+    fc_buy = chip["foreign_consec_buy"]
+    fc_sell = chip["foreign_consec_sell"]
+    if fc_buy >= 4:    score += 25
+    elif fc_buy >= 2:  score += 15
+    elif fc_buy >= 1:  score += 7
+    elif fc_sell >= 4: score -= 25
+    elif fc_sell >= 2: score -= 12
+    elif fc_sell >= 1: score -= 5
+
+    tc_buy = chip["trust_consec_buy"]
+    tc_sell = chip["trust_consec_sell"]
+    if tc_buy >= 4:    score += 22
+    elif tc_buy >= 2:  score += 13
+    elif tc_buy >= 1:  score += 6
+    elif tc_sell >= 4: score -= 18
+    elif tc_sell >= 2: score -= 9
+    elif tc_sell >= 1: score -= 4
+
+    # 30 日傾向（持續性買盤 / 賣盤）— 解決原公式無法 catch sustained 行情的問題
+    fr = chip.get("foreign_pos_ratio_30d", 0.5)
+    tr = chip.get("trust_pos_ratio_30d", 0.5)
+    if fr > 0.60:   score += 8
+    elif fr < 0.40: score -= 8
+    if tr > 0.55:   score += 6
+    elif tr < 0.40: score -= 6
+
+    return max(0, min(100, score))
 
 
 # ── 股價歷史 ─────────────────────────────────────────────────────
@@ -297,10 +346,9 @@ def _process_single_stock(symbol: str, name: str, analysis_start: str = None) ->
             regime_state = "未知"
         regime_score = REGIME_SCORE_MAP.get(regime_state, 50)
 
-        # 籌碼面
+        # 籌碼面：用新公式（含連賣扣分 + 30 日傾向）
         chip = _compute_chip_day(inst_data, date_str)
-        # 籌碼分數：投信加重（回測 +32d 平均 +10%、勝率 60.5%，較外資 +7.5%/59.3% 略強）
-        chip_score = min(100, 50 + chip["trust_consec_buy"] * 8 + chip["foreign_consec_buy"] * 6)
+        chip_score = _chip_score_from_day(chip)
 
         close = float(sub_df['close'].iloc[-1])
 
