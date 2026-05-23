@@ -1788,61 +1788,11 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 # ============================================================
-# 虛擬交易 API（供 trading.html 使用）
+# 虛擬交易 API（供 trading.html 使用）— 已搬至 api/trading.py
 # ============================================================
 
-@app.post("/api/trading/toggle")
-async def toggle_trading(active: bool = False):
-    """啟動/停止自動交易"""
-    is_active = trading_manager.toggle_active(active)
-    return {"is_active": is_active}
-
-@app.get("/api/trading/status")
-async def get_trading_status():
-    """取得帳戶摘要（資產淨值、持倉、損益）"""
-    # 嘗試取得最新價格用於計算未實現損益
-    current_prices = {}
-    for symbol, data in current_signals.items():
-        sigs = data.get("signals", {})
-        if "1d" in sigs:
-            current_prices[symbol] = sigs["1d"].get("price", 0)
-    return trading_manager.get_summary(current_prices)
-
-@app.get("/api/trading/history")
-async def get_trading_history(page: int = 1, pageSize: int = 15,
-                               symbol: str = "", startDate: str = "", endDate: str = ""):
-    """取得交易歷史（支援篩選與分頁）"""
-    history = trading_manager.state.get("history", [])
-
-    # 篩選
-    if symbol:
-        history = [h for h in history if symbol.upper() in h.get("symbol", "").upper()]
-    if startDate:
-        history = [h for h in history if h.get("time", "") >= startDate]
-    if endDate:
-        history = [h for h in history if h.get("time", "")[:10] <= endDate]
-
-    total = len(history)
-    start = (page - 1) * pageSize
-    end = start + pageSize
-    return {"data": history[start:end], "total": total, "page": page}
-
-@app.get("/api/trading/symbols")
-async def get_watchlist_symbols():
-    """取得監控標的清單"""
-    return trading_manager.state.get("symbols", [])
-
-@app.post("/api/trading/symbols/add")
-async def add_watchlist_symbol(symbol: str):
-    """新增監控標的"""
-    success = trading_manager.add_symbol(symbol)
-    return {"success": success, "symbols": trading_manager.state.get("symbols", [])}
-
-@app.post("/api/trading/symbols/remove")
-async def remove_watchlist_symbol(symbol: str):
-    """移除監控標的"""
-    success = trading_manager.remove_symbol(symbol)
-    return {"success": success, "symbols": trading_manager.state.get("symbols", [])}
+from api.trading import router as trading_router
+app.include_router(trading_router)
 
 
 # ============================================================
