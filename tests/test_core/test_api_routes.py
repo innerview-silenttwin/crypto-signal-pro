@@ -42,6 +42,19 @@ EXPECTED_ROUTES = [
     ("POST", "/api/sector-trading/{sector_id}/reset"),
     ("GET",  "/api/sector-trading/{sector_id}/regime"),
     ("GET",  "/api/sector-trading/{sector_id}/fundamental"),
+
+    # api/screener.py — A4
+    ("GET",  "/api/screener/picks"),
+    ("GET",  "/api/screener/full"),
+    ("POST", "/api/screener/refresh"),
+    ("POST", "/api/screener/clear-cache"),
+    ("GET",  "/api/screener/universe"),
+    ("GET",  "/api/active-etf-ranking"),
+
+    # api/custom_stocks.py — A4
+    ("GET",    "/api/custom-stocks"),
+    ("POST",   "/api/custom-stocks"),
+    ("DELETE", "/api/custom-stocks"),
 ]
 
 

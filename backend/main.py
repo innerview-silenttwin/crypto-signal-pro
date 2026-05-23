@@ -2687,135 +2687,16 @@ async def get_backtest_stats():
     return {"combos": ranked[:30], "stock_count": stock_count}
 
 
-# ── 超級選股系統 API ──
+# ── 超級選股系統 API — 已搬至 api/screener.py 與 api/custom_stocks.py ──
 
-@app.get("/api/screener/picks")
-async def get_screener_picks():
-    """取得五大精選類別（從快取讀取）"""
-    from screener import get_screener_results, trigger_background_scan, is_scanning
-
-    data = get_screener_results()
-
-    # 若無快取，自動觸發背景掃描
-    if data.get("status") == "no_cache":
-        if not is_scanning():
-            trigger_background_scan()
-        return {
-            "categories": [],
-            "updated_at": "",
-            "total": 0,
-            "scanning": True,
-            "message": "首次掃描中，約需 1-2 分鐘...",
-        }
-
-    return {
-        "categories": data.get("categories", []),
-        "updated_at": data.get("updated_at", ""),
-        "total": data.get("total", 0),
-        "scanning": is_scanning(),
-        "active_etfs": data.get("active_etfs", []),
-    }
-
-
-@app.get("/api/screener/full")
-async def get_screener_full(min_score: float = 0, category: str = ""):
-    """取得完整排行（可篩選）"""
-    from screener import get_screener_results
-
-    data = get_screener_results()
-    results = data.get("results", [])
-
-    # 篩選最低分數
-    if min_score > 0:
-        results = [r for r in results if r.get("composite", 0) >= min_score]
-
-    # 篩選類別
-    if category:
-        categories = data.get("categories", [])
-        cat_symbols = set()
-        for cat in categories:
-            if cat["id"] == category:
-                cat_symbols = {s["symbol"] for s in cat.get("stocks", [])}
-                break
-        if cat_symbols:
-            results = [r for r in results if r["symbol"] in cat_symbols]
-
-    return {
-        "results": results,
-        "updated_at": data.get("updated_at", ""),
-        "total": len(results),
-    }
-
-
-@app.post("/api/screener/refresh")
-async def refresh_screener():
-    """手動觸發背景重新掃描"""
-    from screener import trigger_background_scan, is_scanning
-
-    if is_scanning():
-        return {"status": "already_scanning", "message": "掃描已在執行中"}
-
-    started = trigger_background_scan()
-    return {
-        "status": "started" if started else "failed",
-        "message": "背景掃描已啟動" if started else "啟動失敗",
-    }
-
-
-@app.post("/api/screener/clear-cache")
-async def clear_screener_cache():
-    """清除選股快取檔案"""
-    from screener import clear_cache
-    clear_cache()
-    return {"status": "ok", "message": "快取已清除"}
-
-
-@app.get("/api/active-etf-ranking")
-async def get_active_etf_ranking():
-    """取得主動式 ETF 持股排行（被領先大盤 ETF 重倉的台股）"""
-    from layers.active_etf import get_active_etf_ranking as _get_ranking
-    return _get_ranking()
-
-
-@app.get("/api/custom-stocks")
-async def list_custom_stocks():
-    """取得使用者自選股清單"""
-    from screener import get_custom_stocks
-    return {"stocks": get_custom_stocks()}
-
-
-@app.post("/api/custom-stocks")
-async def add_custom_stock_api(symbol: str, name: str = ""):
-    """新增自選股（搜尋時自動觸發）"""
-    # 標準化代碼
-    if not symbol.endswith(".TW"):
-        symbol = symbol.split(".")[0] + ".TW"
-
-    # 若沒提供名稱，自動查詢；查不到代表代號不存在，拒絕加入
-    if not name:
-        name = fetch_stock_name(symbol)
-        if not name:
-            return {"added": False, "reason": "not_found", "symbol": symbol}
-
-    from screener import add_custom_stock, _BUILTIN_UNIVERSE
-    if symbol in _BUILTIN_UNIVERSE:
-        return {"added": False, "reason": "builtin", "symbol": symbol, "name": name}
-
-    added = add_custom_stock(symbol, name)
-    return {"added": added, "symbol": symbol, "name": name}
-
-
-@app.delete("/api/custom-stocks")
-async def remove_custom_stock_api(symbol: str):
-    """移除自選股"""
-    from screener import remove_custom_stock
-    if not symbol.endswith(".TW"):
-        symbol = symbol.split(".")[0] + ".TW"
-    removed = remove_custom_stock(symbol)
-    return {"removed": removed, "symbol": symbol}
+from api.screener import router as screener_router
+from api.custom_stocks import router as custom_stocks_router
+app.include_router(screener_router)
+app.include_router(custom_stocks_router)
 
 
 # 註：/api/sector-trading/{sector_id}/fundamental 已搬至 api/sector_trading.py
+# 註：/api/screener/universe 已搬至 api/screener.py（順手收編孤兒位置）
 
 
 # ── 信號績效統計 API ──
@@ -2885,12 +2766,6 @@ async def get_consultation(req: ConsultationRequest):
         return {"error": str(e)}
 
 
-@app.get("/api/screener/universe")
-async def get_screener_universe():
-    """回傳選股宇宙（供諮詢系統的股票搜尋）"""
-    from screener import SCREENER_UNIVERSE
-    return [{"symbol": k, "name": v} for k, v in SCREENER_UNIVERSE.items()]
-
 from pydantic import BaseModel
 class SettingsUpdate(BaseModel):
     telegram_chat_ids: str
@@ -2911,7 +2786,7 @@ async def update_settings_api(req: SettingsUpdate):
     settings = update_telegram_settings(req.telegram_chat_ids)
     return {"status": "success", "settings": settings}
 
-@app.post("/api/settings/stock")
+@app.post("/api/settings/stock", operation_id="settings_add_custom_stock")
 async def add_custom_stock_api(req: CustomStock):
     from settings_manager import add_custom_stock
     from layers.fundamental import fetch_twse_pe_all
