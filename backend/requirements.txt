@@ -15,3 +15,6 @@ pyyaml>=6.0
 # 永豐證券 Shioaji（僅 prod 機需要；dev 機可不裝，broker factory 會 fallback 為 VirtualBroker）
 # pip install shioaji
 # shioaji>=1.2.0
+
+# ── Dev / Test ──
+pytest>=8.0.0
