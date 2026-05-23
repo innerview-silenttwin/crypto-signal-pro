@@ -61,6 +61,10 @@ EXPECTED_ROUTES = [
     ("GET", "/api/update-status"),
     ("GET", "/api/symbol-sector"),
     ("GET", "/api/stock-lookup"),
+
+    # api/stocks.py — A5b（中-低耦合 endpoints）
+    ("GET", "/api/stock-info"),
+    ("GET", "/api/chart"),
 ]
 
 

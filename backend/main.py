@@ -1377,11 +1377,7 @@ async def get_ticker_summary():
 # /api/update-status 已搬至 api/stocks.py
 
 
-@app.get("/api/stock-info")
-async def get_stock_info(symbol: str):
-    """提供簡易股票名稱查詢，用於前端顯示。"""
-    name = fetch_stock_name(symbol)
-    return {"symbol": symbol, "name": name or ""}
+# /api/stock-info 已搬至 api/stocks.py
 
 
 # ============================================================
@@ -1732,50 +1728,7 @@ def get_tw_chart_data(symbol: str, timeframe: str, limit: int = 200):
     print(f"[rate-limit] No cache/fallback for {cache_key}, returning rate_limited ({remaining}s)")
     return {"candles": [], "data_source": "rate_limited", "fetched_at": now, "next_update_in": remaining}
 
-@app.get("/api/chart")
-async def get_chart_data(symbol: str = "BTC/USDT", timeframe: str = "1d", market: str = "crypto"):
-    if market == 'futures':
-        # 期貨也使用相同的 rate limiter 機制（目前無資料源，保留架構）
-        result = await asyncio.to_thread(get_tw_chart_data, symbol, timeframe, 200)
-        if result and result["candles"]:
-            return {
-                "candles": result["candles"],
-                "data_source": result["data_source"],
-                "next_update_in": result["next_update_in"]
-            }
-        return {"candles": [], "data_source": None, "next_update_in": 0}
-
-    if market == 'stock':
-        result = await asyncio.to_thread(get_tw_chart_data, symbol, timeframe, 200)
-        if result and result["candles"]:
-            return {
-                "candles": result["candles"],
-                "data_source": result["data_source"],
-                "next_update_in": result["next_update_in"]
-            }
-        return {"candles": [], "data_source": None, "next_update_in": 0}
-
-    exchange = ccxt_async.binance({'enableRateLimit': True})
-    try:
-        df = await fetch_ohlcv_async(exchange, symbol, timeframe, limit=200)
-        await exchange.close()
-        if df is not None:
-            candles = []
-            for idx, row in df.iterrows():
-                candles.append({
-                    "time": int(idx.timestamp()),
-                    "open": float(row['open']),
-                    "high": float(row['high']),
-                    "low": float(row['low']),
-                    "close": float(row['close']),
-                    "volume": float(row['volume'])
-                })
-            return {"candles": candles, "data_source": "ccxt", "next_update_in": None}
-        return {"candles": [], "data_source": None, "next_update_in": None}
-    except Exception as e:
-        print(f"Chart fetch error: {e}")
-        await exchange.close()
-        return {"candles": [], "data_source": None, "next_update_in": None}
+# /api/chart 已搬至 api/stocks.py
 
 @app.get("/api/signals")
 async def get_signals():

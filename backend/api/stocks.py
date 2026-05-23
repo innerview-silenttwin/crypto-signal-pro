@@ -1,16 +1,20 @@
-"""台股 / 標的查詢 API（A5a：低耦合 endpoints）。
+"""台股 / 標的查詢 API（A5a + A5b：低-中耦合 endpoints）。
 
 從 main.py 拆出來的純搬家——所有 endpoint 路徑、行為、回傳 schema 完全相同。
 
-本檔只放與 main.py 內部 state/helper 耦合度低的 endpoint：
+本檔放與 main.py 內部 state/helper 耦合度可控的 endpoint：
 - /api/futures-info：期貨名稱對照
 - /api/update-status：更新時間戳
 - /api/symbol-sector：symbol → sector 查詢
 - /api/stock-lookup：模糊搜尋
+- /api/stock-info：股票名稱查詢
+- /api/chart：K 線資料
 
-高耦合 endpoint（/api/tw-signals、/api/stock-info、/api/stock-analysis）尚未搬，
+高耦合 endpoint（/api/tw-signals、/api/ticker-summary、/api/stock-analysis）尚未搬，
 留 main.py 等之後抽 helper / state module 後再處理。
 """
+
+import ccxt.async_support as ccxt_async
 
 from fastapi import APIRouter
 
@@ -84,3 +88,63 @@ async def stock_lookup(q: str):
             if len(results) >= 10:
                 break
     return results[:10]
+
+
+# ── A5b：中-低耦合 endpoints ─────────────────────────────────────────
+
+@router.get("/api/stock-info")
+async def get_stock_info(symbol: str):
+    """提供簡易股票名稱查詢，用於前端顯示。"""
+    from main import fetch_stock_name
+    name = fetch_stock_name(symbol)
+    return {"symbol": symbol, "name": name or ""}
+
+
+@router.get("/api/chart")
+async def get_chart_data(symbol: str = "BTC/USDT", timeframe: str = "1d", market: str = "crypto"):
+    """K 線資料：crypto 走 ccxt、台股/期貨走 get_tw_chart_data。"""
+    import asyncio
+    from main import get_tw_chart_data, fetch_ohlcv_async
+
+    if market == 'futures':
+        # 期貨也使用相同的 rate limiter 機制（目前無資料源，保留架構）
+        result = await asyncio.to_thread(get_tw_chart_data, symbol, timeframe, 200)
+        if result and result["candles"]:
+            return {
+                "candles": result["candles"],
+                "data_source": result["data_source"],
+                "next_update_in": result["next_update_in"]
+            }
+        return {"candles": [], "data_source": None, "next_update_in": 0}
+
+    if market == 'stock':
+        result = await asyncio.to_thread(get_tw_chart_data, symbol, timeframe, 200)
+        if result and result["candles"]:
+            return {
+                "candles": result["candles"],
+                "data_source": result["data_source"],
+                "next_update_in": result["next_update_in"]
+            }
+        return {"candles": [], "data_source": None, "next_update_in": 0}
+
+    exchange = ccxt_async.binance({'enableRateLimit': True})
+    try:
+        df = await fetch_ohlcv_async(exchange, symbol, timeframe, limit=200)
+        await exchange.close()
+        if df is not None:
+            candles = []
+            for idx, row in df.iterrows():
+                candles.append({
+                    "time": int(idx.timestamp()),
+                    "open": float(row['open']),
+                    "high": float(row['high']),
+                    "low": float(row['low']),
+                    "close": float(row['close']),
+                    "volume": float(row['volume'])
+                })
+            return {"candles": candles, "data_source": "ccxt", "next_update_in": None}
+        return {"candles": [], "data_source": None, "next_update_in": None}
+    except Exception as e:
+        print(f"Chart fetch error: {e}")
+        await exchange.close()
+        return {"candles": [], "data_source": None, "next_update_in": None}
