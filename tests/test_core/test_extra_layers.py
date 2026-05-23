@@ -5,7 +5,6 @@ crypto_flow 是 BaseLayer 子類，驗 enabled/disabled + 無資料時不 crash�
 """
 
 import pandas as pd
-import pytest
 
 from layers.base import BaseLayer, LayerModifier
 
@@ -62,13 +61,6 @@ def test_crypto_flow_disabled():
     assert mod.active is False
 
 
-@pytest.mark.xfail(
-    reason="CryptoFlowLayer.__init__ 未初始化 self._fr_daily，"
-    "當 btc_funding_rate.csv 不存在時 _get_funding_rate 會丟 AttributeError。"
-    "此 bug 被 SignalAggregator 的 try/except 接住所以實務上沉默失效；"
-    "需要使用者授權才修，先用 xfail 留下記錄。",
-    strict=True,
-)
 def test_crypto_flow_without_data_files_no_crash(tmp_path):
     """data_dir 指到空目錄時，layer 不應該 crash，應回安全 modifier。"""
     from layers.crypto_flow import CryptoFlowLayer

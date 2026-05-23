@@ -28,6 +28,7 @@ class CryptoFlowLayer(BaseLayer):
         )
         self._fng_df = None
         self._fr_df = None
+        self._fr_daily = None  # 由 _load_data 在 _fr_df 載入後 resample 填入；csv 不存在時保持 None
 
     def _load_data(self):
         """懶加載歷史資料"""
