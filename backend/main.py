@@ -992,12 +992,7 @@ def fetch_futures_ohlcv(symbol: str, timeframe: str = "1d", limit: int = 200):
     return None
 
 
-@app.get("/api/futures-info")
-async def get_futures_info(symbol: str):
-    """回傳台股期貨名稱對照。"""
-    sym_key = symbol.upper().split('.')[0]
-    name = FUTURES_NAMES.get(sym_key, '')
-    return {"symbol": symbol, "name": name}
+# /api/futures-info 已搬至 api/stocks.py
 
 
 def fetch_stock_name(symbol: str):
@@ -1379,15 +1374,7 @@ async def get_ticker_summary():
     return result
 
 
-@app.get("/api/update-status")
-async def get_update_status():
-    """回傳 crypto / tw 各自的最新更新時間。"""
-    return {
-        "crypto_updated_at": last_update_timestamps["crypto"],
-        "tw_updated_at": last_update_timestamps["tw_stock"],
-        "tw_market_open": is_tw_market_open(),
-        "tw_next_fetch_in": tw_seconds_until_next() if is_tw_market_open() else None,
-    }
+# /api/update-status 已搬至 api/stocks.py
 
 
 @app.get("/api/stock-info")
@@ -1826,16 +1813,7 @@ app.include_router(trading_router)
 from api.sector_trading import router as sector_trading_router
 app.include_router(sector_trading_router)
 
-@app.get("/api/symbol-sector")
-async def get_symbol_sector_endpoint(symbol: str):
-    """查詢股票所屬產業 ID（給前端做 symbol→tab 自動切換用）"""
-    from screener import get_symbol_sector
-    # normalize: 純數字 → 加 .TW
-    sym = symbol.strip().upper()
-    if sym.isdigit():
-        sym = f"{sym}.TW"
-    sec = get_symbol_sector(sym)
-    return {"symbol": sym, "sector_id": sec if sec != "default" else None}
+# /api/symbol-sector 已搬至 api/stocks.py
 
 # ════════════════════════════════════════════════════
 # BTC 自動交易 API — 已搬至 api/btc_trading.py
@@ -1848,40 +1826,7 @@ app.include_router(btc_trading_router)
 app.include_router(notifications_router)
 
 
-@app.get("/api/stock-lookup")
-async def stock_lookup(q: str):
-    """用中文名稱或代碼模糊搜尋台股，回傳匹配的 symbol 清單（最多 10 筆）"""
-    from layers.fundamental import fetch_twse_pe_all
-    from sector_trader import SECTOR_STOCKS
-    q = q.strip()
-    if not q:
-        return []
-
-    results = []
-    # 1. 先查交易中心追蹤清單（精確優先）
-    for sector, stocks in SECTOR_STOCKS.items():
-        for sym, name in stocks.items():
-            code = sym.replace(".TW", "").replace(".TWO", "")
-            if q == name or q == code or q == sym:
-                return [{"symbol": sym, "name": name, "sector": sector}]
-            if q in name or q in code:
-                results.append({"symbol": sym, "name": name, "sector": sector})
-
-    # 2. 再查全市場 TWSE 資料
-    if len(results) < 10:
-        all_pe = fetch_twse_pe_all()
-        for code, info in all_pe.items():
-            name = info.get("name", "")
-            sym = code + ".TW"
-            if any(r["symbol"] == sym for r in results):
-                continue
-            if q == name or q == code:
-                results.insert(0, {"symbol": sym, "name": name, "sector": None})
-            elif q in name or q in code:
-                results.append({"symbol": sym, "name": name, "sector": None})
-            if len(results) >= 10:
-                break
-    return results[:10]
+# /api/stock-lookup 已搬至 api/stocks.py
 
 
 @app.get("/api/stock-analysis")
@@ -2688,11 +2633,14 @@ async def get_backtest_stats():
 
 
 # ── 超級選股系統 API — 已搬至 api/screener.py 與 api/custom_stocks.py ──
+# ── 台股 / 標的查詢 API（低耦合 endpoints）— 已搬至 api/stocks.py ──
 
 from api.screener import router as screener_router
 from api.custom_stocks import router as custom_stocks_router
+from api.stocks import router as stocks_router
 app.include_router(screener_router)
 app.include_router(custom_stocks_router)
+app.include_router(stocks_router)
 
 
 # 註：/api/sector-trading/{sector_id}/fundamental 已搬至 api/sector_trading.py
