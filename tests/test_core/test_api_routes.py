@@ -65,6 +65,26 @@ EXPECTED_ROUTES = [
     # api/stocks.py — A5b（中-低耦合 endpoints）
     ("GET", "/api/stock-info"),
     ("GET", "/api/chart"),
+
+    # api/backtest.py — A6a
+    ("POST",   "/api/backtest/run"),
+    ("GET",    "/api/backtest/status/{task_id}"),
+    ("GET",    "/api/backtest/result/{task_id}"),
+    ("GET",    "/api/backtest/history"),
+    ("DELETE", "/api/backtest/history/{task_id}"),
+    ("GET",    "/api/backtest/stats"),
+
+    # api/performance.py — A6a
+    ("GET",  "/api/signal-performance"),
+    ("POST", "/api/signal-performance/refresh"),
+
+    # api/consultation.py — A6a
+    ("POST", "/api/consultation"),
+
+    # api/settings.py — A6a
+    ("GET",  "/api/settings"),
+    ("POST", "/api/settings"),
+    ("POST", "/api/settings/stock"),
 ]
 
 
