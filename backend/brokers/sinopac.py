@@ -253,8 +253,11 @@ class SinopacBroker:
             count = self._consecutive_failures
             now = time.time()
 
-            # 全局警告（每 10 分鐘 dedup）
-            should_alert = (count >= 3 and (now - self._last_failure_alert_at) > 600)
+            # 全局警告：連 1 次失敗就告警（每 10 分鐘 dedup 避免洗版）
+            # Why: 2026-05-22 incident — 5/22 連發 5 筆 reject 卻沒觸發警告（舊門檻=3 但
+            # dedup window 太長使中段失敗被合併），結果用戶出國 9 天完全不知道交易停擺。
+            # 寧可偶爾多收一則警告，也不要錯過第一次失敗。
+            should_alert = (count >= 1 and (now - self._last_failure_alert_at) > 600)
             if should_alert:
                 self._last_failure_alert_at = now
 

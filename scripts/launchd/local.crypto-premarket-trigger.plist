@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+每日 08:30 (台北) 觸發盤前資料健康檢查 endpoint。
+
+部署：
+  cp scripts/launchd/local.crypto-premarket-trigger.plist ~/Library/LaunchAgents/
+  launchctl unload ~/Library/LaunchAgents/local.crypto-premarket-trigger.plist 2>/dev/null
+  launchctl load ~/Library/LaunchAgents/local.crypto-premarket-trigger.plist
+
+驗證：launchctl list | grep premarket
+手動觸發：launchctl start local.crypto-premarket-trigger
+
+設計用意：
+  asyncio.sleep 在 macOS 睡眠後 wall-clock drift（2026-05 incident），
+  改用 launchd 系統級 timer 直接 POST 觸發 endpoint，事件對齊 wall-clock。
+  與 asyncio 內排程「並存」，雙保險。
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>local.crypto-premarket-trigger</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/curl</string>
+        <string>-s</string>
+        <string>-X</string>
+        <string>POST</string>
+        <string>http://localhost:8000/api/internal/trigger-premarket-check</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>8</integer>
+        <key>Minute</key>
+        <integer>30</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/kentsai/Documents/plate/crypto-signal-pro/logs/launchd-premarket.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/kentsai/Documents/plate/crypto-signal-pro/logs/launchd-premarket-error.log</string>
+</dict>
+</plist>

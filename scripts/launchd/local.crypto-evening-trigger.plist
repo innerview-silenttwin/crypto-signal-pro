@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+每日 21:00 (台北) 觸發盤後摘要 endpoint。詳見 local.crypto-premarket-trigger.plist 的設計說明。
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>local.crypto-evening-trigger</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/curl</string>
+        <string>-s</string>
+        <string>-X</string>
+        <string>POST</string>
+        <string>http://localhost:8000/api/internal/trigger-evening-summary</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>21</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/kentsai/Documents/plate/crypto-signal-pro/logs/launchd-evening.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/kentsai/Documents/plate/crypto-signal-pro/logs/launchd-evening-error.log</string>
+</dict>
+</plist>

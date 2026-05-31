@@ -612,6 +612,50 @@ async def daily_evening_summary():
             print(f"[evening-summary] error: {e}")
 
 
+def _scan_account_last_trades(proj_root: str):
+    """掃所有交易帳本，回傳 [(label, last_trade_dt), ...]。無紀錄者 last_trade_dt=None。
+
+    Why: 2026-05-22 incident 之後用戶出國 9 天，所有帳本都沒成交，但「心跳」訊息
+    發訊時間異常使用戶誤以為系統正常。改用「業務指標靜默」做最直接的健康檢測。
+
+    雙階門檻設計：
+      - 全帳本最近一筆 < 5 天    → 大標 🚨（事故型偵測）
+      - 個別帳本 > 14 天       → 細節列表 🟡（漸進失效偵測，例如主帳戶 3/19 起靜默 2 個月）
+    """
+    from datetime import datetime as _dt
+    paths = []
+    main_acc = os.path.join(proj_root, "trading_account.json")
+    if os.path.exists(main_acc):
+        paths.append(("主帳戶", main_acc))
+    btc_acc = os.path.join(proj_root, "data", "btc_trading_account.json")
+    if os.path.exists(btc_acc):
+        paths.append(("BTC自動", btc_acc))
+    sector_dir = os.path.join(proj_root, "data", "sector_accounts")
+    if os.path.isdir(sector_dir):
+        for fn in os.listdir(sector_dir):
+            if fn.endswith("_account.json") and ".bak" not in fn:
+                paths.append((fn.replace("_account.json", ""), os.path.join(sector_dir, fn)))
+
+    results = []
+    for label, p in paths:
+        last_dt = None
+        try:
+            with open(p) as f:
+                d = json.load(f)
+            hist = d.get("history", [])
+            if hist:
+                last_t = hist[-1].get("time", "")
+                if last_t:
+                    try:
+                        last_dt = _dt.strptime(last_t[:19], "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        pass
+        except Exception:
+            pass
+        results.append((label, last_dt))
+    return results
+
+
 def _send_evening_summary_telegram():
     """組裝並送出當日盤後摘要。"""
     import pytz
@@ -623,6 +667,50 @@ def _send_evening_summary_telegram():
     proj_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     lines = [f"\U0001F319 <b>盤後摘要</b> {today_str}"]
+
+    # ── 0. 業務靜默告警：兩階偵測（放最前面，preview 看得到）──
+    GLOBAL_SILENT_DAYS = 5        # 全帳本最近一筆 ≥ 5 天 → 大標 🚨（事故型）
+    PER_ACCOUNT_SILENT_DAYS = 14  # 個別帳本 ≥ 14 天 → 細節列表 🟡（漸進失效型）
+    try:
+        accounts = _scan_account_last_trades(proj_root)
+        now_tw = datetime.now(tw_tz).replace(tzinfo=None)
+
+        # 大標：找全帳本最近一筆，連 N 天無成交才告警
+        non_null = [(label, t) for label, t in accounts if t is not None]
+        if not non_null:
+            lines.append("")
+            lines.append("🚨 <b>所有帳本完全無交易紀錄</b> — 首次啟動或資料丟失？")
+        else:
+            latest_label, latest_dt = max(non_null, key=lambda x: x[1])
+            global_silent_days = (now_tw - latest_dt).days
+            if global_silent_days >= GLOBAL_SILENT_DAYS:
+                lines.append("")
+                lines.append(
+                    f"🚨 <b>全帳本已連續 {global_silent_days} 天無任何成交</b>"
+                    f"（最後 {latest_dt.strftime('%Y-%m-%d %H:%M')} {latest_label}）"
+                )
+                lines.append("   可能原因：broker reject / 信號全部未過門檻 / scheduler drift。")
+                lines.append("   請檢查 logs/ 與 data/skipped_trades.jsonl")
+
+        # 細節：列出靜默 ≥ 14 天的個別帳本
+        stale_accounts = []
+        for label, t in accounts:
+            if t is None:
+                stale_accounts.append((label, None, "無紀錄"))
+                continue
+            d = (now_tw - t).days
+            if d >= PER_ACCOUNT_SILENT_DAYS:
+                stale_accounts.append((label, d, t.strftime("%Y-%m-%d")))
+        if stale_accounts:
+            lines.append("")
+            lines.append(f"🟡 個別帳本靜默 ≥ {PER_ACCOUNT_SILENT_DAYS} 天：")
+            for label, days, when in stale_accounts:
+                if days is None:
+                    lines.append(f"   • {label}（無紀錄）")
+                else:
+                    lines.append(f"   • {label}（{days} 天，最後 {when}）")
+    except Exception as e:
+        lines.append(f"⚠️ 靜默檢測失敗：{e}")
 
     # ── 1. 服務 / quote source ──
     try:
@@ -1454,6 +1542,40 @@ def latest_closed_tw_trading_day() -> str:
 @app.get("/api/ping")
 async def ping():
     return {"status": "ok", "server_time": time.time()}
+
+
+# ── launchd 觸發用 internal endpoints（與 asyncio 內排程「並存」雙保險） ──
+# Why: asyncio.sleep 在 macOS 睡眠後 wall-clock drift（2026-05 incident 觀察 24h 排程
+# 累積 1-2h 誤差）。改用 launchd 系統 timer 從外部 POST 觸發，事件對齊 wall-clock。
+# 詳見 scripts/launchd/local.crypto-*-trigger.plist。
+
+@app.post("/api/internal/trigger-premarket-check")
+async def trigger_premarket_check():
+    """供 launchd 在 08:30 (台北) 觸發。週末/假日由 endpoint 內部自行跳過。"""
+    import pytz
+    tw_tz = pytz.timezone("Asia/Taipei")
+    now = datetime.now(tw_tz)
+    if now.weekday() >= 5:
+        return {"skipped": "weekend", "now": now.isoformat()}
+    try:
+        report = await asyncio.to_thread(_compute_data_freshness_report)
+        await asyncio.to_thread(_send_premarket_telegram, report)
+        return {"status": "ok", "triggered_by": "launchd", "now": now.isoformat()}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@app.post("/api/internal/trigger-evening-summary")
+async def trigger_evening_summary():
+    """供 launchd 在 21:00 (台北) 觸發。週末/假日不跳過——盤後摘要含「N 日無交易」告警，
+    任何時候都該發。"""
+    import pytz
+    tw_tz = pytz.timezone("Asia/Taipei")
+    try:
+        await asyncio.to_thread(_send_evening_summary_telegram)
+        return {"status": "ok", "triggered_by": "launchd", "now": datetime.now(tw_tz).isoformat()}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
 
 def fetch_yfinance_candles(symbol: str, timeframe: str, limit: int = 200):
     """不帶快取、直接向 yfinance 抓資料，回傳 (candles_list, source_str)。"""
