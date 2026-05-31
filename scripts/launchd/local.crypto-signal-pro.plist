@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+本檔即 mini production 上 ~/Library/LaunchAgents/local.crypto-signal-pro.plist
+的版本控制副本，**修改後請手動同步**：
+
+  cp scripts/launchd/local.crypto-signal-pro.plist ~/Library/LaunchAgents/
+  launchctl unload ~/Library/LaunchAgents/local.crypto-signal-pro.plist
+  launchctl load ~/Library/LaunchAgents/local.crypto-signal-pro.plist
+
+關鍵設定：
+  ProcessType=Interactive  → 防 macOS App Nap throttle 造成 asyncio.sleep drift
+                            （2026-05 incident root cause 之一）
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>local.crypto-signal-pro</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/kentsai/Documents/plate/crypto-signal-pro/scripts/run_prod.sh</string>
+  </array>
+
+  <!-- 登入後自動啟動 -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- crash 後自動重啟，throttle 10 秒防 crash loop -->
+  <key>KeepAlive</key>
+  <dict>
+    <key>Crashed</key>
+    <true/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <!-- ProcessType=Interactive 防 App Nap throttling，asyncio timer 才能準時觸發 -->
+  <key>ProcessType</key>
+  <string>Interactive</string>
+
+  <!-- log 輸出 -->
+  <key>StandardOutPath</key>
+  <string>/Users/kentsai/Documents/plate/crypto-signal-pro/logs/crypto-signal-pro.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/kentsai/Documents/plate/crypto-signal-pro/logs/crypto-signal-pro-error.log</string>
+</dict>
+</plist>
