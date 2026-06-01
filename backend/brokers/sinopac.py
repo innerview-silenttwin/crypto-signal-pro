@@ -31,7 +31,9 @@ logger = logging.getLogger(__name__)
 
 # 預設 poll 與 timeout（建構子可覆寫）
 DEFAULT_POLL_INTERVAL_S = 0.5
-DEFAULT_FILL_TIMEOUT_S = 30
+# 2026-06-01 觀察：30 秒 timeout 過緊，當日 108 筆訊號因 simulation 環境
+# 撮合 > 30s 而被當成 timeout（80% 訊號流失）。拉到 60 秒給永豐 sim 更多時間。
+DEFAULT_FILL_TIMEOUT_S = 60
 
 
 class SinopacBroker:

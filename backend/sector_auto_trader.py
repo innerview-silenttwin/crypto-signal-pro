@@ -1002,7 +1002,8 @@ class SectorAutoTrader:
         # stale pending 清理（跨 sector 統一掃）
         store = self._broker_setup.state_store
         # 取 max fill_timeout × 2 + 30 秒緩衝 作為 stale 門檻
-        max_fill_timeout = 30  # 預設；若 broker 有暴露 fill_timeout_s 可動態查
+        # 2026-06-01：fill_timeout 主常量從 30s → 60s，fallback 同步調
+        max_fill_timeout = 60  # 預設；若 broker 有暴露 fill_timeout_s 可動態查
         for b in self._broker_setup.brokers_by_sector.values():
             t = getattr(b, "_fill_timeout_s", 0)
             if t and t > max_fill_timeout:
