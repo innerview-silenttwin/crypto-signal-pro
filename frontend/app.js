@@ -1602,12 +1602,12 @@ function renderScreenerCards(categories, activeEtfs = [], etfDiffPrevDate = null
                 const etfEvents = buildEtfEventBadges(s.etf_added_today, s.etf_removed_today, etfNameMap, prevDateLabel);
                 return `<div class="screener-stock-row${hiddenCls}" data-symbol="${s.symbol}" data-market="stock">
                     ${rankBadge}
+                    ${scoreHtml}
                     <span class="screener-stock-sym">${s.symbol.replace('.TW','')}</span>
                     <span class="screener-stock-name">${s.name}</span>
                     ${daysBadge}
                     ${etfChip}
                     ${etfEvents}
-                    ${scoreHtml}
                     <span class="screener-stock-hl">${s.highlight}</span>
                 </div>`;
             }).join('')
