@@ -2357,7 +2357,7 @@ a.event-item:hover {
 }
 .screener-categories {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    grid-template-columns: repeat(3, 1fr);
     gap: 12px;
 }
 .screener-cat-card {
@@ -2682,6 +2682,11 @@ a.event-item:hover {
     background: rgba(100,108,255,0.08);
 }
 
+@media (max-width: 1200px) {
+    .screener-categories {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
 @media (max-width: 768px) {
     .screener-categories {
         grid-template-columns: 1fr;
