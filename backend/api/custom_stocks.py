@@ -19,12 +19,11 @@ async def list_custom_stocks():
 
 
 @router.post("/api/custom-stocks", operation_id="custom_stocks_add_quick")
-async def add_custom_stock_api(symbol: str, name: str = ""):
+async def add_custom_stock_quick(symbol: str, name: str = ""):
     """新增自選股（搜尋時自動觸發；query params）
 
-    註：main.py 內 /api/settings/stock 有同名 handler 但 Pydantic body 介面、
-    語意是「設定頁手動新增（含驗證）」。兩者函式名相同，已用 operation_id 區隔
-    避免 OpenAPI / SwaggerUI 衝突。
+    註：api/settings.py 內 /api/settings/stock 有對稱 handler `add_custom_stock_validated`，
+    走 Pydantic body 介面、語意是「設定頁手動新增（含 TWSE/yfinance 驗證）」。
     """
     # 標準化代碼
     if not symbol.endswith(".TW"):

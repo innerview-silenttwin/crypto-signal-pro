@@ -2,8 +2,10 @@
 
 從 main.py 拆出來的純搬家——所有 endpoint 路徑、行為、回傳 schema 完全相同。
 
-註：本檔的 add_custom_stock_api 與 api/custom_stocks.py 內同名（不同 path、不同 body），
-A4 已用 operation_id 區隔避免 OpenAPI 衝突；A6b cleanup 會 rename 為更明確的名稱。
+註：本檔 add_custom_stock_validated 對應 api/custom_stocks.py 內 add_custom_stock_quick，
+兩者走不同 path、不同入參、不同語意：
+  - validated: /api/settings/stock + Pydantic body + TWSE/yfinance 驗證後存入
+  - quick:     /api/custom-stocks + query params + 搜尋時自動觸發
 """
 
 import yfinance as yf
@@ -37,7 +39,7 @@ async def update_settings_api(req: SettingsUpdate):
 
 
 @router.post("/api/settings/stock", operation_id="settings_add_custom_stock")
-async def add_custom_stock_api(req: CustomStock):
+async def add_custom_stock_validated(req: CustomStock):
     from settings_manager import add_custom_stock
     from layers.fundamental import fetch_twse_pe_all
 

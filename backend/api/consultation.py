@@ -1,13 +1,14 @@
 """投資諮詢 API。
 
 從 main.py 拆出來的純搬家——所有 endpoint 路徑、行為、回傳 schema 完全相同。
-依賴 main.py 的 _sanitize helper（A6b cleanup 會抽到 api/_utils.py 共用）。
 """
 
 import logging
 
 from fastapi import APIRouter
 from pydantic import BaseModel
+
+from api._utils import _sanitize
 
 router = APIRouter(tags=["consultation"])
 
@@ -25,7 +26,6 @@ async def get_consultation(req: ConsultationRequest):
     推算加碼 / 持有 / 減碼 / 出清建議
     """
     from consultation import consult_position
-    from main import _sanitize
     try:
         result = consult_position(
             symbol=req.symbol,

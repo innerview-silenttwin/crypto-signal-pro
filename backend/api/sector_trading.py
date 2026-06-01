@@ -15,6 +15,7 @@ import asyncio
 
 from fastapi import APIRouter
 
+from api._utils import _sanitize
 from sector_trader import get_manager, get_all_managers as get_all_sector_managers
 from sector_auto_trader import (
     auto_trader as sector_auto_trader,
@@ -28,23 +29,7 @@ router = APIRouter(prefix="/api/sector-trading", tags=["sector-trading"])
 
 
 # ── helper ───────────────────────────────────────────────────────────
-
-def _sanitize(obj):
-    """將 numpy 類型轉為 Python 原生類型，避免 JSON 序列化錯誤"""
-    import numpy as np
-    if isinstance(obj, dict):
-        return {k: _sanitize(v) for k, v in obj.items()}
-    elif isinstance(obj, (list, tuple)):
-        return [_sanitize(v) for v in obj]
-    elif isinstance(obj, (np.bool_,)):
-        return bool(obj)
-    elif isinstance(obj, (np.integer,)):
-        return int(obj)
-    elif isinstance(obj, (np.floating,)):
-        return float(obj)
-    elif isinstance(obj, np.ndarray):
-        return obj.tolist()
-    return obj
+# _sanitize 已抽至 api/_utils.py（A6b cleanup），下面 caller 直接用 import 的版本
 
 
 def _compute_sector_regime(sector_id: str):

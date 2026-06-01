@@ -25,8 +25,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 import io
 import urllib.request
-from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 import pytz
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -36,7 +34,7 @@ load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 
 from signals.aggregator import SignalAggregator, MarketType
 from business.sentiment import sentiment_engine
-from trading_manager import trading_manager
+# ThreadPoolExecutor、Path、trading_manager 已搬到對應 router，A6b cleanup 移除 unused
 
 # ============================================================
 # 路徑常量
@@ -98,26 +96,8 @@ def get_aggregator(market: str = "crypto") -> SignalAggregator:
     return aggregator_crypto
 
 
-def _sanitize(obj):
-    """將 numpy 類型轉為 Python 原生類型，避免 JSON 序列化錯誤。
-
-    註：api/sector_trading.py 也有同名副本（純函式 + 避免 circular import）；
-    這份保留給其他 endpoint 用，例如 /api/stock-analysis、/api/consultation。
-    """
-    import numpy as np
-    if isinstance(obj, dict):
-        return {k: _sanitize(v) for k, v in obj.items()}
-    elif isinstance(obj, (list, tuple)):
-        return [_sanitize(v) for v in obj]
-    elif isinstance(obj, (np.bool_,)):
-        return bool(obj)
-    elif isinstance(obj, (np.integer,)):
-        return int(obj)
-    elif isinstance(obj, (np.floating,)):
-        return float(obj)
-    elif isinstance(obj, np.ndarray):
-        return obj.tolist()
-    return obj
+# _sanitize 已抽至 api/_utils.py（A6b cleanup）— 給 /api/stock-analysis 等 endpoint 用
+from api._utils import _sanitize  # noqa: F401
 
 
 # 全域狀態
