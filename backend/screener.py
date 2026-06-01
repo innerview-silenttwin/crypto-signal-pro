@@ -33,7 +33,7 @@ from layers.fundamental import fetch_twse_pe_all, _strip_tw
 from layers.chipflow import fetch_chip_summary, compute_chip_score
 from layers.regime import RegimeLayer
 from layers.sentiment import get_stock_sentiment, fetch_rss_articles
-from layers.active_etf import get_active_etf_score, get_active_etf_holders
+from layers.active_etf import get_active_etf_score, get_active_etf_holders, get_active_etf_events
 
 logger = logging.getLogger(__name__)
 
@@ -535,6 +535,7 @@ def scan_single_stock(symbol: str, name: str, all_pe: dict, articles: list) -> O
         active_etf_score = get_active_etf_score(symbol)
         scores["active_etf"] = active_etf_score
         etf_holders = get_active_etf_holders(symbol)
+        etf_events = get_active_etf_events(symbol)
 
         # ── 5. 消息面（無相關新聞時設為 None，不列入綜合評分）──
         sent_score = None
@@ -587,6 +588,8 @@ def scan_single_stock(symbol: str, name: str, all_pe: dict, articles: list) -> O
             "highlights": highlights,
             "details": details,
             "etf_holders": etf_holders,
+            "etf_added_today": etf_events.get("added", []),
+            "etf_removed_today": etf_events.get("removed", []),
         }
 
     except Exception as e:
@@ -1095,6 +1098,8 @@ def _format_picks(picks: List[dict]) -> List[dict]:
             "foreign_net_amount": chip.get("foreign_net_amount"),
             "trust_net_amount": chip.get("trust_net_amount"),
             "etf_holders": p.get("etf_holders", []),
+            "etf_added_today": p.get("etf_added_today", []),
+            "etf_removed_today": p.get("etf_removed_today", []),
         })
     return formatted
 
@@ -1253,10 +1258,12 @@ def run_screener_scan() -> dict:
             "raw_scores": r.get("raw_scores", {}),
             "highlights": r["highlights"],
             "etf_holders": r.get("etf_holders", []),
+            "etf_added_today": r.get("etf_added_today", []),
+            "etf_removed_today": r.get("etf_removed_today", []),
         })
 
     # 主動 ETF 名稱對應表（給前端 tooltip 用）
-    from layers.active_etf import BEAT_ETFS
+    from layers.active_etf import BEAT_ETFS, get_prev_cache_date
     active_etfs_meta = [{"code": e["code"], "name": e["name"]} for e in BEAT_ETFS]
 
     data = {
@@ -1266,6 +1273,7 @@ def run_screener_scan() -> dict:
         "total": len(results),
         "time": time.time(),
         "active_etfs": active_etfs_meta,
+        "etf_diff_prev_date": get_prev_cache_date(),
     }
 
     # 存檔案快取

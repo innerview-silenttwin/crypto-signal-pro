@@ -37,6 +37,7 @@ async def get_screener_picks():
         "total": data.get("total", 0),
         "scanning": is_scanning(),
         "active_etfs": data.get("active_etfs", []),
+        "etf_diff_prev_date": data.get("etf_diff_prev_date"),
     }
 
 

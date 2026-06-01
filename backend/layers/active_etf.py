@@ -44,6 +44,23 @@ _total_rank_points = _N * (_N + 1) // 2  # 1+2+...+N
 for _i, _etf in enumerate(BEAT_ETFS):
     _etf["rank_weight"] = (_N - _i) / _total_rank_points
 
+# ETF code → 原始排名 index，給 holders 排序用（依 BEAT_ETFS 排序）
+_ETF_ORDER = {etf["code"]: idx for idx, etf in enumerate(BEAT_ETFS)}
+
+
+def _norm_sid(symbol: str) -> str:
+    """'2330.TW' / '2330.tw' / '2330 ' → '2330'。"""
+    return symbol.replace(".TW", "").replace(".tw", "").strip()
+
+
+def _diff_holders(today_holders, prev_holders) -> tuple:
+    """回傳 (added, removed)，皆依 _ETF_ORDER 排序。"""
+    today_set = set(today_holders)
+    prev_set = set(prev_holders)
+    added = sorted(today_set - prev_set, key=lambda c: _ETF_ORDER.get(c, 999))
+    removed = sorted(prev_set - today_set, key=lambda c: _ETF_ORDER.get(c, 999))
+    return added, removed
+
 # ── 快取路徑 ──
 _CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 _CACHE_FILE = os.path.join(_CACHE_DIR, "active_etf_scores.json")
@@ -56,6 +73,8 @@ _scores_cache: dict = {}   # {stock_id: normalized_score(0-100)}
 _names_cache: dict = {}    # {stock_id: stock_name}
 _etf_count_cache: dict = {}  # {stock_id: int} 被幾檔 ETF 持有
 _etf_holders_cache: dict = {}  # {stock_id: [etf_code, ...]} 被哪些 ETF 持有
+_prev_etf_holders_cache: dict = {}  # 前一日的 etf_holders_per_stock，用於 diff
+_prev_cache_date: Optional[date] = None  # 前一日快取的日期
 _cache_date: Optional[date] = None
 _cache_lock = threading.RLock()  # 保護多執行緒下的讀寫安全
 
@@ -111,7 +130,7 @@ def _fetch_holdings(etf_code: str, token: str) -> dict:
 
 def refresh_active_etf_scores() -> bool:
     """重新抓取所有 ETF 持股，計算並快取各股票分數。回傳是否成功。"""
-    global _cache_date
+    global _cache_date, _prev_cache_date
 
     logger.info("[active_etf] 開始更新主動 ETF 持股分數...")
     token = _get_guest_token()
@@ -119,14 +138,28 @@ def refresh_active_etf_scores() -> bool:
         logger.error("[active_etf] 無法取得 token，跳過更新")
         return False
 
+    # 若舊 cache 是「比今天舊」的日期，先把它搬到 previous slot，作為 diff 基準。
+    # 同日多次 refresh 不會洗掉 previous（避免損失昨日基準）。
+    today_local = date.today()
+    with _cache_lock:
+        if (_cache_date is not None and _cache_date < today_local
+                and _etf_holders_cache):
+            rotated_from = _cache_date
+            rotated_count = len(_etf_holders_cache)
+            _prev_etf_holders_cache.clear()
+            _prev_etf_holders_cache.update(_etf_holders_cache)
+            _prev_cache_date = _cache_date
+        else:
+            rotated_from = None
+            rotated_count = 0
+    if rotated_from is not None:
+        logger.info(f"[active_etf] 已將 {rotated_from} 快取保存為 previous（{rotated_count} 支股）")
+
     # 並行撈各 ETF 持股
     raw_scores: dict = {}
     names: dict = {}
     etf_count: dict = {}  # 每支股票被幾檔 ETF 持有
     etf_holders: dict = {}  # {stock_id: [etf_code, ...]} 持有它的 ETF 清單
-
-    # 依 BEAT_ETFS 的原始排序記錄，方便前端按重要性顯示
-    etf_order = {etf["code"]: idx for idx, etf in enumerate(BEAT_ETFS)}
 
     with ThreadPoolExecutor(max_workers=len(BEAT_ETFS)) as executor:
         futures = {executor.submit(_fetch_holdings, etf["code"], token): etf for etf in BEAT_ETFS}
@@ -142,7 +175,7 @@ def refresh_active_etf_scores() -> bool:
 
     # 依 BEAT_ETFS 排名重新排序每支股票的 holders 清單
     for sid in etf_holders:
-        etf_holders[sid].sort(key=lambda c: etf_order.get(c, 999))
+        etf_holders[sid].sort(key=lambda c: _ETF_ORDER.get(c, 999))
 
     if not raw_scores:
         logger.warning("[active_etf] 未取得任何持股資料")
@@ -168,10 +201,15 @@ def refresh_active_etf_scores() -> bool:
         _cache_date = date.today()
 
     os.makedirs(_CACHE_DIR, exist_ok=True)
+    with _cache_lock:
+        prev_holders_snapshot = dict(_prev_etf_holders_cache)
+        prev_date_snapshot = str(_prev_cache_date) if _prev_cache_date else None
     with open(_CACHE_FILE, "w", encoding="utf-8") as f:
         json.dump({"date": str(_cache_date), "scores": normalized, "names": names,
                    "etf_count_per_stock": etf_count,
                    "etf_holders_per_stock": etf_holders,
+                   "previous_date": prev_date_snapshot,
+                   "previous_etf_holders": prev_holders_snapshot,
                    "etf_count": len(BEAT_ETFS), "stock_count": n},
                   f, ensure_ascii=False, indent=2)
 
@@ -183,13 +221,17 @@ def _load_cache_from_disk() -> bool:
     """從磁碟讀取快取，回傳是否成功且資料是今天的。
     若資料過期但存在，仍載入作為 fallback（避免 API 失敗時完全無資料）。
     """
-    global _cache_date
+    global _cache_date, _prev_cache_date
     try:
         with open(_CACHE_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
         cache_date = date.fromisoformat(data["date"])
         has_etf_count = "etf_count_per_stock" in data
         is_fresh = cache_date >= date.today() and has_etf_count
+
+        prev_date_raw = data.get("previous_date")
+        prev_date = date.fromisoformat(prev_date_raw) if prev_date_raw else None
+        prev_holders = data.get("previous_etf_holders", {}) or {}
 
         # 若磁碟版與記憶體版同日，視為已讀過，不重載 dict 也不 log
         with _cache_lock:
@@ -203,6 +245,13 @@ def _load_cache_from_disk() -> bool:
                 _etf_count_cache.update(data.get("etf_count_per_stock", {}))
                 _etf_holders_cache.clear()
                 _etf_holders_cache.update(data.get("etf_holders_per_stock", {}))
+                # prev 必須日期+持股皆有才算 valid，避免半套狀態
+                _prev_etf_holders_cache.clear()
+                if prev_date and prev_holders:
+                    _prev_etf_holders_cache.update(prev_holders)
+                    _prev_cache_date = prev_date
+                else:
+                    _prev_cache_date = None
                 _cache_date = cache_date
 
         if not already_loaded:
@@ -256,7 +305,7 @@ def get_active_etf_score(symbol: str) -> Optional[float]:
     symbol 可為 "2330.TW" 或 "2330"。
     """
     _ensure_cache()
-    sid = symbol.replace(".TW", "").replace(".tw", "").strip()
+    sid = _norm_sid(symbol)
     with _cache_lock:
         return _scores_cache.get(sid)
 
@@ -264,9 +313,35 @@ def get_active_etf_score(symbol: str) -> Optional[float]:
 def get_active_etf_holders(symbol: str) -> list:
     """取得某股票被哪些主動 ETF 持有，回傳 [etf_code, ...]，依 BEAT_ETFS 排名排序。"""
     _ensure_cache()
-    sid = symbol.replace(".TW", "").replace(".tw", "").strip()
+    sid = _norm_sid(symbol)
     with _cache_lock:
         return list(_etf_holders_cache.get(sid, []))
+
+
+def get_active_etf_events(symbol: str) -> dict:
+    """
+    取得某股票今日 vs 前日的 ETF 持股異動。
+    回傳 {"added": [etf_code,...], "removed": [etf_code,...], "prev_date": "YYYY-MM-DD" or None}
+    無 previous 資料（首次部署、或 previous 過期）時 added/removed 皆為空。
+    """
+    _ensure_cache()
+    sid = _norm_sid(symbol)
+    with _cache_lock:
+        if not _prev_etf_holders_cache or _prev_cache_date is None:
+            return {"added": [], "removed": [], "prev_date": None}
+        added, removed = _diff_holders(
+            _etf_holders_cache.get(sid, []),
+            _prev_etf_holders_cache.get(sid, []),
+        )
+        return {"added": added, "removed": removed, "prev_date": str(_prev_cache_date)}
+
+
+def get_prev_cache_date() -> Optional[str]:
+    """主動 ETF diff 的「昨日基準日」ISO string；無 prev 時回 None。Thread-safe。"""
+    with _cache_lock:
+        if _prev_cache_date is None or not _prev_etf_holders_cache:
+            return None
+        return str(_prev_cache_date)
 
 
 def _load_rank_history() -> dict:
@@ -357,17 +432,47 @@ def get_active_etf_ranking() -> dict:
     回傳 {stocks: [...], etfs: [...], total: int, updated_at: str}
     """
     _ensure_cache()
+    prev_date_str = None
+    removed_stocks: list = []
     with _cache_lock:
         if not _scores_cache:
             return {"stocks": [], "etfs": [], "total": 0, "updated_at": "",
                     "message": "資料載入中，請稍後再試"}
-        stocks = sorted(
-            [{"symbol": sid, "name": _names_cache.get(sid, sid), "score": score,
-              "etf_count": int(_etf_count_cache.get(sid, 0)),
-              "etf_holders": list(_etf_holders_cache.get(sid, []))}
-             for sid, score in _scores_cache.items()],
-            key=lambda x: -x["score"]
-        )
+        prev_holders_snapshot = dict(_prev_etf_holders_cache)
+        has_prev = bool(prev_holders_snapshot) and _prev_cache_date is not None
+        if has_prev:
+            prev_date_str = str(_prev_cache_date)
+
+        stocks = []
+        for sid, score in _scores_cache.items():
+            holders = list(_etf_holders_cache.get(sid, []))
+            if has_prev:
+                added, removed = _diff_holders(holders, prev_holders_snapshot.get(sid, []))
+            else:
+                added, removed = [], []
+            stocks.append({
+                "symbol": sid,
+                "name": _names_cache.get(sid, sid),
+                "score": score,
+                "etf_count": int(_etf_count_cache.get(sid, 0)),
+                "etf_holders": holders,
+                "etf_added_today": added,
+                "etf_removed_today": removed,
+            })
+        stocks.sort(key=lambda x: -x["score"])
+
+        # 完全被剔除（昨日有、今日沒有任何 ETF 持有）
+        if has_prev:
+            today_sids = set(_scores_cache.keys())
+            for sid, prev_etfs in prev_holders_snapshot.items():
+                if sid in today_sids or not prev_etfs:
+                    continue
+                removed_stocks.append({
+                    "symbol": sid,
+                    "name": _names_cache.get(sid, sid),
+                    "removed_by": sorted(prev_etfs, key=lambda c: _ETF_ORDER.get(c, 999)),
+                })
+
         updated_at = str(_cache_date) if _cache_date else ""
         is_stale = _cache_date is not None and _cache_date < date.today()
 
@@ -383,7 +488,9 @@ def get_active_etf_ranking() -> dict:
          "rank_weight": round(e["rank_weight"], 3)}
         for e in BEAT_ETFS
     ]
-    result = {"stocks": stocks, "etfs": etfs, "total": len(stocks), "updated_at": updated_at}
+    result = {"stocks": stocks, "etfs": etfs, "total": len(stocks), "updated_at": updated_at,
+              "previous_date": prev_date_str,
+              "removed_stocks": removed_stocks}
     if is_stale:
         result["message"] = f"顯示 {updated_at} 的快取資料（今日尚未更新成功）"
     return result

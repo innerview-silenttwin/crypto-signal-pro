@@ -2505,6 +2505,29 @@ a.event-item:hover {
     white-space: nowrap;
     flex-shrink: 0;
 }
+/* 主動 ETF 今日異動 badge：🆕 新買進 / ➖ 賣出 */
+.screener-etf-event {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+    border-radius: 8px;
+    padding: 1px 5px;
+    margin-left: 2px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    cursor: help;
+}
+.screener-etf-event-add {
+    color: #34d399;
+    background: rgba(52,211,153,0.15);
+    border: 1px solid rgba(52,211,153,0.45);
+    animation: screener-new-pulse 2s ease-in-out 3;
+}
+.screener-etf-event-remove {
+    color: #f87171;
+    background: rgba(248,113,113,0.13);
+    border: 1px solid rgba(248,113,113,0.4);
+}
 /* NEW 新進榜標籤 */
 .screener-new-badge {
     font-size: 9px;
