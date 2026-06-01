@@ -487,8 +487,10 @@ def _compute_data_freshness_report() -> dict:
     import pytz
     tw_tz = pytz.timezone("Asia/Taipei")
     today = datetime.now(tw_tz).date()
-    yesterday = today - timedelta(days=1)
-    expected_latest = yesterday  # 開盤前應該有昨日收盤
+    # 開盤前應該有「上個交易日」收盤；不是「昨天」（昨天可能是週六/週日）
+    # Bug 2026-06-01：原本寫 yesterday，導致週一早上 86 檔誤判 stale。
+    expected_latest_str = latest_closed_tw_trading_day()
+    expected_latest = datetime.strptime(expected_latest_str, "%Y-%m-%d").date()
 
     report = {
         "stale_kline": [],     # [{symbol, last_date}]
