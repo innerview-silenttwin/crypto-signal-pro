@@ -2335,6 +2335,66 @@ a.event-item:hover {
     color: var(--bull-color, #26a69a);
     font-weight: 700;
 }
+/* 今日被完全剔除可收合區塊 */
+.aetf-removed-section {
+    margin: 0 0 12px;
+    background: rgba(248,113,113,0.06);
+    border: 1px solid rgba(248,113,113,0.25);
+    border-radius: 10px;
+    padding: 8px 12px;
+}
+.aetf-removed-section summary {
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: #f87171;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.aetf-removed-section summary::-webkit-details-marker { display: none; }
+.aetf-removed-section summary::after {
+    content: '▼';
+    margin-left: auto;
+    font-size: 10px;
+    transition: transform 0.2s;
+}
+.aetf-removed-section[open] summary::after { transform: rotate(180deg); }
+.aetf-removed-icon { font-size: 14px; }
+.aetf-removed-hint {
+    margin-left: 6px;
+    font-size: 11px;
+    color: var(--text-muted);
+    font-weight: 400;
+}
+.aetf-removed-list {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.aetf-removed-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    padding: 4px 6px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.aetf-removed-row:hover { background: rgba(248,113,113,0.10); }
+.aetf-removed-by {
+    color: var(--text-muted);
+    font-size: 11px;
+    margin-left: auto;
+}
+.aetf-prev-date {
+    margin-left: 6px;
+    color: var(--text-muted);
+    font-size: 11px;
+}
 .screener-refresh-btn {
     margin-left: auto;
     background: transparent;

@@ -1506,15 +1506,39 @@ async function fetchScreenerPicks() {
     }
 }
 
+// ETF code → 短名稱對照表（去掉「主動」前綴）
+function buildEtfNameMap(etfs) {
+    const map = {};
+    (etfs || []).forEach(e => { map[e.code] = (e.name || '').replace('主動', ''); });
+    return map;
+}
+
+// 🆕/➖ 今日 ETF 異動 badge — 給超選列表 + 主動 ETF tab 共用
+function buildEtfEventBadges(added, removed, etfNameMap, prevDateLabel = '') {
+    const a = Array.isArray(added) ? added : [];
+    const r = Array.isArray(removed) ? removed : [];
+    if (!a.length && !r.length) return '';
+    const fmt = (codes) => codes.map(c => `${c} ${etfNameMap[c] || ''}`.trim()).join('\n');
+    let html = '';
+    if (a.length) {
+        const tip = `今日被 ${a.length} 檔主動 ETF 新買進${prevDateLabel}：\n${fmt(a)}`;
+        html += `<span class="screener-etf-event screener-etf-event-add" title="${tip}">🆕+${a.length}</span>`;
+    }
+    if (r.length) {
+        const tip = `今日被 ${r.length} 檔主動 ETF 賣出${prevDateLabel}：\n${fmt(r)}`;
+        html += `<span class="screener-etf-event screener-etf-event-remove" title="${tip}">➖${r.length}</span>`;
+    }
+    return html;
+}
+
 function renderScreenerCards(categories, activeEtfs = [], etfDiffPrevDate = null) {
     const container = document.getElementById('screener-categories');
     if (!container) return;
 
     const DEFAULT_SHOW = 5;
     const totalEtfCount = activeEtfs.length;
-    const etfNameMap = {};
-    activeEtfs.forEach(e => { etfNameMap[e.code] = (e.name || '').replace('主動', ''); });
-    const prevDateSuffix = etfDiffPrevDate ? `（對比 ${etfDiffPrevDate}）` : '';
+    const etfNameMap = buildEtfNameMap(activeEtfs);
+    const prevDateLabel = etfDiffPrevDate ? `（對比 ${etfDiffPrevDate}）` : '';
 
     function buildEtfChip(holders) {
         if (!holders || !holders.length) return '';
@@ -1527,23 +1551,6 @@ function renderScreenerCards(categories, activeEtfs = [], etfDiffPrevDate = null
         const label = isAll ? '全持' : `${count}檔`;
         const cls = isAll ? 'screener-etf-chip screener-etf-chip-all' : 'screener-etf-chip';
         return `<span class="${cls}" title="${tip}">ETF ${label}</span>`;
-    }
-
-    function buildEtfEventBadges(added, removed) {
-        const a = Array.isArray(added) ? added : [];
-        const r = Array.isArray(removed) ? removed : [];
-        if (!a.length && !r.length) return '';
-        const fmt = (codes) => codes.map(c => `${c} ${etfNameMap[c] || ''}`.trim()).join('\n');
-        let html = '';
-        if (a.length) {
-            const tip = `今日被 ${a.length} 檔主動 ETF 新買進${prevDateSuffix}：\n${fmt(a)}`;
-            html += `<span class="screener-etf-event screener-etf-event-add" title="${tip}">🆕+${a.length}</span>`;
-        }
-        if (r.length) {
-            const tip = `今日被 ${r.length} 檔主動 ETF 賣出${prevDateSuffix}：\n${fmt(r)}`;
-            html += `<span class="screener-etf-event screener-etf-event-remove" title="${tip}">➖${r.length}</span>`;
-        }
-        return html;
     }
 
     // 從 dot-path 取值，例如 "scores.regime" → s.scores.regime
@@ -1592,7 +1599,7 @@ function renderScreenerCards(categories, activeEtfs = [], etfDiffPrevDate = null
                 }
 
                 const etfChip = buildEtfChip(s.etf_holders);
-                const etfEvents = buildEtfEventBadges(s.etf_added_today, s.etf_removed_today);
+                const etfEvents = buildEtfEventBadges(s.etf_added_today, s.etf_removed_today, etfNameMap, prevDateLabel);
                 return `<div class="screener-stock-row${hiddenCls}" data-symbol="${s.symbol}" data-market="stock">
                     ${rankBadge}
                     <span class="screener-stock-sym">${s.symbol.replace('.TW','')}</span>
@@ -2045,8 +2052,9 @@ function renderActiveEtfRanking(data) {
     const totalEtfCount = etfs.length;
 
     // ETF code → 短名稱（去掉「主動」前綴）
-    const etfNameMap = {};
-    etfs.forEach(e => { etfNameMap[e.code] = e.name.replace('主動', ''); });
+    const etfNameMap = buildEtfNameMap(etfs);
+    const prevDate = data.previous_date || null;
+    const prevDateLabel = prevDate ? `（對比 ${prevDate}）` : '';
 
     // 產生 holders tooltip 文字：全持有 → 統一文案；部分 → 列出明細
     function buildHoldersTip(holders, count) {
@@ -2084,11 +2092,13 @@ function renderActiveEtfRanking(data) {
         } else if (days >= 2) {
             daysBadge = `<span class="screener-days-badge" title="連續入榜${days}天">第${days}天</span>`;
         }
+        const etfEvents = buildEtfEventBadges(s.etf_added_today, s.etf_removed_today, etfNameMap, prevDateLabel);
         return `<div class="screener-stock-row${hiddenCls}" data-symbol="${s.symbol}.TW" data-market="stock">
             <span class="screener-rank">${idx + 1}</span>
             <span class="screener-stock-sym">${s.symbol}</span>
             <span class="screener-stock-name">${s.name}</span>
             ${etfCountDisplay}
+            ${etfEvents}
             ${daysBadge}
         </div>`;
     }).join('');
@@ -2098,12 +2108,38 @@ function renderActiveEtfRanking(data) {
         ? `<button class="screener-expand-btn" id="aetf-expand-btn">顯示更多 (${stocks.length}檔) ▼</button>`
         : '';
 
+    // 今日被完全剔除（昨日有、今日沒有任何 ETF 持有）
+    const removedStocks = data.removed_stocks || [];
+    const removedHtml = removedStocks.length > 0 ? `
+        <details class="aetf-removed-section">
+            <summary>
+                <span class="aetf-removed-icon">📤</span>
+                今日被完全剔除（${removedStocks.length} 檔）
+                <span class="aetf-removed-hint">vs ${prevDate}</span>
+            </summary>
+            <div class="aetf-removed-list">
+                ${removedStocks.map(r => {
+                    const byList = (r.removed_by || []).map(c => `${c} ${etfNameMap[c] || ''}`.trim()).join('、');
+                    return `<div class="aetf-removed-row" data-symbol="${r.symbol}.TW">
+                        <span class="screener-stock-sym">${r.symbol}</span>
+                        <span class="screener-stock-name">${r.name}</span>
+                        <span class="aetf-removed-by">原被 ${byList} 持有</span>
+                    </div>`;
+                }).join('')}
+            </div>
+        </details>` : '';
+
+    const updatedNote = prevDate
+        ? `更新：${data.updated_at || '今日'} <span class="aetf-prev-date">vs 昨日 ${prevDate}</span>`
+        : `更新：${data.updated_at || '今日'}`;
+
     container.innerHTML = `
         <div class="aetf-header-note">
             以下為績效領先大盤的 <strong>${etfs.length} 支主動式 ETF</strong> 共同持有的台股，
-            依「ETF排名權重 × 持股比例」排列，顯示持有 ETF 檔數與進榜天數。更新：${data.updated_at || '今日'}
+            依「ETF排名權重 × 持股比例」排列，顯示持有 ETF 檔數與進榜天數。${updatedNote}
         </div>
         <div class="aetf-etf-summary">${etfSummaryHtml}</div>
+        ${removedHtml}
         <div class="screener-cat-card glass-panel screener-ranking-card">
             <div class="screener-cat-header">
                 <span class="screener-cat-icon">🏆</span>
@@ -2113,6 +2149,14 @@ function renderActiveEtfRanking(data) {
             <div class="screener-cat-stocks" id="aetf-stock-list">${stockRows}</div>
             ${expandBtn}
         </div>`;
+
+    // 剔除清單點擊也能切換到該股
+    container.querySelectorAll('.aetf-removed-row').forEach(row => {
+        row.addEventListener('click', () => {
+            const sym = row.dataset.symbol;
+            if (window.changeSymbol) window.changeSymbol(sym, 'stock');
+        });
+    });
 
     // 點擊個股
     container.querySelectorAll('.screener-stock-row').forEach(row => {
