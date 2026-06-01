@@ -625,13 +625,11 @@ def _scan_account_last_trades(proj_root: str):
 
     雙階門檻設計：
       - 全帳本最近一筆 < 5 天    → 大標 🚨（事故型偵測）
-      - 個別帳本 > 14 天       → 細節列表 🟡（漸進失效偵測，例如主帳戶 3/19 起靜默 2 個月）
+      - 個別帳本 > 14 天       → 細節列表 🟡（漸進失效偵測，例如某 sector 靜默 2 個月）
     """
     from datetime import datetime as _dt
     paths = []
-    main_acc = os.path.join(proj_root, "trading_account.json")
-    if os.path.exists(main_acc):
-        paths.append(("主帳戶", main_acc))
+    # 舊「主帳戶」trading_account.json 已退場（2026-06-01）
     btc_acc = os.path.join(proj_root, "data", "btc_trading_account.json")
     if os.path.exists(btc_acc):
         paths.append(("BTC自動", btc_acc))
@@ -1729,14 +1727,6 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-
-# ============================================================
-# 虛擬交易 API（供 trading.html 使用）— 已搬至 api/trading.py
-# ============================================================
-
-from api.trading import router as trading_router
-app.include_router(trading_router)
-
 
 # ============================================================
 # 類股虛擬交易 API — 已搬至 api/sector_trading.py
