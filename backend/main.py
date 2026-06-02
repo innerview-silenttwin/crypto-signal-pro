@@ -647,10 +647,14 @@ def _scan_account_last_trades(proj_root: str):
                 d = json.load(f)
             hist = d.get("history", [])
             if hist:
-                last_t = hist[-1].get("time", "")
-                if last_t:
+                # Bug 2026-06-02：原本用 hist[-1] 假設 list 是時間正序，但 sector_trader
+                # 把新交易 insert(0) → list 是 newest-first。hist[-1] 拿到最舊的，
+                # 結果 watchdog 永遠誤報所有帳本都靜默幾十天。
+                # 改用 max(by time) — 不論 list 順序都拿到真正最新一筆。
+                times = [t.get("time", "") for t in hist if t.get("time")]
+                if times:
                     try:
-                        last_dt = _dt.strptime(last_t[:19], "%Y-%m-%d %H:%M:%S")
+                        last_dt = _dt.strptime(max(times)[:19], "%Y-%m-%d %H:%M:%S")
                     except ValueError:
                         pass
         except Exception:

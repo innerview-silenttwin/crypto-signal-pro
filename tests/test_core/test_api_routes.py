@@ -10,13 +10,7 @@ import pytest
 # 預期所有 router 拆檔後仍在 app 上的 (method, path) 配對。
 # 拆新 router 時：把對應 endpoint 加進來。
 EXPECTED_ROUTES = [
-    # api/trading.py — A1
-    ("POST", "/api/trading/toggle"),
-    ("GET",  "/api/trading/status"),
-    ("GET",  "/api/trading/history"),
-    ("GET",  "/api/trading/symbols"),
-    ("POST", "/api/trading/symbols/add"),
-    ("POST", "/api/trading/symbols/remove"),
+    # api/trading.py（trading_manager 主帳戶已退場 c666ab7 / 2026-06-01）
 
     # api/btc_trading.py — A2
     ("GET",  "/api/btc-trading/status"),
