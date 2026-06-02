@@ -1626,6 +1626,27 @@ def fetch_yfinance_candles(symbol: str, timeframe: str, limit: int = 200):
         return None, None
 
 
+def _daily_cache_is_fresh(cached: dict) -> bool:
+    """1d 快取的最後一根 K 線日期 >= 最近一個已收盤交易日才算新鮮。
+
+    cache_age 不是判斷依據（盤後一根新 K 也不會出現）；唯一指標是 cache 末根日期。
+    末根 candle 為 None / 缺 time / 不在預期日 → False，呼叫端 fall-through 重讀 CSV。
+
+    時區處理：candle time 兩種來源編碼不同——
+    CSV / TWSE 走 naive pd.Timestamp（pandas 把它當 UTC，∴ 1780358400 = 2026-06-02 UTC 0:00）；
+    yfinance 走 tz-aware Asia/Taipei midnight（1780329600 = 2026-06-01 UTC 16:00 = 同一日 Taipei 0:00）。
+    在 Taipei tz 讀回後兩者都會落在正確的交易日。
+    """
+    candles = cached.get("candles") or []
+    if not candles:
+        return False
+    last_ts = candles[-1].get("time")
+    if last_ts is None:
+        return False
+    last_date = datetime.fromtimestamp(int(last_ts), tz=pytz.timezone("Asia/Taipei")).strftime("%Y-%m-%d")
+    return last_date >= latest_closed_tw_trading_day()
+
+
 def get_tw_chart_data(symbol: str, timeframe: str, limit: int = 200):
     """
     台股走勢圖資料取得（帶嚴格全域 Rate Limit + Cache）。
@@ -1656,7 +1677,7 @@ def get_tw_chart_data(symbol: str, timeframe: str, limit: int = 200):
                 chart_cache[cache_key] = {"candles": candles, "fetched_at": now, "source": "twse_daily"}
                 return {"candles": candles, "data_source": "twse_daily", "fetched_at": now, "next_update_in": TW_RATE_LIMIT_SEC}
 
-        # 有過期快取則回傳，避免空白
+        # 有過期快取則回傳，避免空白（此處刻意不卡 freshness：上游全失敗時舊資料勝過空白）
         if cached:
             return {"candles": cached["candles"], "data_source": cached["source"] + "_cache",
                     "fetched_at": cached["fetched_at"], "next_update_in": TW_RATE_LIMIT_SEC}
@@ -1670,8 +1691,8 @@ def get_tw_chart_data(symbol: str, timeframe: str, limit: int = 200):
     # B0: 盤後時段特別處理資料來源文字
     src_suffix = "" if market_open else "_closed"
 
-    # B1: 有快取 → 直接回傳
-    if cached:
+    # B1: 有快取 → 直接回傳（1d 必須末根 K 為最近一個已收盤交易日，否則 fall-through 重讀 CSV）
+    if cached and (timeframe != "1d" or _daily_cache_is_fresh(cached)):
         return {"candles": cached["candles"], "data_source": cached["source"] + "_cache" + src_suffix,
                 "fetched_at": cached["fetched_at"], "next_update_in": remaining}
 
