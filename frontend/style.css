@@ -2592,6 +2592,34 @@ a.event-item:hover {
     background: rgba(248,113,113,0.13);
     border: 1px solid rgba(248,113,113,0.4);
 }
+/* 近 7 日累計異動 — 比今日 badge 更低調（描邊為主，無填色 pulse），讓今日 badge 仍然搶眼 */
+.screener-etf-event-7d {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    border-radius: 8px;
+    padding: 1px 5px;
+    margin-left: 2px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    cursor: help;
+    background: transparent;
+}
+.screener-etf-event-7d-add {
+    color: #6ee7b7;
+    border: 1px dashed rgba(110,231,183,0.55);
+}
+.screener-etf-event-7d-remove {
+    color: #fca5a5;
+    border: 1px dashed rgba(252,165,165,0.55);
+}
+@media (max-width: 768px) {
+    /* 手機版讓 7d badge 進一步縮小，避免擠掉股名 */
+    .screener-etf-event-7d {
+        font-size: 8px;
+        padding: 0 4px;
+    }
+}
 /* NEW 新進榜標籤 */
 .screener-new-badge {
     font-size: 9px;

@@ -1513,6 +1513,33 @@ function buildEtfNameMap(etfs) {
     return map;
 }
 
+// 近 N 日 ETF 異動 badge — 含每筆異動的日期，tooltip 列出每天明細
+function buildEtfEvent7dBadges(added7d, removed7d, etfNameMap, windowDays, todayIso) {
+    const a = Array.isArray(added7d) ? added7d : [];
+    const r = Array.isArray(removed7d) ? removed7d : [];
+    if (!a.length && !r.length) return '';
+    const fmtDate = (iso) => {
+        if (!iso) return '';
+        if (iso === todayIso) return '今日';
+        const m = iso.match(/^\d{4}-(\d{2})-(\d{2})$/);
+        return m ? `${parseInt(m[1], 10)}/${parseInt(m[2], 10)}` : iso;
+    };
+    const fmtEvents = (evs) => evs.map(e => {
+        const name = etfNameMap[e.etf] || '';
+        return `${fmtDate(e.date)}  ${e.etf} ${name}`.trim();
+    }).join('\n');
+    let html = '';
+    if (a.length) {
+        const tip = `近 ${windowDays} 日被主動 ETF 新買進 ${a.length} 次：\n${fmtEvents(a)}`;
+        html += `<span class="screener-etf-event-7d screener-etf-event-7d-add" title="${tip}">7日 ↑${a.length}</span>`;
+    }
+    if (r.length) {
+        const tip = `近 ${windowDays} 日被主動 ETF 賣出 ${r.length} 次：\n${fmtEvents(r)}`;
+        html += `<span class="screener-etf-event-7d screener-etf-event-7d-remove" title="${tip}">7日 ↓${r.length}</span>`;
+    }
+    return html;
+}
+
 // 🆕/➖ 今日 ETF 異動 badge — 給超選列表 + 主動 ETF tab 共用
 function buildEtfEventBadges(added, removed, etfNameMap, prevDateLabel = '') {
     const a = Array.isArray(added) ? added : [];
@@ -2055,6 +2082,10 @@ function renderActiveEtfRanking(data) {
     const etfNameMap = buildEtfNameMap(etfs);
     const prevDate = data.previous_date || null;
     const prevDateLabel = prevDate ? `（對比 ${prevDate}）` : '';
+    const historyWindow = data.holders_history_window || 7;
+    // 本地時區的今日 ISO 日期（toISOString() 給 UTC，台北凌晨會錯位）
+    const _now = new Date();
+    const todayIso = `${_now.getFullYear()}-${String(_now.getMonth() + 1).padStart(2, '0')}-${String(_now.getDate()).padStart(2, '0')}`;
 
     // 產生 holders tooltip 文字：全持有 → 統一文案；部分 → 列出明細
     function buildHoldersTip(holders, count) {
@@ -2093,13 +2124,15 @@ function renderActiveEtfRanking(data) {
             daysBadge = `<span class="screener-days-badge" title="連續入榜${days}天">第${days}天</span>`;
         }
         const etfEvents = buildEtfEventBadges(s.etf_added_today, s.etf_removed_today, etfNameMap, prevDateLabel);
+        const etfEvents7d = buildEtfEvent7dBadges(s.etf_added_7d, s.etf_removed_7d, etfNameMap, historyWindow, todayIso);
         return `<div class="screener-stock-row${hiddenCls}" data-symbol="${s.symbol}.TW" data-market="stock">
             <span class="screener-rank">${idx + 1}</span>
             <span class="screener-stock-sym">${s.symbol}</span>
             <span class="screener-stock-name">${s.name}</span>
             ${etfCountDisplay}
-            ${etfEvents}
             ${daysBadge}
+            ${etfEvents}
+            ${etfEvents7d}
         </div>`;
     }).join('');
 

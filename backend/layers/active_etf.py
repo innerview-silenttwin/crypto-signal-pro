@@ -16,7 +16,7 @@ import json
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 
 # CMoney 走 TWCA 簽出的 cert chain，intermediate 缺 Subject Key Identifier，
@@ -67,6 +67,15 @@ _CACHE_FILE = os.path.join(_CACHE_DIR, "active_etf_scores.json")
 
 # ── 進榜歷史快取路徑 ──
 _RANK_HISTORY_FILE = os.path.join(_CACHE_DIR, "active_etf_rank_history.json")
+
+# ── ETF 持股每日快照歷史（供「近 N 日異動」累計用）──
+_HOLDERS_HISTORY_FILE = os.path.join(_CACHE_DIR, "active_etf_holders_history.json")
+_HOLDERS_HISTORY_WINDOW = 7
+# 多保留 1 天，第 8 天用來和窗口最早的一天做 diff，邊界事件才不會掉
+_HOLDERS_HISTORY_KEEP = _HOLDERS_HISTORY_WINDOW + 1
+
+# 今日 holders snapshot 已寫入歷史檔的日期 — 同一天內後續呼叫直接 short-circuit
+_history_written_for: Optional[date] = None
 
 # ── 運行時快取（dict 用 in-place update 保持模組引用一致）──
 _scores_cache: dict = {}   # {stock_id: normalized_score(0-100)}
@@ -213,6 +222,11 @@ def refresh_active_etf_scores() -> bool:
                    "etf_count": len(BEAT_ETFS), "stock_count": n},
                   f, ensure_ascii=False, indent=2)
 
+    try:
+        _ensure_today_in_history()
+    except Exception as e:
+        logger.warning(f"[active_etf] 寫入持股歷史失敗: {e}")
+
     logger.info(f"[active_etf] 更新完成，共 {n} 支台股被 {len(BEAT_ETFS)} 支主動 ETF 持有")
     return True
 
@@ -344,23 +358,99 @@ def get_prev_cache_date() -> Optional[str]:
         return str(_prev_cache_date)
 
 
-def _load_rank_history() -> dict:
-    """讀取進榜歷史 JSON"""
+def _load_json(path: str) -> dict:
+    """讀 JSON dict，檔不存在 / 解析失敗一律回 {}（與既有 cache 慣例一致）。"""
     try:
-        with open(_RANK_HISTORY_FILE, "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
     except Exception:
         return {}
 
 
-def _save_rank_history(history: dict):
-    """儲存進榜歷史 JSON"""
+def _save_json(path: str, data: dict, *, compact: bool = False):
+    """以 tmp + os.replace 原子寫入，避免中斷時檔案被截斷。"""
     try:
         os.makedirs(_CACHE_DIR, exist_ok=True)
-        with open(_RANK_HISTORY_FILE, "w", encoding="utf-8") as f:
-            json.dump(history, f, ensure_ascii=False, indent=2)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            if compact:
+                json.dump(data, f, ensure_ascii=False, separators=(",", ":"))
+            else:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
     except Exception as e:
-        logger.warning(f"[active_etf] 進榜歷史存檔失敗: {e}")
+        logger.warning(f"[active_etf] {os.path.basename(path)} 存檔失敗: {e}")
+
+
+def _ensure_today_in_history() -> dict:
+    """
+    確保 holders history 已含今日 snapshot，回傳裁剪後的完整 history dict（給呼叫端重用，省第二次 disk read）。
+    今日已寫過會 short-circuit；非今日 cache 則回傳磁碟現況不寫入。
+    """
+    global _history_written_for
+    today = date.today()
+    with _cache_lock:
+        if _cache_date != today or not _etf_holders_cache:
+            return _load_json(_HOLDERS_HISTORY_FILE)
+        if _history_written_for == today:
+            return _load_json(_HOLDERS_HISTORY_FILE)
+        today_str = str(_cache_date)
+        snapshot = {sid: list(etfs) for sid, etfs in _etf_holders_cache.items()}
+    history = _load_json(_HOLDERS_HISTORY_FILE)
+    if history.get(today_str) == snapshot:
+        _history_written_for = today
+        return history
+    history[today_str] = snapshot
+    cutoff = today - timedelta(days=_HOLDERS_HISTORY_KEEP)
+    pruned = {}
+    for d_str, snap in history.items():
+        try:
+            if date.fromisoformat(d_str) >= cutoff:
+                pruned[d_str] = snap
+        except ValueError:
+            continue
+    _save_json(_HOLDERS_HISTORY_FILE, pruned, compact=True)
+    _history_written_for = today
+    return pruned
+
+
+def _compute_recent_events_all(history: dict, window_days: int = _HOLDERS_HISTORY_WINDOW) -> dict:
+    """
+    回傳 {sid: {"added": [{"etf": code, "date": "YYYY-MM-DD"}, ...],
+                "removed": [...]}}，依日期 desc。
+    把 history 中相鄰兩日做 diff，僅保留 cur_date 落在 [today - window+1, today] 的事件。
+    """
+    if not history:
+        return {}
+    today = date.today()
+    cutoff = today - timedelta(days=window_days - 1)
+    sorted_dates = sorted(history.keys())
+    events: dict = {}
+    for i in range(1, len(sorted_dates)):
+        cur_str = sorted_dates[i]
+        prev_str = sorted_dates[i - 1]
+        try:
+            cur_d = date.fromisoformat(cur_str)
+        except ValueError:
+            continue
+        if cur_d < cutoff:
+            continue
+        cur_snap = history[cur_str] or {}
+        prev_snap = history[prev_str] or {}
+        all_sids = set(cur_snap.keys()) | set(prev_snap.keys())
+        for sid in all_sids:
+            cur_set = set(cur_snap.get(sid, []))
+            prev_set = set(prev_snap.get(sid, []))
+            for etf in cur_set - prev_set:
+                events.setdefault(sid, {"added": [], "removed": []})["added"].append(
+                    {"etf": etf, "date": cur_str})
+            for etf in prev_set - cur_set:
+                events.setdefault(sid, {"added": [], "removed": []})["removed"].append(
+                    {"etf": etf, "date": cur_str})
+    for sid, ev in events.items():
+        ev["added"].sort(key=lambda x: x["date"], reverse=True)
+        ev["removed"].sort(key=lambda x: x["date"], reverse=True)
+    return events
 
 
 _twii_trading_days_cache: list = []
@@ -400,7 +490,7 @@ def _update_etf_rank_history(symbols: list, today: str) -> dict:
     """
     更新主動 ETF 進榜歷史，回傳 {symbol: days_in_rank}
     """
-    history = _load_rank_history()
+    history = _load_json(_RANK_HISTORY_FILE)
     current_set = set(symbols)
 
     # 移除不再上榜的股票
@@ -422,7 +512,7 @@ def _update_etf_rank_history(symbols: list, today: str) -> dict:
         except Exception:
             days_map[sym] = 1
 
-    _save_rank_history(history)
+    _save_json(_RANK_HISTORY_FILE, history)
     return days_map
 
 
@@ -432,6 +522,13 @@ def get_active_etf_ranking() -> dict:
     回傳 {stocks: [...], etfs: [...], total: int, updated_at: str}
     """
     _ensure_cache()
+    # 確保今日 snapshot 寫入歷史並重用回傳的 dict，省掉第二次 disk read
+    try:
+        history_7d = _ensure_today_in_history()
+    except Exception as e:
+        logger.warning(f"[active_etf] 寫入持股歷史失敗: {e}")
+        history_7d = _load_json(_HOLDERS_HISTORY_FILE)
+    events_7d = _compute_recent_events_all(history_7d, _HOLDERS_HISTORY_WINDOW)
     prev_date_str = None
     removed_stocks: list = []
     with _cache_lock:
@@ -450,6 +547,7 @@ def get_active_etf_ranking() -> dict:
                 added, removed = _diff_holders(holders, prev_holders_snapshot.get(sid, []))
             else:
                 added, removed = [], []
+            ev7 = events_7d.get(sid, {})
             stocks.append({
                 "symbol": sid,
                 "name": _names_cache.get(sid, sid),
@@ -458,6 +556,8 @@ def get_active_etf_ranking() -> dict:
                 "etf_holders": holders,
                 "etf_added_today": added,
                 "etf_removed_today": removed,
+                "etf_added_7d": ev7.get("added", []),
+                "etf_removed_7d": ev7.get("removed", []),
             })
         stocks.sort(key=lambda x: -x["score"])
 
@@ -490,7 +590,8 @@ def get_active_etf_ranking() -> dict:
     ]
     result = {"stocks": stocks, "etfs": etfs, "total": len(stocks), "updated_at": updated_at,
               "previous_date": prev_date_str,
-              "removed_stocks": removed_stocks}
+              "removed_stocks": removed_stocks,
+              "holders_history_window": _HOLDERS_HISTORY_WINDOW}
     if is_stale:
         result["message"] = f"顯示 {updated_at} 的快取資料（今日尚未更新成功）"
     return result
