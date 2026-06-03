@@ -477,9 +477,12 @@ async def premarket_data_health_check():
             continue
 
         try:
+            # 2026-06-03：Telegram 發訊改由 launchd /api/internal/trigger-premarket-check
+            # 統一觸發（系統級 cron，wall-clock 對齊）。asyncio 這條保留「跑計算」即可，
+            # 不再發訊；避免 asyncio drift 後又重複發第二則訊息。
             report = await asyncio.to_thread(_compute_data_freshness_report)
-            await asyncio.to_thread(_send_premarket_telegram, report)
-            print(f"[premarket-check] Done. K-line stale: {len(report['stale_kline'])}, "
+            print(f"[premarket-check] Done (no-telegram, by launchd). "
+                  f"K-line stale: {len(report['stale_kline'])}, "
                   f"PE age: {report.get('pe_age_days')}, Rev age: {report.get('rev_age_days')}")
         except Exception as e:
             print(f"[premarket-check] error: {e}")
@@ -610,11 +613,11 @@ async def daily_evening_summary():
             print("[evening-summary] Weekend, skipping")
             continue
 
-        try:
-            await asyncio.to_thread(_send_evening_summary_telegram)
-            print("[evening-summary] Done.")
-        except Exception as e:
-            print(f"[evening-summary] error: {e}")
+        # 2026-06-03：Telegram 發訊統一由 launchd /api/internal/trigger-evening-summary
+        # 觸發（系統級 cron，wall-clock 對齊）。本 asyncio 迴圈保留 as wake-on-schedule
+        # placeholder，未來若想做其他盤後處理（無需發訊）可加在這。
+        # 不再發訊；避免 asyncio drift 後又重複發第二則。
+        print("[evening-summary] Skipped telegram (handled by launchd /api/internal/trigger-evening-summary)")
 
 
 def _scan_account_last_trades(proj_root: str):
