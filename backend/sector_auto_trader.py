@@ -268,12 +268,39 @@ def fetch_taiex_regime() -> str:
         return "neutral"
 
 
+def _expected_latest_trading_day_date():
+    """回傳「上個已收盤交易日」的 date 物件（含週末跳過、14:30 前算昨日）。
+
+    與 main.py:latest_closed_tw_trading_day() 邏輯一致；內聯避免反向 import 觸發循環依賴。
+    """
+    tz = pytz.timezone("Asia/Taipei")
+    now = datetime.now(tz)
+    candidate = now.date()
+    today_close = now.replace(hour=14, minute=30, second=0, microsecond=0)
+    if now.weekday() < 5 and now >= today_close:
+        return candidate
+    candidate = candidate - timedelta(days=1)
+    while candidate.weekday() >= 5:
+        candidate = candidate - timedelta(days=1)
+    return candidate
+
+
 def fetch_signal_data(symbol: str, lookback_days: int = 250) -> Optional[pd.DataFrame]:
-    """取得用於信號計算的歷史數據（本地 CSV 優先、yfinance 備援）"""
+    """取得用於信號計算的歷史數據（quote_provider only，無 CSV 兜底）。
+
+    2026-06-03 重寫：拔掉本地 CSV 兜底。底線「不能用舊資料判斷觸發交易」要求：
+    寧可 skip 該輪也不能用 stale CSV 算信號。CSV 留給「顯示 path」用，
+    交易 path 完全靠即時 quote_provider（sinopac 主、yfinance 備援由 provider 內部處理）。
+
+    流程：
+      1. memory cache 120 秒 → return（避免同輪重複查）
+      2. quote_provider → 驗 freshness（最新日期 ≥ 上個交易日 OR == 今日 partial）
+      3. quote_provider 失敗或回 stale → return None → process_sector skip 該股該輪
+    """
     now = time.time()
     cache_key = symbol
 
-    # 1. 記憶體快取（120 秒內不重複取）
+    # 1. 記憶體快取
     if cache_key in _price_cache and "df" in _price_cache[cache_key]:
         cached = _price_cache[cache_key]
         if now - cached["time"] < CACHE_TTL:
@@ -282,53 +309,36 @@ def fetch_signal_data(symbol: str, lookback_days: int = 250) -> Optional[pd.Data
     tw_tz = pytz.timezone("Asia/Taipei")
     today_tw = datetime.now(tw_tz).date()
 
-    # 2. 本地 CSV
-    local_df = _load_local_csv(symbol)
-    csv_last_date = None
-    if local_df is not None and len(local_df) >= 50:
-        last_idx = local_df.index[-1]
-        csv_last_date = last_idx.date() if hasattr(last_idx, 'date') else pd.Timestamp(last_idx).date()
-        if csv_last_date >= today_tw:
-            # CSV 已有今日資料 → 直接使用，不需要再問 yfinance
-            _update_price_cache(cache_key, local_df, now)
-            logger.info(f"{symbol} 使用本地 CSV（{len(local_df)} 筆，最新 {csv_last_date}）")
-            return local_df
-
-    # 3. Quote provider API（預設 yfinance；QUOTE_SOURCE=sinopac 走永豐）
+    # 2. Quote provider
     try:
         df = get_quote_provider().get_history(symbol, period_days=lookback_days, interval="1d")
         if df is None or df.empty or len(df) < 50:
-            # quote provider 也失敗 → fallback 到本地 CSV
-            if local_df is not None and len(local_df) >= 50:
-                _update_price_cache(cache_key, local_df, now)
-                return local_df
+            logger.warning(f"{symbol} quote_provider 無資料；skip 該輪不交易")
             return None
 
         df = df[['open', 'high', 'low', 'close', 'volume']].dropna()
         df = df[df['volume'] > 0]
+        if len(df) < 50:
+            logger.warning(f"{symbol} quote_provider 有效資料 < 50 筆；skip 該輪不交易")
+            return None
 
-        yf_last = df.index[-1]
-        yf_last_date = yf_last.date() if hasattr(yf_last, 'date') else pd.Timestamp(yf_last).date()
-
-        # 核心防護：yfinance 回傳的最新日期比本地 CSV 舊 → 用 CSV
-        if csv_last_date is not None and yf_last_date < csv_last_date:
-            logger.warning(f"{symbol} yfinance 最新 {yf_last_date} 比本地 CSV {csv_last_date} 舊，使用本地 CSV")
-            _update_price_cache(cache_key, local_df, now)
-            return local_df
+        # ── Freshness 守則（底線：交易不准用 stale 資料）──
+        last_idx = df.index[-1]
+        last_date = last_idx.date() if hasattr(last_idx, 'date') else pd.Timestamp(last_idx).date()
+        expected_latest = _expected_latest_trading_day_date()
+        # 允許「今日 partial」：last_date == today 即使 > expected_latest 也 OK
+        if last_date < expected_latest and last_date != today_tw:
+            logger.warning(
+                f"{symbol} quote_provider 回 stale 資料 last={last_date} < expected={expected_latest}; "
+                f"skip 該輪不交易（不再 fallback CSV，避免用舊資料觸發交易）"
+            )
+            return None
 
         _update_price_cache(cache_key, df, now)
-
-        # 若 yfinance 有更新的資料 → 同步更新本地 CSV（走勢圖也受惠）
-        if csv_last_date is None or yf_last_date > csv_last_date:
-            _save_local_csv(symbol, df)
-
         return df
+
     except Exception as e:
-        logger.warning(f"取數據失敗 {symbol}: {e}")
-        # yfinance 例外 → fallback 到本地 CSV
-        if local_df is not None and len(local_df) >= 50:
-            _update_price_cache(cache_key, local_df, now)
-            return local_df
+        logger.warning(f"{symbol} 取數據失敗 {e.__class__.__name__}: {e}; skip 該輪不交易")
         return None
 
 

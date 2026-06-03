@@ -365,18 +365,42 @@ RANK_HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "da
 
 
 def _fetch_signal_data_for_screener(symbol: str) -> Optional[pd.DataFrame]:
-    """用 yfinance 取得個股 OHLCV（for 技術面 + 盤勢分析）"""
+    """取得個股 OHLCV（for 技術面 + 盤勢分析）。
+
+    2026-06-03 重寫：底線「超選資料是最新的」要求 screener 不可用 stale 資料推薦標的。
+    - 改走 quote_provider（與交易同來源、行為一致）
+    - 加 freshness 驗證：最新日期 ≥ 上個交易日 OR == 今日
+    - stale 或失敗 → return None → 該股不進排名
+    """
     try:
-        import yfinance as yf
-        ticker = yf.Ticker(symbol)
-        df = ticker.history(period="200d", interval="1d")
-        if df.empty or len(df) < 60:
+        from quote_provider import get_quote_provider
+        from sector_auto_trader import _expected_latest_trading_day_date
+        import pytz
+
+        df = get_quote_provider().get_history(symbol, period_days=200, interval="1d")
+        if df is None or df.empty or len(df) < 60:
             return None
+
         df.columns = [c.lower() for c in df.columns]
         df = df[['open', 'high', 'low', 'close', 'volume']].dropna()
+        if len(df) < 60:
+            return None
+
+        # Freshness 守則
+        last_idx = df.index[-1]
+        last_date = last_idx.date() if hasattr(last_idx, 'date') else pd.Timestamp(last_idx).date()
+        today_tw = datetime.now(pytz.timezone("Asia/Taipei")).date()
+        expected_latest = _expected_latest_trading_day_date()
+        if last_date < expected_latest and last_date != today_tw:
+            logger.warning(
+                f"screener: {symbol} quote 回 stale last={last_date} < expected={expected_latest}; "
+                f"不進排名（避免用舊資料推薦標的）"
+            )
+            return None
+
         return df
     except Exception as e:
-        logger.warning(f"yfinance 取得 {symbol} 失敗: {e}")
+        logger.warning(f"screener: 取得 {symbol} 失敗 {e.__class__.__name__}: {e}")
         return None
 
 
