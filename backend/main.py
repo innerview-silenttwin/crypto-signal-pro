@@ -1122,15 +1122,37 @@ def _analyze_tw_df(symbol: str, market: str, df, data_source: str):
     agg = get_aggregator(market)
     signal = agg.analyze(df, symbol=symbol, timeframe='1d')
 
+    market_open = is_tw_market_open()
+    remaining = tw_seconds_until_next() if market_open else None
+
+    # ── 新鮮度驗證（P0 fix 2026-06-03）──
+    # Bug：過去直接用 df.iloc[-2:] 算漲跌，若 CSV 已舊則 df[-1]/df[-2] 可能是更早前的
+    # 兩根 K（如「上週四 vs 上週五」），算出來的 % 看似合理但實際是「跨週」誤導值。
+    # 用戶 6/3 12:10 看到 南亞科 410(+7.10%) 但真實 406 → 基準 382.82 是 5/29 舊 CSV 殘留。
+    #
+    # 修法：驗證 df 最新日期 ≥「上個交易日」；若否 → stale，不算 change_24h（=0）+
+    # data_source 加 _stale 後綴讓前端可標警告。盤中當日 partial snapshot 不算 stale。
+    stale_data = False
+    try:
+        last_idx = df.index[-1]
+        last_date = (last_idx.date() if hasattr(last_idx, 'date')
+                     else datetime.strptime(str(last_idx)[:10], "%Y-%m-%d").date())
+        expected_latest = datetime.strptime(latest_closed_tw_trading_day(), "%Y-%m-%d").date()
+        today_tw = datetime.now(pytz.timezone('Asia/Taipei')).date()
+        # 允許「今日盤中 partial」：last_date == today 即使 > expected_latest 也 OK
+        if last_date < expected_latest and last_date != today_tw:
+            stale_data = True
+            print(f"[stale-data] {symbol} df last={last_date} < expected={expected_latest}, "
+                  f"change_24h 強制歸 0 避免錯誤百分比 (source={data_source})")
+    except Exception as e:
+        print(f"[stale-data] {symbol} 日期判斷失敗：{e}")
+
     tw_change = 0.0
-    if len(df) >= 2:
+    if not stale_data and len(df) >= 2:
         prev_c = float(df['close'].iloc[-2])
         curr_c = float(df['close'].iloc[-1])
         if prev_c > 0:
             tw_change = round((curr_c - prev_c) / prev_c * 100, 2)
-
-    market_open = is_tw_market_open()
-    remaining = tw_seconds_until_next() if market_open else None
 
     result_data = {
         "symbol": symbol,
@@ -1144,9 +1166,10 @@ def _analyze_tw_df(symbol: str, market: str, df, data_source: str):
                 "buy_score":  round(signal.buy_score, 1),
                 "sell_score": round(signal.sell_score, 1),
                 "change_24h": tw_change,
+                "stale":      stale_data,
             }
         },
-        "data_source": data_source,
+        "data_source": data_source + ("_stale" if stale_data else ""),
         "next_update_in": remaining,
         "market_open": market_open,
     }
