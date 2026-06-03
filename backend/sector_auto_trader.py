@@ -326,13 +326,29 @@ def fetch_signal_data(symbol: str, lookback_days: int = 250) -> Optional[pd.Data
         last_idx = df.index[-1]
         last_date = last_idx.date() if hasattr(last_idx, 'date') else pd.Timestamp(last_idx).date()
         expected_latest = _expected_latest_trading_day_date()
-        # 允許「今日 partial」：last_date == today 即使 > expected_latest 也 OK
-        if last_date < expected_latest and last_date != today_tw:
-            logger.warning(
-                f"{symbol} quote_provider 回 stale 資料 last={last_date} < expected={expected_latest}; "
-                f"skip 該輪不交易（不再 fallback CSV，避免用舊資料觸發交易）"
-            )
-            return None
+
+        # 指數類（^TWII / ^TWO 等）放寬：允許「上一交易日」資料
+        # Why: TAIEX 等指數在台股 14:30 收盤後，yfinance 可能要到隔天才更新到當日線。
+        # 個股 yfinance 盤中會有 partial snapshot，指數通常沒有。
+        # 對指數判 stale 太嚴 → fetch_taiex_regime() return "neutral" → F3 把全 sector
+        # buy_th 拉高到 50 → 大量 BUY 訊號被擋。
+        is_index = symbol.startswith("^")
+        if is_index:
+            # 指數：last_date < (expected_latest - 1 個交易日) 才算 stale
+            stale_threshold = expected_latest - timedelta(days=3)  # 給週末緩衝
+            if last_date < stale_threshold:
+                logger.warning(
+                    f"{symbol} (指數) quote 回 last={last_date} < threshold={stale_threshold}; skip"
+                )
+                return None
+        else:
+            # 個股：允許「今日 partial」(last_date == today)；其它 < expected_latest 視為 stale
+            if last_date < expected_latest and last_date != today_tw:
+                logger.warning(
+                    f"{symbol} quote_provider 回 stale 資料 last={last_date} < expected={expected_latest}; "
+                    f"skip 該輪不交易（不再 fallback CSV，避免用舊資料觸發交易）"
+                )
+                return None
 
         _update_price_cache(cache_key, df, now)
         return df
@@ -724,6 +740,8 @@ def process_sector(manager: SectorTradingManager):
         # 1. 取得歷史數據（信號計算用）
         df = fetch_signal_data(symbol)
         if df is None:
+            # debug 2026-06-03：silent skip 全列出來，方便明天觀察是哪條路徑卡住
+            logger.info(f"[{manager.sector_name}] {symbol} SKIP: fetch_signal_data 回 None")
             continue
 
         # 2. 決定執行價
@@ -770,6 +788,7 @@ def process_sector(manager: SectorTradingManager):
         sig = compute_signal(df, weights, symbol,
                              layers=layers, sector_id=manager.sector_id)
         if sig is None:
+            logger.info(f"[{manager.sector_name}] {symbol} SKIP: compute_signal 回 None")
             continue
 
         # Log regime info
