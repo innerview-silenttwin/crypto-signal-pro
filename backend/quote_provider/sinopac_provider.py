@@ -87,12 +87,22 @@ class SinopacQuoteProvider:
                     end=end.strftime("%Y-%m-%d"),
                 )
         except Exception as e:
-            logger.warning("sinopac kbars(%s) failed: %s", symbol, e.__class__.__name__)
-            return None
+            # 2026-06-04：個股 kbars 失敗也 fallback yfinance（與指數類一致）
+            # 永豐 simulation 環境 quote 服務偶爾異常（已知 ShioajiConnectionError），
+            # 之前直接 return None 會讓整個交易系統瞎掉（全部 stock 拿不到資料）。
+            # 改 fallback yfinance 保持服務可用；fetch_signal_data 的 freshness 守則
+            # 仍會把 stale 資料擋下，不會誤觸發交易。
+            logger.warning(
+                "sinopac kbars(%s) failed: %s; fallback yfinance",
+                symbol, e.__class__.__name__,
+            )
+            return self._yfinance_fallback(symbol, period_days, interval)
 
         df = self._kbars_to_df(kbars)
         if df is None or df.empty:
-            return None
+            # kbars 回空也視為失敗 → fallback yfinance
+            logger.warning("sinopac kbars(%s) empty; fallback yfinance", symbol)
+            return self._yfinance_fallback(symbol, period_days, interval)
 
         # Shioaji kbars 永遠是 1m → 1d 時必須 resample
         if interval == "1d":
