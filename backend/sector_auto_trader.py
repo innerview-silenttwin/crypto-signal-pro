@@ -740,8 +740,9 @@ def process_sector(manager: SectorTradingManager):
         # 1. 取得歷史數據（信號計算用）
         df = fetch_signal_data(symbol)
         if df is None:
-            # debug 2026-06-03：silent skip 全列出來，方便明天觀察是哪條路徑卡住
-            logger.info(f"[{manager.sector_name}] {symbol} SKIP: fetch_signal_data 回 None")
+            # debug 2026-06-03：silent skip 全列出來，方便觀察是哪條路徑卡住
+            # 改用 print 不用 logger.info — root logger 沒設 INFO level，logger.info 會被吞
+            print(f"  [{manager.sector_name}] {symbol} SKIP: fetch_signal_data 回 None")
             continue
 
         # 2. 決定執行價
@@ -788,7 +789,7 @@ def process_sector(manager: SectorTradingManager):
         sig = compute_signal(df, weights, symbol,
                              layers=layers, sector_id=manager.sector_id)
         if sig is None:
-            logger.info(f"[{manager.sector_name}] {symbol} SKIP: compute_signal 回 None")
+            print(f"  [{manager.sector_name}] {symbol} SKIP: compute_signal 回 None")
             continue
 
         # Log regime info
