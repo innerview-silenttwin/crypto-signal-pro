@@ -40,8 +40,17 @@ def _compute_sector_regime(sector_id: str):
 
     strategy = mgr.get_strategy()
     layers = build_layers(strategy)
-    results = {}
 
+    # ── 取 F3 effective_buy_th（與 process_sector 邏輯一致）──
+    # TAIEX neutral 時 buy 門檻拉到 50；其它情境用 sector 設定值。
+    # User 2026-06-04：想知道個股「離 BUY/SELL 觸發還差幾分」
+    from sector_auto_trader import fetch_taiex_regime
+    buy_th = strategy["buy_threshold"]
+    sell_th = strategy["sell_threshold"]
+    taiex_regime = fetch_taiex_regime()
+    effective_buy_th = max(buy_th, 50) if taiex_regime == "neutral" else buy_th
+
+    results = {}
     for symbol in mgr.state.get("stocks", []):
         df = fetch_signal_data(symbol)
         if df is None:
@@ -54,23 +63,39 @@ def _compute_sector_regime(sector_id: str):
             layers=layers, sector_id=sector_id,
         )
 
+        bs = round(float(signal.buy_score), 1)
+        ss = round(float(signal.sell_score), 1)
+
         modifier = signal.layer_modifiers[0] if signal.layer_modifiers else None
         details = _sanitize(modifier.details) if modifier else {}
         results[symbol] = {
             "name": mgr.stocks.get(symbol, symbol),
             "price": round(float(df['close'].iloc[-1]), 2),
             "regime": signal.regime or "未知",
-            "buy_score": round(float(signal.buy_score), 1),
-            "sell_score": round(float(signal.sell_score), 1),
+            "buy_score": bs,
+            "sell_score": ss,
             "raw_buy_score": round(float(signal.raw_buy_score), 1),
             "raw_sell_score": round(float(signal.raw_sell_score), 1),
             "direction": signal.direction,
             "signal_level": signal.signal_level,
             "details": details,
             "reason": modifier.reason if modifier else "",
+            # ── 健康狀況：離觸發還差多少 ──
+            "buy_threshold": effective_buy_th,           # 實際使用的買入門檻（含 F3 調整）
+            "sell_threshold": sell_th,                   # 賣出門檻
+            "buy_gap": round(effective_buy_th - bs, 1),  # 正數=還差幾分、負數=已過門檻
+            "sell_gap": round(sell_th - ss, 1),
+            "taiex_regime": taiex_regime,                # 提示 F3 是否激活
         }
 
-    return {"sector_id": sector_id, "stocks": results}
+    return {
+        "sector_id": sector_id,
+        "stocks": results,
+        # sector 層 metadata，前端不用每檔重複算
+        "buy_threshold": effective_buy_th,
+        "sell_threshold": sell_th,
+        "taiex_regime": taiex_regime,
+    }
 
 
 # ── 1. 集合查詢 ───────────────────────────────────────────────────────

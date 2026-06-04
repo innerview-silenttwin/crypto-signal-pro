@@ -2301,6 +2301,7 @@
                             </div>
                         </div>
                         ${conditionsHtml}
+                        ${triggerDistanceHtml}
                         ${tsBarHTML('技術買分', ts.tech_buy_score, ts.buy_threshold, null, null,
                             '買入需同時滿足三條件：①技術買分≥門檻 ②綜合分≥50 ③信號方向=BUY。三者缺一不會買進。')}
                         ${tsBarHTML('技術賣分', ts.tech_sell_score, ts.sell_threshold, null, null,
