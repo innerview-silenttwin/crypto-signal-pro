@@ -2000,6 +2000,13 @@
                 btns.forEach(btn => btn.addEventListener('click', function () { applyTheme(this.getAttribute('data-theme-value')); }));
             })();
 
+            // 2026-06-04：暴露給下一個 <script> (doSearch IIFE) 用 — 兩個 IIFE 不同 scope
+            // 用 window.csp 命名空間避免污染全域
+            window.csp = window.csp || {};
+            window.csp.refreshHistory = refreshHistory;
+            window.csp.autoSwitchSectorForSymbol = autoSwitchSectorForSymbol;
+            window.csp.resetHistoryPage = () => { historyPage = 1; };
+
             init();
         })();
     </script>
@@ -2389,19 +2396,21 @@
 
                     lastSymbol = sym;
 
-                    // 2026-06-04 v3：history filter 立刻跑（不等任何 await）；
+                    // 2026-06-04 v4：history filter 立刻跑（不等任何 await）；
                     // sector switch 與 stock-analysis 平行 background 跑
+                    // 注意：refreshHistory / autoSwitchSectorForSymbol 在另一個 <script> IIFE，
+                    // 必須走 window.csp.* 命名空間（IIFE 1 結尾 export 給我們用）。
                     const code = sym.replace(/\.(TW|TWO)$/, '');
                     const filterInput = document.getElementById('filter-symbol');
                     if (filterInput) filterInput.value = code;
-                    historyPage = 1;
-                    refreshHistory();  // ← 立刻打 history endpoint，用當前 sector
-
-                    // background：如果該股屬於別的 sector，切過去（會再 refresh history 一次）
-                    autoSwitchSectorForSymbol(sym).then(() => {
-                        if (sym !== lastSymbol) return;
-                        // switchToSector 已 refresh history；不需重複呼叫
-                    }).catch(e => console.warn('sector auto-switch failed:', e));
+                    if (window.csp && window.csp.refreshHistory) {
+                        window.csp.resetHistoryPage();
+                        window.csp.refreshHistory();  // ← 立刻打 history endpoint，用當前 sector
+                        // background：如果該股屬於別的 sector，切過去（switchToSector 內部會再 refresh）
+                        window.csp.autoSwitchSectorForSymbol(sym).then(() => {
+                            if (sym !== lastSymbol) return;
+                        }).catch(e => console.warn('sector auto-switch failed:', e));
+                    }
 
                     // 跨頁同步：寫 csp-last-symbol，讓主頁/超選頁 storage event listener 接收
                     try {
