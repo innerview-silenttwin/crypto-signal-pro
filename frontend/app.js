@@ -457,14 +457,35 @@ function renderScreenerPresence(symbol) {
 
 // 在超選各類股區塊內，把當前股票那一列反白
 function highlightCurrentInScreener(symbol) {
-    const container = document.getElementById('screener-categories');
-    if (!container) return;
-    // 清除前一輪的 highlight
-    container.querySelectorAll('.screener-stock-row.screener-current').forEach(r => {
-        r.classList.remove('screener-current');
+    // 2026-06-04：同時掃兩個 container — 五大精選 + 主動ETF 排行
+    // 都用 .screener-stock-row class，highlight 邏輯一致
+    const containers = [
+        document.getElementById('screener-categories'),
+        document.getElementById('screener-active-etf'),
+    ].filter(Boolean);
+    if (containers.length === 0) return;
+
+    // 清除所有 container 內前一輪的 highlight
+    containers.forEach(container => {
+        container.querySelectorAll('.screener-stock-row.screener-current').forEach(r => {
+            r.classList.remove('screener-current');
+        });
     });
     if (currentMarket !== 'stock' || !symbol) return;
 
+    // 主邏輯走 screener-categories（含 cat-card 折疊處理）；
+    // 主動ETF 一律加 highlight class（無折疊邏輯，更簡單）
+    const activeEtfContainer = document.getElementById('screener-active-etf');
+    if (activeEtfContainer) {
+        activeEtfContainer.querySelectorAll('.screener-stock-row').forEach(row => {
+            if (row.dataset.symbol === symbol) {
+                row.classList.add('screener-current');
+            }
+        });
+    }
+
+    const container = document.getElementById('screener-categories');
+    if (!container) return;
     container.querySelectorAll('.screener-cat-card').forEach(card => {
         const rows = card.querySelectorAll('.screener-stock-row');
         let foundIdx = -1;
@@ -2198,6 +2219,11 @@ function renderActiveEtfRanking(data) {
             if (window.changeSymbol) window.changeSymbol(symbol, 'stock');
         });
     });
+
+    // 2026-06-04：渲染完後立刻同步 highlight（不然剛切過來的當前股不會反白）
+    if (typeof currentSymbol !== 'undefined' && currentSymbol) {
+        highlightCurrentInScreener(currentSymbol);
+    }
 
     // 展開 / 收起
     const expandBtnEl = document.getElementById('aetf-expand-btn');

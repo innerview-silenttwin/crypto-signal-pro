@@ -2384,7 +2384,21 @@
                     const res = await fetch('/api/stock-analysis?symbol=' + encodeURIComponent(sym));
                     if (!res.ok) throw new Error('HTTP ' + res.status);
                     const data = await res.json();
-                    if (sym === lastSymbol) renderResult(data, sym);
+                    if (sym === lastSymbol) {
+                        renderResult(data, sym);
+                        // 2026-06-04：順手把該股填進交易歷史篩選 + 切到對應產業 + refresh
+                        // 讓用戶查分數時直接看到該股的歷史交易紀錄
+                        try {
+                            const code = sym.replace(/\.(TW|TWO)$/, '');
+                            const filterInput = document.getElementById('filter-symbol');
+                            if (filterInput) filterInput.value = code;
+                            await autoSwitchSectorForSymbol(sym);
+                            historyPage = 1;
+                            refreshHistory();
+                        } catch (e) {
+                            console.warn('history filter sync failed:', e);
+                        }
+                    }
                 } catch (e) {
                     document.getElementById('arc-title').textContent = '查詢失敗';
                     document.getElementById('arc-subtitle').textContent = e.message;

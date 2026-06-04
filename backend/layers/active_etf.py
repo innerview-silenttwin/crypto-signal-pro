@@ -561,20 +561,44 @@ def get_active_etf_ranking() -> dict:
             })
         stocks.sort(key=lambda x: -x["score"])
 
-        # 完全被剔除（昨日有、今日沒有任何 ETF 持有）
+        # 完全被剔除（昨日有、今日沒有任何 ETF 持有）— 鎖內只收集 pending（不查 TWSE）
+        removed_pending: list = []
         if has_prev:
             today_sids = set(_scores_cache.keys())
             for sid, prev_etfs in prev_holders_snapshot.items():
                 if sid in today_sids or not prev_etfs:
                     continue
-                removed_stocks.append({
-                    "symbol": sid,
-                    "name": _names_cache.get(sid, sid),
-                    "removed_by": sorted(prev_etfs, key=lambda c: _ETF_ORDER.get(c, 999)),
-                })
+                removed_pending.append((sid, prev_etfs))
 
         updated_at = str(_cache_date) if _cache_date else ""
         is_stale = _cache_date is not None and _cache_date < date.today()
+
+    # ── 鎖外：被剔除股的中文名 fallback ──
+    # 今日 fetch 不含這些股，_names_cache 沒有它們。從 TWSE 公開的 P/E 資料補。
+    # 移出鎖避免 fetch_twse_pe_all I/O 持鎖卡住其他 thread。
+    if removed_pending:
+        twse_names: dict = {}
+        try:
+            from layers.fundamental import fetch_twse_pe_all
+            all_pe = fetch_twse_pe_all() or {}
+            twse_names = {code: info.get("name", "") for code, info in all_pe.items()}
+        except Exception as e:
+            # log 出來避免 silently 掉回 sid 顯示（用戶看到「2548 2548」誤以為系統壞）
+            logger.warning(
+                "[active_etf] fetch_twse_pe_all failed, removed stocks 中文名 fallback "
+                "to symbol code: %s", e.__class__.__name__,
+            )
+
+        # 鎖外讀 _names_cache 用 _cache_lock 短鎖即可；這邊 prev_holders_snapshot 已是 copy
+        for sid, prev_etfs in removed_pending:
+            with _cache_lock:
+                cached_name = _names_cache.get(sid)
+            name = cached_name or twse_names.get(sid) or sid
+            removed_stocks.append({
+                "symbol": sid,
+                "name": name,
+                "removed_by": sorted(prev_etfs, key=lambda c: _ETF_ORDER.get(c, 999)),
+            })
 
     # 計算進榜天數
     today = str(date.today())
