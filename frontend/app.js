@@ -3061,6 +3061,28 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => window.changeSymbol(pendingSymbol, pendingMarket), 300);
     }
 
+    // 2026-06-04：跨頁同步 — sector_trading.html 在別的 tab 搜了某股，
+    // 主頁/超選頁這邊（同個 origin）storage event 會接到，自動同步切換
+    window.addEventListener('storage', (e) => {
+        if (e.key === 'csp-last-symbol' && e.newValue && e.newValue !== currentSymbol) {
+            const mkt = localStorage.getItem('csp-last-market') || 'stock';
+            if (window.changeSymbol) window.changeSymbol(e.newValue, mkt);
+        }
+    });
+
+    // 同 tab 內切回主頁時也檢查 csp-last-symbol 對不對
+    // （storage event 不會在寫入的同 tab fire，所以需要這層補位）
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) return;
+        try {
+            const sym = localStorage.getItem('csp-last-symbol');
+            const mkt = localStorage.getItem('csp-last-market') || 'stock';
+            if (sym && sym !== currentSymbol && window.changeSymbol) {
+                window.changeSymbol(sym, mkt);
+            }
+        } catch (_) {}
+    });
+
     // --- 跑馬燈點擊 → 切換到該標的 ---
     const tickerStrip = document.getElementById('ticker-content');
     if (tickerStrip) {

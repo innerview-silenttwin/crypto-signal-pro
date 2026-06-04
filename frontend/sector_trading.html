@@ -2381,24 +2381,30 @@
                     }
 
                     lastSymbol = sym;
+
+                    // 2026-06-04 v2：history filter 跟 stock-analysis 平行跑（不再等 analysis 才更新歷史）
+                    // 用戶體感：搜尋按下後，歷史列表幾乎立刻變成該股
+                    const historyPromise = (async () => {
+                        const code = sym.replace(/\.(TW|TWO)$/, '');
+                        const filterInput = document.getElementById('filter-symbol');
+                        if (filterInput) filterInput.value = code;
+                        await autoSwitchSectorForSymbol(sym);
+                        if (sym !== lastSymbol) return;  // 切走了就放棄
+                        historyPage = 1;
+                        refreshHistory();
+                    })().catch(e => console.warn('history filter sync failed:', e));
+
+                    // 跨頁同步：寫進 localStorage，讓主頁/超選頁的 storage event listener 接收
+                    try {
+                        localStorage.setItem('csp-last-symbol', sym);
+                        localStorage.setItem('csp-last-market', 'stock');
+                    } catch (_) { /* 隱私模式忽略 */ }
+
                     const res = await fetch('/api/stock-analysis?symbol=' + encodeURIComponent(sym));
                     if (!res.ok) throw new Error('HTTP ' + res.status);
                     const data = await res.json();
-                    if (sym === lastSymbol) {
-                        renderResult(data, sym);
-                        // 2026-06-04：順手把該股填進交易歷史篩選 + 切到對應產業 + refresh
-                        // 讓用戶查分數時直接看到該股的歷史交易紀錄
-                        try {
-                            const code = sym.replace(/\.(TW|TWO)$/, '');
-                            const filterInput = document.getElementById('filter-symbol');
-                            if (filterInput) filterInput.value = code;
-                            await autoSwitchSectorForSymbol(sym);
-                            historyPage = 1;
-                            refreshHistory();
-                        } catch (e) {
-                            console.warn('history filter sync failed:', e);
-                        }
-                    }
+                    if (sym === lastSymbol) renderResult(data, sym);
+                    await historyPromise;
                 } catch (e) {
                     document.getElementById('arc-title').textContent = '查詢失敗';
                     document.getElementById('arc-subtitle').textContent = e.message;
