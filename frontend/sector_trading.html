@@ -1186,12 +1186,19 @@
                 document.getElementById('btn-toggle-sector').onclick = toggleSector;
                 document.getElementById('btn-prev').onclick = () => { historyPage = Math.max(1, historyPage - 1); refreshHistory(); };
                 document.getElementById('btn-next').onclick = () => { historyPage++; refreshHistory(); };
-                // 篩選按鈕：若 filter-symbol 有值就先嘗試切到對應產業 tab，再刷新
+                // 篩選按鈕：若 filter-symbol 有值就委派給 doSearch（含查詢分數 + sector 切 +
+                // history refresh + 跨頁同步）；沒值則純 refresh 歷史。
+                // 2026-06-04 v3：解決「任一處搜尋三處都跟著動」需求
                 const triggerFilter = async () => {
                     const sym = document.getElementById('filter-symbol').value.trim();
-                    if (sym) await autoSwitchSectorForSymbol(sym);
-                    historyPage = 1;
-                    refreshHistory();
+                    if (sym) {
+                        const searchInput = document.getElementById('stock-search-input');
+                        if (searchInput) searchInput.value = sym;
+                        doSearch();  // doSearch 內含 refresh history + sector switch + localStorage 同步
+                    } else {
+                        historyPage = 1;
+                        refreshHistory();
+                    }
                 };
                 document.getElementById('btn-filter').onclick = triggerFilter;
                 document.getElementById('btn-filter-clear').onclick = () => {
@@ -2382,19 +2389,21 @@
 
                     lastSymbol = sym;
 
-                    // 2026-06-04 v2：history filter 跟 stock-analysis 平行跑（不再等 analysis 才更新歷史）
-                    // 用戶體感：搜尋按下後，歷史列表幾乎立刻變成該股
-                    const historyPromise = (async () => {
-                        const code = sym.replace(/\.(TW|TWO)$/, '');
-                        const filterInput = document.getElementById('filter-symbol');
-                        if (filterInput) filterInput.value = code;
-                        await autoSwitchSectorForSymbol(sym);
-                        if (sym !== lastSymbol) return;  // 切走了就放棄
-                        historyPage = 1;
-                        refreshHistory();
-                    })().catch(e => console.warn('history filter sync failed:', e));
+                    // 2026-06-04 v3：history filter 立刻跑（不等任何 await）；
+                    // sector switch 與 stock-analysis 平行 background 跑
+                    const code = sym.replace(/\.(TW|TWO)$/, '');
+                    const filterInput = document.getElementById('filter-symbol');
+                    if (filterInput) filterInput.value = code;
+                    historyPage = 1;
+                    refreshHistory();  // ← 立刻打 history endpoint，用當前 sector
 
-                    // 跨頁同步：寫進 localStorage，讓主頁/超選頁的 storage event listener 接收
+                    // background：如果該股屬於別的 sector，切過去（會再 refresh history 一次）
+                    autoSwitchSectorForSymbol(sym).then(() => {
+                        if (sym !== lastSymbol) return;
+                        // switchToSector 已 refresh history；不需重複呼叫
+                    }).catch(e => console.warn('sector auto-switch failed:', e));
+
+                    // 跨頁同步：寫 csp-last-symbol，讓主頁/超選頁 storage event listener 接收
                     try {
                         localStorage.setItem('csp-last-symbol', sym);
                         localStorage.setItem('csp-last-market', 'stock');
@@ -2404,7 +2413,6 @@
                     if (!res.ok) throw new Error('HTTP ' + res.status);
                     const data = await res.json();
                     if (sym === lastSymbol) renderResult(data, sym);
-                    await historyPromise;
                 } catch (e) {
                     document.getElementById('arc-title').textContent = '查詢失敗';
                     document.getElementById('arc-subtitle').textContent = e.message;
