@@ -381,10 +381,9 @@ async def daily_institutional_refresh():
             print("[daily-inst-refresh] Weekend, skipping")
             continue
 
-        try:
-            await asyncio.to_thread(_run_institutional_refresh)
-        except Exception as e:
-            print(f"[daily-inst-refresh] error: {e}")
+        # 2026-06-04：Telegram 發訊統一由 launchd /api/internal/trigger-daily-inst-refresh
+        # 觸發（系統級 cron，wall-clock 對齊）。本 asyncio 迴圈拔掉發訊避免 drift 後重複。
+        print("[daily-inst-refresh] Skipped (handled by launchd /api/internal/trigger-daily-inst-refresh)")
 
 
 def _run_institutional_refresh():
@@ -1590,6 +1589,22 @@ async def trigger_evening_summary():
     try:
         await asyncio.to_thread(_send_evening_summary_telegram)
         return {"status": "ok", "triggered_by": "launchd", "now": datetime.now(tw_tz).isoformat()}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
+@app.post("/api/internal/trigger-daily-inst-refresh")
+async def trigger_daily_inst_refresh():
+    """供 launchd 在 18:00 (台北) 觸發。每交易日 TWSE 公佈當日法人後抓資料 + 發 Telegram 報告。
+    週末/假日由 endpoint 內部 _run_institutional_refresh 自行 skip。"""
+    import pytz
+    tw_tz = pytz.timezone("Asia/Taipei")
+    now = datetime.now(tw_tz)
+    if now.weekday() >= 5:
+        return {"skipped": "weekend", "now": now.isoformat()}
+    try:
+        await asyncio.to_thread(_run_institutional_refresh)
+        return {"status": "ok", "triggered_by": "launchd", "now": now.isoformat()}
     except Exception as e:
         return {"status": "error", "error": str(e)}
 

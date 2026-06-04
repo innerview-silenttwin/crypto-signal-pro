@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+每日 18:00 (台北) 觸發三大法人 + 基本面 refresh + Telegram 報告。
+
+TWSE 通常 17:00 後公佈當日法人資料；18:00 抓最新讓晚上可看當天數據。
+
+部署：
+  cp scripts/launchd/local.crypto-daily-inst-trigger.plist ~/Library/LaunchAgents/
+  launchctl unload ~/Library/LaunchAgents/local.crypto-daily-inst-trigger.plist 2>/dev/null
+  launchctl load ~/Library/LaunchAgents/local.crypto-daily-inst-trigger.plist
+
+設計：對應 backend/main.py:daily_institutional_refresh 已拔掉的 asyncio
+telegram 發訊（避免 wall-clock drift 後重複發）。
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>local.crypto-daily-inst-trigger</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/curl</string>
+        <string>-s</string>
+        <string>-X</string>
+        <string>POST</string>
+        <string>http://localhost:8000/api/internal/trigger-daily-inst-refresh</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>18</integer>
+        <key>Minute</key>
+        <integer>0</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/kentsai/Documents/plate/crypto-signal-pro/logs/launchd-daily-inst.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/kentsai/Documents/plate/crypto-signal-pro/logs/launchd-daily-inst-error.log</string>
+</dict>
+</plist>
