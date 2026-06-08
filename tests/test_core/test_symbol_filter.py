@@ -66,25 +66,40 @@ def test_should_pass_unlisted_symbol_always_true():
 
 
 def test_2382_in_filter_dict_with_a_volume():
-    """2382 廣達：回測 +67.3pp + MDD -6pp，必須在字典裡。"""
-    assert SYMBOL_BUY_FILTER.get("2382") == "A_volume"
+    """2382.TW 廣達：回測 +67.3pp + MDD -6pp，必須在字典裡。"""
+    assert SYMBOL_BUY_FILTER.get("2382.TW") == "A_volume"
+
+
+def test_2454_in_filter_dict_with_a_volume():
+    """2454.TW 聯發科：回測 +42.4pp + MDD -10.9pp，必須在字典裡。"""
+    assert SYMBOL_BUY_FILTER.get("2454.TW") == "A_volume"
 
 
 def test_2881_in_filter_dict_with_a_volume():
-    """2881 富邦金：回測 +34pp + MDD -14pp，必須在字典裡。"""
-    assert SYMBOL_BUY_FILTER.get("2881") == "A_volume"
+    """2881.TW 富邦金：回測 +34pp + MDD -14pp，必須在字典裡。"""
+    assert SYMBOL_BUY_FILTER.get("2881.TW") == "A_volume"
+
+
+def test_dict_keys_use_production_format():
+    """所有 key 必須帶 .TW 後綴（與 SectorTradingManager.state["stocks"] 一致）。
+
+    H1 教訓：21d3633 + bcd582b 用 "2382" 而 production 是 "2382.TW"，
+    .get() 永遠 miss → filter 是 dead code。這個 test 守住格式。
+    """
+    for key in SYMBOL_BUY_FILTER:
+        assert key.endswith(".TW"), f"{key!r} 缺 .TW 後綴；prod state['stocks'] 帶後綴"
 
 
 def test_2382_volume_filter_blocks_low_volume():
     df = _make_df([1000.0] * 20 + [800.0])  # ratio=0.8
-    ok, detail = should_pass_symbol_filter("2382", df)
+    ok, detail = should_pass_symbol_filter("2382.TW", df)
     assert ok is False
     assert "A_volume擋" in detail
 
 
 def test_2881_volume_filter_passes_high_volume():
     df = _make_df([1000.0] * 20 + [2000.0])  # ratio=2.0
-    ok, detail = should_pass_symbol_filter("2881", df)
+    ok, detail = should_pass_symbol_filter("2881.TW", df)
     assert ok is True
     assert "A_volume過" in detail
 
@@ -101,10 +116,10 @@ def test_all_listed_symbols_recognized():
 # ── 字典反向守門：曾考慮但證據不足的 symbol 必須不在 ──
 
 @pytest.mark.parametrize("sym,reason", [
-    ("2317", "MDD 改善型；return 持平不符合 ≥30pp 標準"),
-    ("2882", "return +0.5pp、MDD -5pp，證據不足"),
-    ("2891", "A_volume 報酬比 baseline 差 -10pp"),
-    ("2383", "baseline 是最佳，任何 filter 都拖累"),
+    ("2317.TW", "MDD 改善型；return 持平不符合 ≥30pp 標準"),
+    ("2882.TW", "return +0.5pp、MDD -5pp，證據不足"),
+    ("2891.TW", "A_volume 報酬比 baseline 差 -10pp"),
+    ("2383.TW", "baseline 是最佳，任何 filter 都拖累"),
 ])
 def test_excluded_symbols_not_in_filter_dict(sym, reason):
     assert sym not in SYMBOL_BUY_FILTER, f"{sym} 不該列入：{reason}"
@@ -151,6 +166,11 @@ def _simulate_entry_decision(standard_buy, pullback_buy, rebound_buy, filter_pas
     (True,  True,  False, False, "BUY",  0.7, "pullback"),
     # M1 核心：filter 擋 standard，rebound 退路在 → 降級走 rebound 70%
     (True,  False, True,  False, "BUY",  0.7, "rebound"),
+    # 3-way overlap (M2)：standard + pullback + rebound 全 True，filter 擋
+    # → 降級走 pullback（pullback 優先於 rebound，沿用 elif 順序）
+    (True,  True,  True,  False, "BUY",  0.7, "pullback"),
+    # 3-way overlap：filter 過 → 走 standard full size
+    (True,  True,  True,  True,  "BUY",  1.0, "standard"),
     # filter 過 + 同時有 pullback → 走 standard full size（原行為，不變）
     (True,  True,  False, True,  "BUY",  1.0, "standard"),
     # 純 pullback (standard 不成立) → filter 不套用

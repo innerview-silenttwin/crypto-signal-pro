@@ -491,14 +491,16 @@ def compute_composite_score(symbol: str, sig: dict) -> Optional[float]:
 # 注意：回測 baseline 用 BUY_TH=40 + 無 composite + 無 F3 + 無 pullback；
 # production 已有 composite≥50 + effective_buy_th=50 等 gate，實際改善幅度
 # 可能小於回測數字（為上限）。後續 Phase 2 會用 production-equivalent baseline 重跑。
+# Key 必須與 production state["stocks"] 一致（帶 .TW 後綴），否則 .get() 永遠 miss → 死碼。
 SYMBOL_BUY_FILTER: Dict[str, str] = {
-    "2382": "A_volume",   # 廣達 baseline +78.7% → A_volume +146.1% (+67.3pp)，MDD 41→35
-    "2881": "A_volume",   # 富邦金 baseline +5.1% → A_volume +39.1% (+34.0pp)，MDD 30→16
+    "2382.TW": "A_volume",   # 廣達 baseline +78.7% → A_volume +146.1% (+67.3pp)，MDD 41→35
+    "2454.TW": "A_volume",   # 聯發科 baseline +11.0% → A_volume +53.4% (+42.4pp)，MDD 49→38
+    "2881.TW": "A_volume",   # 富邦金 baseline +5.1% → A_volume +39.1% (+34.0pp)，MDD 30→16
 }
 # 觀察名單（證據邊界，暫不列入；等 Phase 2 重跑再決定）：
-#   2317 鴻海：return +118→+118 持平，但 MDD 33→20 (-13pp)。屬「MDD 改善」型，需新標準
-#   2882 國泰金：return +0.5pp、MDD -5pp，太弱
-#   2891 中信金：A_volume 報酬比 baseline 差 -10pp，雖 MDD -12pp 但顯然 baseline 更優
+#   2317.TW 鴻海：return +118→+118 持平，但 MDD 33→20 (-13pp)。屬「MDD 改善」型，需新標準
+#   2882.TW 國泰金：return +0.5pp、MDD -5pp，太弱
+#   2891.TW 中信金：A_volume 報酬比 baseline 差 -10pp，雖 MDD -12pp 但顯然 baseline 更優
 
 
 def _filter_a_volume_check(df: pd.DataFrame, ratio_th: float = 1.5) -> tuple[bool, float]:
