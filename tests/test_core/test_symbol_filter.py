@@ -133,7 +133,12 @@ def test_excluded_symbols_not_in_filter_dict(sym, reason):
 # 把 pullback_buy=True 的 70% 倉位退路也吞掉。
 
 def _simulate_entry_decision(standard_buy, pullback_buy, rebound_buy, filter_pass):
-    """複刻 sector_auto_trader.py process_sector 的 BUY-side decision flow。
+    """複刻 sector_auto_trader.py process_sector 的 BUY-side decision flow（行 928–969）。
+
+    **故意省略**：composite < 50 gate（prod 行 935）和 _is_limit_up short-circuit（行 931）。
+    兩者在 prod 都跑在 filter+demote 邏輯**之前**，所以對本檔測試行為等價。
+    若未來 process_sector 把這兩 gate 改到 filter **之後**，這個 sim 會 silently 失準 —
+    請同步更新此函式（不然 M1 demote 路徑可能被 composite/limit-up 蓋掉而不知）。
 
     回傳：(action, ratio_multiplier, path)
       action: "BUY" or "SKIP"

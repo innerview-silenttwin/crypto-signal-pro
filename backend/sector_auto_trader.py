@@ -495,6 +495,7 @@ def compute_composite_score(symbol: str, sig: dict) -> Optional[float]:
 SYMBOL_BUY_FILTER: Dict[str, str] = {
     "2382.TW": "A_volume",   # 廣達 baseline +78.7% → A_volume +146.1% (+67.3pp)，MDD 41→35
     "2454.TW": "A_volume",   # 聯發科 baseline +11.0% → A_volume +53.4% (+42.4pp)，MDD 49→38
+                             # 證據單一 baseline，Phase 2 production-equivalent rerun 後再二次確認
     "2881.TW": "A_volume",   # 富邦金 baseline +5.1% → A_volume +39.1% (+34.0pp)，MDD 30→16
 }
 # 觀察名單（證據邊界，暫不列入；等 Phase 2 重跑再決定）：
