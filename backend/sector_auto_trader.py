@@ -487,14 +487,18 @@ def compute_composite_score(symbol: str, sig: dict) -> Optional[float]:
 
 # ── Per-symbol BUY filter（5.5 年回測證據明確的調整）──
 # 詳見 backend/backtest_results/filter_backtest_20260608_230729.md
-# 收錄條件：filter 變體 vs baseline 報酬差距 ≥ 30pp 才列入，避免過擬合
+# 收錄條件：A_volume vs baseline 報酬改善 ≥ 30pp，且 MDD 同向不惡化。
+# 注意：回測 baseline 用 BUY_TH=40 + 無 composite + 無 F3 + 無 pullback；
+# production 已有 composite≥50 + effective_buy_th=50 等 gate，實際改善幅度
+# 可能小於回測數字（為上限）。後續 Phase 2 會用 production-equivalent baseline 重跑。
 SYMBOL_BUY_FILTER: Dict[str, str] = {
-    "2317": "A_volume",   # 鴻海 baseline +73% → A_volume +118% (+45pp)
-    "2382": "A_volume",   # 廣達 baseline +98% → A_volume +146% (+48pp)
-    "2881": "A_volume",   # 富邦金 baseline +5% → A_volume +39% (+34pp)
-    "2882": "A_volume",   # 國泰金 baseline +8% → A_volume +37% (+29pp)
-    "2891": "A_volume",   # 中信金 (+30pp+)
+    "2382": "A_volume",   # 廣達 baseline +78.7% → A_volume +146.1% (+67.3pp)，MDD 41→35
+    "2881": "A_volume",   # 富邦金 baseline +5.1% → A_volume +39.1% (+34.0pp)，MDD 30→16
 }
+# 觀察名單（證據邊界，暫不列入；等 Phase 2 重跑再決定）：
+#   2317 鴻海：return +118→+118 持平，但 MDD 33→20 (-13pp)。屬「MDD 改善」型，需新標準
+#   2882 國泰金：return +0.5pp、MDD -5pp，太弱
+#   2891 中信金：A_volume 報酬比 baseline 差 -10pp，雖 MDD -12pp 但顯然 baseline 更優
 
 
 def _filter_a_volume_check(df: pd.DataFrame, ratio_th: float = 1.5) -> tuple[bool, float]:
@@ -936,13 +940,19 @@ def process_sector(manager: SectorTradingManager):
                     print(f"  [{manager.sector_name}] {symbol} {src}"
                           f"但綜合分數不足({composite:.0f}<50)，跳過買入")
                     continue
-                # Per-symbol filter：只擋 standard_buy 路徑；pullback / rebound 是
-                # 籌碼面驅動的特殊進場（已自帶 70% 倉位折扣），保留 bypass。
-                if standard_buy and not (pullback_buy or rebound_buy):
+                # Per-symbol filter 只針對 standard_buy 路徑。被擋下時若同時有
+                # pullback/rebound 等籌碼面退路（已自帶 70% 倉位折扣），降級走退路；
+                # 沒退路才 continue。避免「最有把握的 overlap case 反被全擋」的 bug。
+                if standard_buy:
                     sf_ok, sf_detail = should_pass_symbol_filter(symbol, df)
                     if not sf_ok:
-                        print(f"  [{manager.sector_name}] {symbol} {sf_detail}，跳過買入")
-                        continue
+                        if pullback_buy or rebound_buy:
+                            print(f"  [{manager.sector_name}] {symbol} {sf_detail}，"
+                                  f"standard 路徑跳過，落 pullback/rebound 退路")
+                            standard_buy = False  # 走下方 pullback / rebound 70% 倉位分支
+                        else:
+                            print(f"  [{manager.sector_name}] {symbol} {sf_detail}，跳過買入")
+                            continue
                 if pullback_buy and not standard_buy:
                     # 強勢拉回加碼點：使用較小倉位（70%）防護單次失誤
                     desc = (f"強勢拉回加碼點 (原買分{pb_detail['raw_buy_score']:.0f}, "
