@@ -485,6 +485,52 @@ def compute_composite_score(symbol: str, sig: dict) -> Optional[float]:
     return round(composite, 1)
 
 
+# ── Per-symbol BUY filter（5.5 年回測證據明確的調整）──
+# 詳見 backend/backtest_results/filter_backtest_20260608_230729.md
+# 收錄條件：filter 變體 vs baseline 報酬差距 ≥ 30pp 才列入，避免過擬合
+SYMBOL_BUY_FILTER: Dict[str, str] = {
+    "2317": "A_volume",   # 鴻海 baseline +73% → A_volume +118% (+45pp)
+    "2382": "A_volume",   # 廣達 baseline +98% → A_volume +146% (+48pp)
+    "2881": "A_volume",   # 富邦金 baseline +5% → A_volume +39% (+34pp)
+    "2882": "A_volume",   # 國泰金 baseline +8% → A_volume +37% (+29pp)
+    "2891": "A_volume",   # 中信金 (+30pp+)
+}
+
+
+def _filter_a_volume_check(df: pd.DataFrame, ratio_th: float = 1.5) -> tuple[bool, float]:
+    """A 量能 filter：當日 volume / 前 20 日均量 >= ratio_th。
+
+    回測同 backend/run_filter_backtest.py filter_volume(idx, df)。
+    資料不足（< 21 根 K）或均量 = 0 → 不阻擋（return True）以免新上市股被吃掉。
+    """
+    if len(df) < 21:
+        return True, 0.0
+    vol = float(df["volume"].iloc[-1])
+    avg20 = float(df["volume"].iloc[-21:-1].mean())
+    if avg20 <= 0:
+        return True, 0.0
+    vol_ratio = vol / avg20
+    return vol_ratio >= ratio_th, vol_ratio
+
+
+def should_pass_symbol_filter(symbol: str, df: pd.DataFrame) -> tuple[bool, str]:
+    """Per-symbol BUY entry filter。未列入 SYMBOL_BUY_FILTER 的 symbol 一律通過。
+
+    Returns:
+        (是否通過, 顯示用描述). 描述空字串表示 symbol 未受 filter 約束。
+    """
+    name = SYMBOL_BUY_FILTER.get(symbol)
+    if not name:
+        return True, ""
+    if name == "A_volume":
+        ok, vol_ratio = _filter_a_volume_check(df)
+        if ok:
+            return True, f"A_volume過(vol_ratio={vol_ratio:.2f})"
+        return False, f"A_volume擋(vol_ratio={vol_ratio:.2f}<1.5)"
+    # 未知 filter 名稱 → 不阻擋（避免設定錯字把所有交易擋掉）
+    return True, f"unknown_filter:{name}"
+
+
 # ── 強勢拉回偵測（高檔拉回加碼點）──
 
 def is_strong_pullback(sig: dict) -> tuple[bool, dict]:
@@ -890,6 +936,13 @@ def process_sector(manager: SectorTradingManager):
                     print(f"  [{manager.sector_name}] {symbol} {src}"
                           f"但綜合分數不足({composite:.0f}<50)，跳過買入")
                     continue
+                # Per-symbol filter：只擋 standard_buy 路徑；pullback / rebound 是
+                # 籌碼面驅動的特殊進場（已自帶 70% 倉位折扣），保留 bypass。
+                if standard_buy and not (pullback_buy or rebound_buy):
+                    sf_ok, sf_detail = should_pass_symbol_filter(symbol, df)
+                    if not sf_ok:
+                        print(f"  [{manager.sector_name}] {symbol} {sf_detail}，跳過買入")
+                        continue
                 if pullback_buy and not standard_buy:
                     # 強勢拉回加碼點：使用較小倉位（70%）防護單次失誤
                     desc = (f"強勢拉回加碼點 (原買分{pb_detail['raw_buy_score']:.0f}, "
