@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+每日 08:20 (台北) 重啟 service，讓 Shioaji session 重新 login。
+
+為什麼：永豐 Shioaji token 24h 過期；常駐 daemon 跑超過 24h 後 session 被 peer
+reset 就救不回（2026-06-08 incident）。客服建議「重建 instance + 每日重登」。
+此 plist 為短期粗暴版（kill 整個 uvicorn 再起），中期改為 broker 內部 instance 重建。
+
+時段選 08:20 的理由：
+  - mini 預設 01:30 睡 → 08:00 醒
+  - 08:00 醒後 20 分給系統穩定
+  - 08:30 是 premarket cron，這次 restart 必須在它之前完成
+  - 09:00 開盤前還有 40 分 buffer
+  - 詳見 memory/project_mini_schedule.md
+
+不設 WakeFromSleep：mini 睡覺時 launchd 不喚醒它；補跑時 daily_session_restart.sh
+內 time guard 會擋下窗外（>08:50）的補跑，避免在交易時段亂 kill service。
+
+部署：
+  cp scripts/launchd/local.crypto-daily-session-restart.plist ~/Library/LaunchAgents/
+  launchctl unload ~/Library/LaunchAgents/local.crypto-daily-session-restart.plist 2>/dev/null
+  launchctl load ~/Library/LaunchAgents/local.crypto-daily-session-restart.plist
+
+驗證：launchctl list | grep daily-session-restart
+手動觸發：launchctl start local.crypto-daily-session-restart
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>local.crypto-daily-session-restart</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/kentsai/Documents/plate/crypto-signal-pro/scripts/daily_session_restart.sh</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>8</integer>
+        <key>Minute</key>
+        <integer>20</integer>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/kentsai/Documents/plate/crypto-signal-pro/logs/launchd-daily-restart.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/kentsai/Documents/plate/crypto-signal-pro/logs/launchd-daily-restart-error.log</string>
+</dict>
+</plist>
