@@ -32,11 +32,23 @@ router = APIRouter(prefix="/api/sector-trading", tags=["sector-trading"])
 # _sanitize 已抽至 api/_utils.py（A6b cleanup），下面 caller 直接用 import 的版本
 
 
-def _compute_sector_regime(sector_id: str):
-    """同步計算類股盤勢辨識；給 to_thread 用，避免阻塞 event loop。"""
+def _require_manager(sector_id: str):
+    """取 sector manager；找不到回 (None, error_dict)，否則回 (mgr, None)。
+
+    保留原行為：未知 sector_id 回 200 + {"error": ...}（非 404），前端錯誤判斷邏輯不變。
+    用法：`mgr, err = _require_manager(sid); if err: return err`
+    """
     mgr = get_manager(sector_id)
     if not mgr:
-        return {"error": f"未知的類股 ID: {sector_id}"}
+        return None, {"error": f"未知的類股 ID: {sector_id}"}
+    return mgr, None
+
+
+def _compute_sector_regime(sector_id: str):
+    """同步計算類股盤勢辨識；給 to_thread 用，避免阻塞 event loop。"""
+    mgr, err = _require_manager(sector_id)
+    if err:
+        return err
 
     strategy = mgr.get_strategy()
     layers = build_layers(strategy)
@@ -151,9 +163,9 @@ async def run_auto_trader_once():
 @router.get("/{sector_id}/status")
 async def get_sector_status(sector_id: str):
     """取得單一類股帳戶摘要"""
-    mgr = get_manager(sector_id)
-    if not mgr:
-        return {"error": f"未知的類股 ID: {sector_id}"}
+    mgr, err = _require_manager(sector_id)
+    if err:
+        return err
     # 統一取價：多來源比較日期，取最新的收盤價
     current_prices = {}
     for symbol, hold in mgr.state.get("holdings", {}).items():
@@ -167,9 +179,9 @@ async def get_sector_status(sector_id: str):
 @router.post("/{sector_id}/toggle")
 async def toggle_sector_trading(sector_id: str, active: bool = False):
     """啟動/停止單一類股自動交易"""
-    mgr = get_manager(sector_id)
-    if not mgr:
-        return {"error": f"未知的類股 ID: {sector_id}"}
+    mgr, err = _require_manager(sector_id)
+    if err:
+        return err
     is_active = mgr.toggle_active(active)
     return {"sector_id": sector_id, "is_active": is_active}
 
@@ -183,9 +195,9 @@ async def get_sector_history(sector_id: str, page: int = 1, pageSize: int = 50,
     Args:
         pnlStatus: 篩選「realized」（已實現）/「unrealized」（未實現）/「」（全部）
     """
-    mgr = get_manager(sector_id)
-    if not mgr:
-        return {"error": f"未知的類股 ID: {sector_id}"}
+    mgr, err = _require_manager(sector_id)
+    if err:
+        return err
     # 取得目前持倉的即時價格，用於計算未實現損益
     current_prices = {}
     for sym, hold in mgr.state.get("holdings", {}).items():
@@ -202,9 +214,9 @@ async def get_sector_history(sector_id: str, page: int = 1, pageSize: int = 50,
 @router.post("/{sector_id}/strategy")
 async def update_sector_strategy(sector_id: str, strategy: dict):
     """更新類股策略設定"""
-    mgr = get_manager(sector_id)
-    if not mgr:
-        return {"error": f"未知的類股 ID: {sector_id}"}
+    mgr, err = _require_manager(sector_id)
+    if err:
+        return err
     mgr.update_strategy(strategy)
     return {"success": True, "strategy": mgr.get_strategy()}
 
@@ -212,9 +224,9 @@ async def update_sector_strategy(sector_id: str, strategy: dict):
 @router.post("/{sector_id}/reset")
 async def reset_sector_account(sector_id: str):
     """重置類股帳戶（保留策略）"""
-    mgr = get_manager(sector_id)
-    if not mgr:
-        return {"error": f"未知的類股 ID: {sector_id}"}
+    mgr, err = _require_manager(sector_id)
+    if err:
+        return err
     mgr.reset_account()
     return {"success": True}
 
@@ -228,9 +240,9 @@ async def get_sector_regime(sector_id: str):
 @router.get("/{sector_id}/fundamental")
 async def get_sector_fundamental(sector_id: str):
     """取得類股各標的基本面 P/E 分析"""
-    mgr = get_manager(sector_id)
-    if not mgr:
-        return {"error": f"未知的類股 ID: {sector_id}"}
+    mgr, err = _require_manager(sector_id)
+    if err:
+        return err
 
     from layers.fundamental import fetch_twse_pe_all, get_sector_pe_stats
 

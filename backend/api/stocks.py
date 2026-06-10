@@ -36,11 +36,12 @@ async def get_futures_info(symbol: str):
 async def get_update_status():
     """回傳 crypto / tw 各自的最新更新時間。"""
     from main import last_update_timestamps, is_tw_market_open, tw_seconds_until_next
+    tw_open = is_tw_market_open()
     return {
         "crypto_updated_at": last_update_timestamps["crypto"],
         "tw_updated_at": last_update_timestamps["tw_stock"],
-        "tw_market_open": is_tw_market_open(),
-        "tw_next_fetch_in": tw_seconds_until_next() if is_tw_market_open() else None,
+        "tw_market_open": tw_open,
+        "tw_next_fetch_in": tw_seconds_until_next() if tw_open else None,
     }
 
 
