@@ -9,12 +9,11 @@
     <string>local.crypto-evening-trigger</string>
 
     <key>ProgramArguments</key>
+    <!-- 從 .env 讀 CSP_INTERNAL_KEY 帶上 X-Internal-Key header（金鑰未設時為空，endpoint fail-open） -->
     <array>
-        <string>/usr/bin/curl</string>
-        <string>-s</string>
-        <string>-X</string>
-        <string>POST</string>
-        <string>http://localhost:8000/api/internal/trigger-evening-summary</string>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>KEY="$(grep -E '^CSP_INTERNAL_KEY=' "$HOME/Documents/plate/crypto-signal-pro/.env" 2>/dev/null | head -1 | cut -d= -f2-)"; exec /usr/bin/curl -s -X POST -H "X-Internal-Key: $KEY" http://localhost:8000/api/internal/trigger-evening-summary</string>
     </array>
 
     <key>StartCalendarInterval</key>

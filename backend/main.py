@@ -10,6 +10,7 @@ FastAPI 主程式 - 即時信號伺服器 (Phase 2)
 import sys
 import os
 import asyncio
+import hmac
 import json
 import logging
 import re
@@ -19,7 +20,7 @@ import time
 import pandas as pd
 import yfinance as yf
 import ccxt.async_support as ccxt_async
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Header, HTTPException, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
@@ -1564,7 +1565,32 @@ async def ping():
 # 累積 1-2h 誤差）。改用 launchd 系統 timer 從外部 POST 觸發，事件對齊 wall-clock。
 # 詳見 scripts/launchd/local.crypto-*-trigger.plist。
 
-@app.post("/api/internal/trigger-premarket-check")
+_internal_key_warned = False
+
+
+async def require_internal_key(x_internal_key: str = Header(default="")):
+    """/api/internal/* 的共用 auth：驗 X-Internal-Key header。
+
+    Why: 這些 endpoint 會觸發 Telegram 發訊 / 法人 refresh，而服務 bind 0.0.0.0:8000，
+    LAN 上任何裝置都能 POST 觸發（甚至灌假摘要）。加共享金鑰擋住外部誤觸。
+
+    相容性（避免改 A 壞 B）：未設定 CSP_INTERNAL_KEY 時 fail-open（僅 log 一次 warning），
+    確保部署新 code 不會在使用者於 .env 設好金鑰前，就把每日 08:30/18:00/21:00 排程打掛。
+    在 .env 設好金鑰並重啟 service 後即自動轉為強制驗證。
+    """
+    expected = os.environ.get("CSP_INTERNAL_KEY", "").strip()
+    if not expected:
+        global _internal_key_warned
+        if not _internal_key_warned:
+            print("[internal-auth] CSP_INTERNAL_KEY 未設定，/api/internal/* 暫不驗證（fail-open）")
+            _internal_key_warned = True
+        return
+    # 用 bytes 比對：str 版 compare_digest 僅限 ASCII，非 ASCII header 會丟 TypeError → 500。
+    if not hmac.compare_digest(x_internal_key.encode("utf-8"), expected.encode("utf-8")):
+        raise HTTPException(status_code=403, detail="invalid or missing internal key")
+
+
+@app.post("/api/internal/trigger-premarket-check", dependencies=[Depends(require_internal_key)])
 async def trigger_premarket_check():
     """供 launchd 在 08:30 (台北) 觸發。週末/假日由 endpoint 內部自行跳過。"""
     import pytz
@@ -1580,7 +1606,7 @@ async def trigger_premarket_check():
         return {"status": "error", "error": str(e)}
 
 
-@app.post("/api/internal/trigger-evening-summary")
+@app.post("/api/internal/trigger-evening-summary", dependencies=[Depends(require_internal_key)])
 async def trigger_evening_summary():
     """供 launchd 在 21:00 (台北) 觸發。週末/假日不跳過——盤後摘要含「N 日無交易」告警，
     任何時候都該發。"""
@@ -1593,7 +1619,7 @@ async def trigger_evening_summary():
         return {"status": "error", "error": str(e)}
 
 
-@app.post("/api/internal/trigger-daily-inst-refresh")
+@app.post("/api/internal/trigger-daily-inst-refresh", dependencies=[Depends(require_internal_key)])
 async def trigger_daily_inst_refresh():
     """供 launchd 在 18:00 (台北) 觸發。每交易日 TWSE 公佈當日法人後抓資料 + 發 Telegram 報告。
     週末/假日由 endpoint 內部 _run_institutional_refresh 自行 skip。"""
