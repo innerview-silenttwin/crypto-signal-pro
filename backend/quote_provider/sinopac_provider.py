@@ -22,6 +22,39 @@ _TW_TZ = pytz.timezone("Asia/Taipei")
 _KBARS_NATIVE_INTERVAL = "1m"
 
 
+# ── 異常 fallback 統計（module-level：跨 provider instance 重建仍累計）──
+# 只記「永豐異常」造成的 yfinance fallback；^指數那種常規路由不算。
+# 按台北日期歸戶、跨日自動歸零，供 evening summary (21:00) 顯示當日連線健康度。
+_fallback_lock = threading.Lock()
+_FALLBACK_REASONS = ("contract_not_found", "kbars_failed", "kbars_empty")
+_fallback_stats = {"date": None, "contract_not_found": 0, "kbars_failed": 0, "kbars_empty": 0}
+
+
+def _record_fallback(reason: str) -> None:
+    """記錄一次永豐→yfinance 的異常 fallback（reason 須為 _FALLBACK_REASONS 之一）。"""
+    today = datetime.now(_TW_TZ).strftime("%Y-%m-%d")
+    with _fallback_lock:
+        if _fallback_stats["date"] != today:
+            _fallback_stats["date"] = today
+            for r in _FALLBACK_REASONS:
+                _fallback_stats[r] = 0
+        if reason in _FALLBACK_REASONS:
+            _fallback_stats[reason] += 1
+
+
+def get_fallback_stats() -> dict:
+    """回傳當日（台北）fallback 統計快照含 total；跨日（尚無新事件）回零。"""
+    today = datetime.now(_TW_TZ).strftime("%Y-%m-%d")
+    with _fallback_lock:
+        if _fallback_stats["date"] != today:
+            counts = {r: 0 for r in _FALLBACK_REASONS}
+        else:
+            counts = {r: _fallback_stats[r] for r in _FALLBACK_REASONS}
+    counts["total"] = sum(counts.values())
+    counts["date"] = today
+    return counts
+
+
 class SinopacQuoteProvider:
     name = "sinopac"
 
@@ -72,6 +105,7 @@ class SinopacQuoteProvider:
         contract = self._resolve_contract(symbol)
         if contract is None:
             logger.warning("contract not found: %s; fallback yfinance", symbol)
+            _record_fallback("contract_not_found")
             return self._yfinance_fallback(symbol, period_days, interval)
 
         end = datetime.now(_TW_TZ).date()
@@ -96,12 +130,14 @@ class SinopacQuoteProvider:
                 "sinopac kbars(%s) failed: %s; fallback yfinance",
                 symbol, e.__class__.__name__,
             )
+            _record_fallback("kbars_failed")
             return self._yfinance_fallback(symbol, period_days, interval)
 
         df = self._kbars_to_df(kbars)
         if df is None or df.empty:
             # kbars 回空也視為失敗 → fallback yfinance
             logger.warning("sinopac kbars(%s) empty; fallback yfinance", symbol)
+            _record_fallback("kbars_empty")
             return self._yfinance_fallback(symbol, period_days, interval)
 
         # Shioaji kbars 永遠是 1m → 1d 時必須 resample

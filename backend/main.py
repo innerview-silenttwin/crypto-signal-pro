@@ -731,6 +731,24 @@ def _send_evening_summary_telegram():
     except Exception:
         pass
 
+    # ── 1b. 永豐 quote 連線健康度（當日異常 fallback 次數）──
+    # 只在 quote=sinopac 時顯示；讓使用者一眼看到「永豐今天連線是否穩」，不用 grep log。
+    try:
+        if os.environ.get("QUOTE_SOURCE", "yfinance") == "sinopac":
+            from quote_provider.sinopac_provider import get_fallback_stats
+            fb = get_fallback_stats()
+            if fb["total"] == 0:
+                lines.append("   永豐報價：今日 0 次異常 fallback ✅")
+            else:
+                lines.append(
+                    f"   ⚠️ 永豐報價今日 {fb['total']} 次異常 fallback yfinance"
+                    f"（contract {fb['contract_not_found']}"
+                    f" / kbars失敗 {fb['kbars_failed']}"
+                    f" / kbars空 {fb['kbars_empty']}）"
+                )
+    except Exception:
+        pass
+
     # ── 2. broker_state.json：今日下單 / 損益 / 在飛 / cooldown ──
     state_path = os.path.join(proj_root, "data", "broker_state.json")
     try:
