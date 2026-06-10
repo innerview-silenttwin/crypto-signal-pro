@@ -36,8 +36,8 @@ async def add_custom_stock_quick(symbol: str, name: str = ""):
         if not name:
             return {"added": False, "reason": "not_found", "symbol": symbol}
 
-    from screener import add_custom_stock, _BUILTIN_UNIVERSE
-    if symbol in _BUILTIN_UNIVERSE:
+    from screener import add_custom_stock, is_builtin
+    if is_builtin(symbol):
         return {"added": False, "reason": "builtin", "symbol": symbol, "name": name}
 
     added = add_custom_stock(symbol, name)

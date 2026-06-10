@@ -309,6 +309,14 @@ def get_custom_stocks() -> dict:
     return load_custom_stocks()
 
 
+def is_builtin(symbol: str) -> bool:
+    """symbol 是否屬於內建選股宇宙（自選股新增時用來擋掉內建股）。
+
+    對外公開的查詢介面——caller 不需直接 import 私有的 _BUILTIN_UNIVERSE。
+    """
+    return symbol in _BUILTIN_UNIVERSE
+
+
 # ── 選股宇宙（約 100 檔台股權值+熱門股） ──
 
 _BUILTIN_UNIVERSE = {

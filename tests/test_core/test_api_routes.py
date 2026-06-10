@@ -37,12 +37,14 @@ EXPECTED_ROUTES = [
     ("GET",  "/api/sector-trading/{sector_id}/regime"),
     ("GET",  "/api/sector-trading/{sector_id}/fundamental"),
 
-    # api/screener.py — A4
+    # api/screener.py — A4（router prefix="/api/screener"）
     ("GET",  "/api/screener/picks"),
     ("GET",  "/api/screener/full"),
     ("POST", "/api/screener/refresh"),
     ("POST", "/api/screener/clear-cache"),
     ("GET",  "/api/screener/universe"),
+
+    # api/active_etf.py — A4（自 screener 拆出，路徑不在 screener prefix 下）
     ("GET",  "/api/active-etf-ranking"),
 
     # api/custom_stocks.py — A4

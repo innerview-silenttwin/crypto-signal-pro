@@ -2322,9 +2322,11 @@ async def get_stock_analysis(symbol: str):
 from api.screener import router as screener_router
 from api.custom_stocks import router as custom_stocks_router
 from api.stocks import router as stocks_router
+from api.active_etf import router as active_etf_router
 app.include_router(screener_router)
 app.include_router(custom_stocks_router)
 app.include_router(stocks_router)
+app.include_router(active_etf_router)
 
 
 # 註：/api/sector-trading/{sector_id}/fundamental 已搬至 api/sector_trading.py
