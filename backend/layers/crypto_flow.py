@@ -75,6 +75,39 @@ class CryptoFlowLayer(BaseLayer):
         pct = (recent["funding_rate"] < current).sum() / len(recent) * 100
         return pct
 
+    @staticmethod
+    def _classify_fng(fng: float) -> str:
+        """標準 Fear & Greed 顯示分級（給 API/前端用）。
+
+        注意：門檻（25/45/55/75）與 compute_modifier 內部交易評分用的
+        fng_label（15/30/70/85）不同——兩者用途不同，刻意不共用。
+        """
+        if fng <= 25:
+            return "極度恐懼"
+        elif fng <= 45:
+            return "恐懼"
+        elif fng <= 55:
+            return "中性"
+        elif fng <= 75:
+            return "貪婪"
+        return "極度貪婪"
+
+    def get_flow_snapshot(self) -> dict:
+        """供 API/前端顯示用的最新資金流向快照。
+
+        包掉資料載入與私有取值方法，caller 不需直戳 _load_data / _get_fng /
+        _get_funding_rate_percentile。回傳 schema 與 /api/btc-trading/flow-info 一致。
+        """
+        self._load_data()
+        now = pd.Timestamp.now()
+        fng = self._get_fng(now)
+        fr_pct = self._get_funding_rate_percentile(now)
+        return {
+            "fear_greed": fng,
+            "fng_class": self._classify_fng(fng),
+            "funding_rate_pct": fr_pct,
+        }
+
     def compute_modifier(self, symbol: str, df: pd.DataFrame,
                          sector_id: str = "") -> LayerModifier:
         if not self.enabled:

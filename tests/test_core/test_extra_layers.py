@@ -5,6 +5,7 @@ crypto_flow 是 BaseLayer 子類，驗 enabled/disabled + 無資料時不 crash�
 """
 
 import pandas as pd
+import pytest
 
 from layers.base import BaseLayer, LayerModifier
 
@@ -70,3 +71,28 @@ def test_crypto_flow_without_data_files_no_crash(tmp_path):
     assert mod.layer_name == "crypto_flow"
     assert 0 <= mod.buy_multiplier <= 3.0
     assert 0 <= mod.sell_multiplier <= 3.0
+
+
+# ── get_flow_snapshot / _classify_fng（A2：endpoint 邏輯抽進 layer）──
+
+@pytest.mark.parametrize("fng,expected", [
+    (0, "極度恐懼"), (25, "極度恐懼"),       # 邊界：<=25
+    (26, "恐懼"), (45, "恐懼"),              # 邊界：<=45
+    (46, "中性"), (50, "中性"), (55, "中性"),  # 邊界：<=55
+    (56, "貪婪"), (75, "貪婪"),              # 邊界：<=75
+    (76, "極度貪婪"), (100, "極度貪婪"),       # > 75
+])
+def test_classify_fng_boundaries(fng, expected):
+    """標準 Fear&Greed 顯示分級門檻（25/45/55/75），與 endpoint 原邏輯逐字一致。"""
+    from layers.crypto_flow import CryptoFlowLayer
+    assert CryptoFlowLayer._classify_fng(fng) == expected
+
+
+def test_get_flow_snapshot_schema_no_data(tmp_path):
+    """無資料時 snapshot 仍回完整 schema、不 crash（fng/fr_pct 退中性值 → 中性）。"""
+    from layers.crypto_flow import CryptoFlowLayer
+    snap = CryptoFlowLayer(enabled=True, data_dir=str(tmp_path)).get_flow_snapshot()
+    assert set(snap) == {"fear_greed", "fng_class", "funding_rate_pct"}
+    assert snap["fear_greed"] == 50.0
+    assert snap["fng_class"] == "中性"
+    assert snap["funding_rate_pct"] == 50.0
