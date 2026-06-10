@@ -14,6 +14,8 @@
 留 main.py 等之後抽 helper / state module 後再處理。
 """
 
+import asyncio
+
 import ccxt.async_support as ccxt_async
 
 from fastapi import APIRouter
@@ -103,21 +105,10 @@ async def get_stock_info(symbol: str):
 @router.get("/api/chart")
 async def get_chart_data(symbol: str = "BTC/USDT", timeframe: str = "1d", market: str = "crypto"):
     """K 線資料：crypto 走 ccxt、台股/期貨走 get_tw_chart_data。"""
-    import asyncio
     from main import get_tw_chart_data, fetch_ohlcv_async
 
-    if market == 'futures':
-        # 期貨也使用相同的 rate limiter 機制（目前無資料源，保留架構）
-        result = await asyncio.to_thread(get_tw_chart_data, symbol, timeframe, 200)
-        if result and result["candles"]:
-            return {
-                "candles": result["candles"],
-                "data_source": result["data_source"],
-                "next_update_in": result["next_update_in"]
-            }
-        return {"candles": [], "data_source": None, "next_update_in": 0}
-
-    if market == 'stock':
+    if market in ('futures', 'stock'):
+        # 期貨與台股共用 get_tw_chart_data（期貨目前無資料源，保留架構）
         result = await asyncio.to_thread(get_tw_chart_data, symbol, timeframe, 200)
         if result and result["candles"]:
             return {
@@ -130,7 +121,6 @@ async def get_chart_data(symbol: str = "BTC/USDT", timeframe: str = "1d", market
     exchange = ccxt_async.binance({'enableRateLimit': True})
     try:
         df = await fetch_ohlcv_async(exchange, symbol, timeframe, limit=200)
-        await exchange.close()
         if df is not None:
             candles = []
             for idx, row in df.iterrows():
@@ -146,5 +136,6 @@ async def get_chart_data(symbol: str = "BTC/USDT", timeframe: str = "1d", market
         return {"candles": [], "data_source": None, "next_update_in": None}
     except Exception as e:
         print(f"Chart fetch error: {e}")
-        await exchange.close()
         return {"candles": [], "data_source": None, "next_update_in": None}
+    finally:
+        await exchange.close()
