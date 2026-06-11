@@ -898,11 +898,10 @@ class SectorTradingManager:
         # ── 1. 估算 qty ──
         if trade_type == "BUY":
             if self.state["balance"] < 100:
-                # debug 2026-06-03：silent fail 顯式印（用 print 不用 logger.info,
-                # root logger 沒設 INFO level 會被吞）
-                print(
-                    f"  [{self.sector_name}] {symbol} BUY SKIP: balance < 100 "
-                    f"(balance={self.state['balance']:.0f})"
+                # per-symbol 診斷：用 info 級讓 prod log 隨時看得到真實狀況（哪檔因餘額不足被跳）。
+                logger.info(
+                    "[%s] %s BUY SKIP: balance < 100 (balance=%.0f)",
+                    self.sector_name, symbol, self.state["balance"],
                 )
                 return False
             qty = self._compute_buy_qty(price, ratio)

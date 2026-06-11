@@ -30,6 +30,11 @@ import pytz
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# logging：開全域 INFO + 壓第三方雜訊（在此之前 info/debug 被吞，只能用 print 繞過）。
+# 放在 sys.path.insert 後、domain 模組 import 前，確保各模組 runtime logging 都已設定好。
+from logging_config import configure_logging
+configure_logging()
+
 from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
 

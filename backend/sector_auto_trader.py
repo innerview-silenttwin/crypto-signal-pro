@@ -793,9 +793,9 @@ def process_sector(manager: SectorTradingManager):
         # 1. 取得歷史數據（信號計算用）
         df = fetch_signal_data(symbol)
         if df is None:
-            # debug 2026-06-03：silent skip 全列出來，方便觀察是哪條路徑卡住
-            # 改用 print 不用 logger.info — root logger 沒設 INFO level，logger.info 會被吞
-            print(f"  [{manager.sector_name}] {symbol} SKIP: fetch_signal_data 回 None")
+            # per-symbol 診斷：哪檔被跳過、哪條路徑卡住。用 info 級讓 prod log 隨時看得到
+            # 真實狀況（資料源掛時會一次噴多檔，是預期的——那正是要觀察的訊號）。
+            logger.info("[%s] %s SKIP: fetch_signal_data 回 None", manager.sector_name, symbol)
             continue
 
         # 2. 決定執行價
