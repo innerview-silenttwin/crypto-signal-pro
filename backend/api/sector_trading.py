@@ -131,20 +131,35 @@ async def list_sectors():
 
 @router.get("/disposition-stocks")
 async def get_disposition_stocks():
-    """目前的處置股清單（給前端做 badge 標示）。
+    """目前的處置股清單 + 完整資訊（給前端做 badge 標示 + 日期）。
 
-    回傳：
-      { "date": "2026-06-11", "ok": true, "count": 5, "codes": ["6770", "..."] }
-    cache 未載入或 broker 不在時，回 {ok: false, codes: []}。
+    回傳 schema：
+      {
+        "date": "2026-06-11" or null,
+        "ok": true,
+        "count": 5,
+        "stocks": {
+          "6770": {
+            "start_date": "2026-06-02",
+            "end_date": "2026-06-15",
+            "interval": "5分鐘",        # 或 "20分鐘"（加重處置）
+            "unit_limit": 10.0,
+            "total_limit": 30.0,
+            ...
+          },
+          ...
+        }
+      }
+    cache 未載入或 broker 不在時，回 {ok: false, stocks: {}}。
     """
     try:
         from brokers.disposition_guard import get_guard
         guard = get_guard()
         if guard is None:
-            return {"date": None, "ok": False, "count": 0, "codes": []}
+            return {"date": None, "ok": False, "count": 0, "stocks": {}}
         return guard.snapshot()
     except Exception as e:
-        return {"date": None, "ok": False, "count": 0, "codes": [], "error": str(e)}
+        return {"date": None, "ok": False, "count": 0, "stocks": {}, "error": str(e)}
 
 
 # ── 2. 自動交易守護程式控制（必須在 {sector_id} 之前）───────────────

@@ -1263,16 +1263,43 @@
             }
 
             // ── Data ──
-            // 處置股清單（每次 refresh 順手拉，避免每檔 holding 都打 API）
-            let dispositionCodes = new Set();
+            // 處置股清單（每次 refresh 順手拉，含完整資訊用於 badge）
+            // disposedStocks: { "6770": {start_date, end_date, interval, unit_limit, ...} }
+            let disposedStocks = {};
             let dispositionDate = null;
             async function refreshDispositionList() {
                 try {
                     const res = await fetch(API + '/api/sector-trading/disposition-stocks');
                     const d = await res.json();
-                    dispositionCodes = new Set(d.codes || []);
-                    dispositionDate = d.date;
+                    if (d.ok) {
+                        disposedStocks = d.stocks || {};
+                        dispositionDate = d.date;
+                    }
+                    // ok=false 時保留前次資料（避免 broker 暫時不在時清空 badge）
                 } catch (_) { /* 失敗就用上次的，不影響主流程 */ }
+            }
+
+            // HTML 跳脫（防 broker / 上游回傳含特殊字元時被注入）
+            function esc(s) {
+                return String(s ?? '').replace(/[&<>"']/g, c => (
+                    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+                ));
+            }
+
+            // 給 holding 生成處置股 badge HTML
+            function dispositionBadge(symbol) {
+                const code = String(symbol).split('.')[0];
+                const entry = disposedStocks[code];
+                if (!entry) return '';
+                // 加重處置（紅）：interval 嚴格匹配「20分鐘」這幾個字；其它（含「5分鐘」）走一般（黃）
+                const isStrict = /^20\s*分鐘/.test(entry.interval || '');
+                const bg = isStrict ? '#c62828' : '#d4a017';
+                const fg = isStrict ? '#fff' : '#000';
+                // end_date "2026-06-15" → "~06/15"
+                const endMd = entry.end_date ? entry.end_date.slice(5).replace('-', '/') : '';
+                const label = (isStrict ? '加重處置' : '處置股') + (endMd ? ` ~${endMd}` : '');
+                const title = `${esc(entry.interval) || ''}分盤撮合 / 期間 ${esc(entry.start_date) || '?'} ~ ${esc(entry.end_date) || '?'}`;
+                return ` <span style="background:${bg};color:${fg};font-size:9px;padding:1px 4px;border-radius:3px;font-weight:600" title="${title}">${esc(label)}</span>`;
             }
 
             async function refreshAll() {
@@ -1635,12 +1662,8 @@
                             : `<span class="${plClass}">${pl >= 0 ? '+' : ''}${Math.round(pl).toLocaleString()}</span>`;
                         const plPct = h.avg_price > 0 ? ((h.current_price - h.avg_price) / h.avg_price * 100).toFixed(2) : 0;
                         const pctText = noPrice ? '' : ` <span style="font-size:10px">(${plPct >= 0 ? '+' : ''}${plPct}%)</span>`;
-                        // 處置股 badge：strip .TW 後比對
-                        const code = String(sym).split('.')[0];
-                        const isDisposed = dispositionCodes.has(code);
-                        const dispoBadge = isDisposed
-                            ? ' <span style="background:#d4a017;color:#000;font-size:9px;padding:1px 4px;border-radius:3px;font-weight:600" title="處置股：SELL 在 sim 必失敗，prod 走預收券流程">處置股</span>'
-                            : '';
+                        // 處置股 badge（含 end_date + interval 區分）
+                        const dispoBadge = dispositionBadge(sym);
                         return `<div class="holding-item">
                         <div>
                             <div class="holding-name" style="cursor:pointer;text-decoration:underline dotted" onclick="window.goToStock('${sym}')" title="前往主頁查看 ${h.name || sym}">${h.name || sym}${dispoBadge}</div>
