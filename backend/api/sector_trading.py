@@ -127,6 +127,26 @@ async def list_sectors():
     return results
 
 
+# ── 處置股 ──
+
+@router.get("/disposition-stocks")
+async def get_disposition_stocks():
+    """目前的處置股清單（給前端做 badge 標示）。
+
+    回傳：
+      { "date": "2026-06-11", "ok": true, "count": 5, "codes": ["6770", "..."] }
+    cache 未載入或 broker 不在時，回 {ok: false, codes: []}。
+    """
+    try:
+        from brokers.disposition_guard import get_guard
+        guard = get_guard()
+        if guard is None:
+            return {"date": None, "ok": False, "count": 0, "codes": []}
+        return guard.snapshot()
+    except Exception as e:
+        return {"date": None, "ok": False, "count": 0, "codes": [], "error": str(e)}
+
+
 # ── 2. 自動交易守護程式控制（必須在 {sector_id} 之前）───────────────
 
 @router.post("/auto-trader/start")

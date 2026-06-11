@@ -1622,11 +1622,71 @@ async def trigger_premarket_check():
     if now.weekday() >= 5:
         return {"skipped": "weekend", "now": now.isoformat()}
     try:
+        # 順手暖機處置股清單（08:30 在 reserve_stock 服務時段 08:00-14:30 內）
+        await asyncio.to_thread(_warm_disposition_cache)
         report = await asyncio.to_thread(_compute_data_freshness_report)
         await asyncio.to_thread(_send_premarket_telegram, report)
         return {"status": "ok", "triggered_by": "launchd", "now": now.isoformat()}
     except Exception as e:
         return {"status": "error", "error": str(e)}
+
+
+def _warm_disposition_cache():
+    """提早拉處置股清單，避免 09:00 開盤後第一筆 SELL 才 lazy load 卡住。
+
+    若 broker 還沒注入或不是 sinopac broker，安靜略過。
+    若持倉中含處置股，順帶發一封 telegram 摘要（每日只一次）。
+    """
+    try:
+        from brokers.disposition_guard import get_guard
+        guard = get_guard()
+        if guard is None:
+            return
+        # 用 sector trader 任一 manager 的 broker.api（共用同個 Shioaji instance）
+        from sector_trader import get_all_managers
+        mgrs = get_all_managers()
+        sinopac_api = None
+        for m in mgrs.values():
+            broker = getattr(m, "_broker", None)
+            if broker is not None and hasattr(broker, "api"):
+                sinopac_api = broker.api
+                break
+        if sinopac_api is None:
+            print("[disposition-warmup] no sinopac broker yet, skip")
+            return
+
+        codes = guard.get_disposition_set(sinopac_api)
+        snap = guard.snapshot()
+        print(f"[disposition-warmup] punish() ok={snap['ok']} date={snap['date']} count={snap['count']}")
+
+        # 檢查持倉中是否有處置股，有的話發 telegram 摘要（去重一日 1 次）
+        if codes and guard.should_send_daily_telegram():
+            disposed_held = []
+            for sector_id, m in mgrs.items():
+                # snapshot holdings 後再迭代，避免 sector_auto_trader 同時改 state["holdings"]
+                # 觸發 RuntimeError: dictionary changed size during iteration
+                holdings_snap = dict(m.state.get("holdings", {}))
+                for sym, h in holdings_snap.items():
+                    if h.get("qty", 0) <= 0:
+                        continue
+                    code = sym.split(".")[0]
+                    if code in codes:
+                        disposed_held.append((sector_id, sym, h.get("qty"), h.get("avg_price")))
+            if disposed_held:
+                from notifier import send_telegram
+                lines = ["⚠️ <b>持倉含處置股</b>"]
+                for sector_id, sym, qty, avg in disposed_held:
+                    lines.append(f"  [{sector_id}] {sym} {qty} 股 @{avg}")
+                lines.append("")
+                lines.append("處置股 SELL 在 sim 必失敗（reserve_stock 是 no-op）；")
+                lines.append("prod 真錢時系統會自動走預收券流程。")
+                lines.append("處置期結束後自動恢復正常。")
+                send_telegram("\n".join(lines))
+                print(f"[disposition-warmup] telegram sent: {len(disposed_held)} disposed holdings")
+    except Exception as e:
+        # 暖機失敗不擋 premarket 主流程；但要印出 traceback 否則 silent fail 找不到原因
+        import traceback
+        print(f"[disposition-warmup] error: {e!r}\n{traceback.format_exc()}")
 
 
 @app.post("/api/internal/trigger-evening-summary", dependencies=[Depends(require_internal_key)])

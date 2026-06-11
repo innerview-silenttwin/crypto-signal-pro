@@ -115,6 +115,10 @@ class SinopacBroker:
             # 老版本 API 沒有 set_order_callback 也不擋
             logger.debug("set_order_callback unavailable; relying on polling")
 
+        # 處置股 guard：初始化 singleton，給 submit() 用
+        from .disposition_guard import init_guard
+        init_guard(simulation=self._simulation)
+
         # in-flight: client_order_id → Trade 物件（shioaji 用）
         self._in_flight: dict[str, object] = {}
 
@@ -408,6 +412,32 @@ class SinopacBroker:
                 fill_status="rejected",
                 reason=f"below_min_lot_qty={qty_shares}",
             )
+
+        # 處置股 gate：在 place_order 前先過預收券檢查。
+        # SELL: sim 環境直接 skip（reserve_stock 是 no-op，送 SELL 必失敗）。
+        #       prod 環境真送 reserve_stock，status=True 才放行。
+        # BUY:  sim 環境也擋（不該累積無法 SELL 的部位）；prod 不擋（user 可選擇逆勢進場）
+        # ⚠️ 傳的是 qty_shares（股數），不是 sj_quantity（張）— reserve_stock 用股數。
+        from .disposition_guard import get_guard
+        guard = get_guard()
+        if guard is not None:
+            if action == "SELL":
+                ok, reason = guard.ensure_sellable(self.api, symbol, qty_shares)
+                if not ok:
+                    return BrokerResult(
+                        ok=False,
+                        fill_status="rejected",
+                        reason=reason,
+                    )
+            elif action == "BUY" and self._simulation:
+                # sim BUY 處置股 → 擋下；防止累積在 sim 永遠賣不掉的部位
+                if guard.is_disposed(self.api, symbol):
+                    code = symbol.split(".")[0]
+                    return BrokerResult(
+                        ok=False,
+                        fill_status="rejected",
+                        reason=f"disposition_sim_buy_skip:{code}",
+                    )
 
         is_odd_lot = qty_shares < 1000
         # IntradayOdd 用「股」，Common 用「張」
