@@ -1193,8 +1193,11 @@
                 // 2026-06-04 v3：解決「任一處搜尋三處都跟著動」需求
                 const triggerFilter = async () => {
                     const sym = document.getElementById('filter-symbol').value.trim();
-                    // doSearch 在另一個 <script> IIFE，必須走 window.csp.*（直呼會 ReferenceError）
-                    if (sym && window.csp && window.csp.doSearch) {
+                    // doSearch 在另一個 <script> IIFE，必須走 window.csp.*（直呼會 ReferenceError）。
+                    // 1~3 碼純數字視為代碼前綴篩選（後端 substring 匹配），不委派查分數 —
+                    // 否則 normalizeSymbol 會把 "23" 補成 "23.TW" 打出無效的分析查詢
+                    const isPrefix = /^\d{1,3}$/.test(sym);
+                    if (sym && !isPrefix && window.csp && window.csp.doSearch) {
                         const searchInput = document.getElementById('stock-search-input');
                         if (searchInput) searchInput.value = sym;
                         window.csp.doSearch();  // 內含查詢分數 + refresh history + sector switch + 跨頁 localStorage 同步
@@ -1751,7 +1754,7 @@
                     } else {
                         const fmtPL = (v, p) => {
                             const color = v >= 0 ? 'var(--buy-color)' : 'var(--sell-color)';
-                            const pct = (p == null) ? '' : ` <small>(${p >= 0 ? '+' : ''}${p.toFixed(2)}%)</small>`;
+                            const pct = (p == null) ? '' : ` <small style="color:var(--text-muted)">(${p >= 0 ? '+' : ''}${p.toFixed(2)}%)</small>`;
                             return `<span style="color:${color}; font-weight:700">${v >= 0 ? '+' : ''}${v.toLocaleString()}${pct}</span>`;
                         };
                         sumEl.style.display = '';
@@ -1759,7 +1762,7 @@
                             + `　已實現: ${fmtPL(s.realized, s.realized_pct)}`
                             + `　未實現: ${fmtPL(s.unrealized, s.unrealized_pct)}`
                             + `　合計: ${fmtPL(s.total, s.total_pct)}`
-                            + ` <span class="info-tooltip" data-tip="統計範圍為符合篩選條件的全部交易（非僅當頁）。已實現=範圍內賣出的損益（僅買進/僅未實現篩選時改計買進列的已實現部分）；未實現=範圍內買進且仍持有的部位依最新價計。百分比=損益/對應持有成本。皆已扣手續費+證交稅。"><i>i</i></span>`;
+                            + ` <span class="info-tooltip" data-tip="統計範圍為符合篩選條件的全部交易（非僅當頁）。已實現取自篩選結果中的賣出列；結果中沒有賣出列時（僅買進/僅未實現等），改計買進列的已實現部分。未實現=範圍內買進且仍持有的部位依最新價計。百分比=損益/對應持有成本。皆已扣手續費+證交稅。"><i>i</i></span>`;
                     }
                 }
             }
@@ -2107,6 +2110,11 @@
             };
 
             let lastSymbol = '';
+            let searchSeq = 0;  // 遞增序號：晚到的搜尋作廢早前未完成的（中文名 lookup 是 async）
+            // 跨頁同步基準：只對 csp-last-symbol 的「變化」反應；doSearch 寫入時也會更新，
+            // 避免切回分頁時把自己寫的值（或載入前的舊紀錄）當成外部變化誤觸發
+            let lastSyncSeen = '';
+            try { lastSyncSeen = localStorage.getItem('csp-last-symbol') || ''; } catch (_) {}
 
             function normalizeSymbol(input) {
                 input = input.trim().toUpperCase();
@@ -2452,10 +2460,12 @@
                 document.getElementById('arc-goto-btn').onclick = null;
 
                 try {
+                    const seq = ++searchSeq;
                     // 解析 symbol：中文走 lookup API，數字/英文直接 normalize
                     let sym = normalizeSymbol(raw);
                     if (sym === null) {
                         const match = await lookupByName(raw.trim());
+                        if (seq !== searchSeq) return;  // lookup 期間有更晚的搜尋，別把舊結果蓋回去
                         if (!match) throw new Error('找不到「' + raw.trim() + '」對應的股票');
                         sym = match.symbol;
                         // 補上股票名稱：但若使用者已在輸入框打新東西就別蓋掉
@@ -2487,6 +2497,7 @@
                     try {
                         localStorage.setItem('csp-last-symbol', sym);
                         localStorage.setItem('csp-last-market', 'stock');
+                        lastSyncSeen = sym;  // 同步基準跟著走（見宣告處註解）
                     } catch (_) { /* 隱私模式忽略 */ }
 
                     const res = await fetch('/api/stock-analysis?symbol=' + encodeURIComponent(sym));
@@ -2527,27 +2538,27 @@
                 const pending = localStorage.getItem('csp-pending-stock-query');
                 if (pending) {
                     localStorage.removeItem('csp-pending-stock-query');
-                    document.getElementById('stock-search-input').value = pending.replace(/\.(TW|TWO)$/, '');
+                    // 只去 .TW；.TWO（上櫃）要保留，否則 normalizeSymbol 會誤補成 .TW
+                    document.getElementById('stock-search-input').value = pending.replace(/\.TW$/, '');
                     doSearch();
                 }
             } catch (_) { /* localStorage 不可用就跳過 */ }
 
-            // 跨頁同步（接收端）：首頁/別頁查了台股，本頁已開著就即時跟查。
+            // 跨頁同步（接收端）：首頁/別頁查了台股，本頁開著就跟查。
             // 與 app.js 同款雙保險：storage event（別的 tab 寫入時 fire）+
             // visibilitychange（同 tab 切回 / Safari hidden tab 節流時補位）。
-            // 以「載入時的值」為基準只對變化反應，避免切回分頁時拿舊紀錄誤觸發；
             // 非台股（加密幣/期貨）不同步。doSearch 寫回相同值不會再 fire storage event，無迴圈。
-            let lastSyncSeen = '';
-            try { lastSyncSeen = localStorage.getItem('csp-last-symbol') || ''; } catch (_) {}
             const syncFromLastSymbol = (sym) => {
                 if (!sym || sym === lastSyncSeen) return;
                 lastSyncSeen = sym;
-                if (!/\.(TW|TWO)$/.test(sym) || sym === lastSymbol) return;
-                document.getElementById('stock-search-input').value = sym.replace(/\.(TW|TWO)$/, '');
+                if (!/\.(TW|TWO)$/.test(sym)) return;
+                // 只去 .TW；.TWO（上櫃）要保留，否則 normalizeSymbol 會誤補成 .TW
+                document.getElementById('stock-search-input').value = sym.replace(/\.TW$/, '');
                 doSearch();
             };
             window.addEventListener('storage', (e) => {
-                if (e.key === 'csp-last-symbol') syncFromLastSymbol(e.newValue);
+                // 背景分頁不即時跟查（省整套 stock-analysis），切回時由 visibilitychange 補位
+                if (e.key === 'csp-last-symbol' && !document.hidden) syncFromLastSymbol(e.newValue);
             });
             document.addEventListener('visibilitychange', () => {
                 if (document.hidden) return;

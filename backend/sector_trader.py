@@ -258,6 +258,52 @@ def compute_buy_qty_pure(*, price: float, max_order: float, available_cash: floa
     return lots * 1000
 
 
+def _pct(value: float, cost: float):
+    """損益百分比（小數 2 位）；cost <= 0 回 None，前端顯示時略過。"""
+    return round(value / cost * 100, 2) if cost > 0 else None
+
+
+def _new_lot_pnl(total_qty: int, status: str) -> dict:
+    """FIFO 配對的單一買入批次損益暫存；pnl 於輸出時以 realized + unrealized 合成。"""
+    return {"pnl_status": status, "sold_qty": 0, "total_qty": total_qty,
+            "realized": 0, "sold_cost": 0, "unrealized": 0, "open_cost": 0}
+
+
+def _summarize_filtered_history(rows: list) -> dict:
+    """篩選結果損益彙總（跨全部篩選結果，非僅當頁）。
+
+    BUY 列的已實現部分與 SELL 列的 profit 是同一筆錢（FIFO 配對的兩端）：
+    已實現預設取 SELL 列；若篩選結果中沒有任何 SELL 列（僅買進、僅未實現、
+    日期區間只涵蓋買進…任何把 SELL 篩掉的條件），改取 BUY 列的已實現部分。
+    由「結果裡有沒有 SELL 列」自行推導，新增篩選條件不需要回來改這裡。
+    """
+    buy_rows = [h for h in rows if h.get("type") == "BUY"]
+    sell_rows = [h for h in rows if h.get("type") == "SELL"]
+    if sell_rows:
+        realized = sum(float(h.get("profit") or 0) for h in sell_rows)
+        # 持有成本 = income - profit（與 profit_pct 同一反推法）。
+        # 舊紀錄缺 income 反推不出真成本（profit 正負都會出垃圾值），不計入分母
+        realized_cost = 0.0
+        for h in sell_rows:
+            income = float(h.get("income") or 0)
+            cost = income - float(h.get("profit") or 0)
+            if income > 0 and cost > 0:
+                realized_cost += cost
+    else:
+        realized = sum(h.get("pnl_realized") or 0 for h in buy_rows)
+        realized_cost = sum(h.get("sold_cost") or 0 for h in buy_rows)
+    unrealized = sum(h.get("pnl_unrealized") or 0 for h in buy_rows)
+    unrealized_cost = sum(h.get("open_cost") or 0 for h in buy_rows)
+    return {
+        "realized": round(realized),
+        "realized_pct": _pct(realized, realized_cost),
+        "unrealized": round(unrealized),
+        "unrealized_pct": _pct(unrealized, unrealized_cost),
+        "total": round(realized + unrealized),
+        "total_pct": _pct(realized + unrealized, realized_cost + unrealized_cost),
+    }
+
+
 class SectorTradingManager:
     """單一類股的虛擬交易管理器"""
 
@@ -532,11 +578,7 @@ class SectorTradingManager:
                     lot_rec = chrono[lot[0]]
                     lot_id = id(lot_rec)
                     if lot_id not in pnl_map:
-                        pnl_map[lot_id] = {"pnl": 0, "pnl_status": "realized",
-                                           "sold_qty": 0, "total_qty": lot_rec["qty"],
-                                           "realized": 0, "sold_cost": 0,
-                                           "unrealized": 0, "open_cost": 0}
-                    pnl_map[lot_id]["pnl"] += realized
+                        pnl_map[lot_id] = _new_lot_pnl(lot_rec["qty"], status="realized")
                     pnl_map[lot_id]["realized"] += realized
                     pnl_map[lot_id]["sold_cost"] += round(matched_qty * lot[2])
                     pnl_map[lot_id]["sold_qty"] += matched_qty
@@ -565,16 +607,11 @@ class SectorTradingManager:
 
                 if lot_id in pnl_map:
                     # 部分已賣、部分未賣
-                    pnl_map[lot_id]["pnl"] += unrealized
                     pnl_map[lot_id]["pnl_status"] = "partial"
-                    pnl_map[lot_id]["unrealized"] = unrealized
-                    pnl_map[lot_id]["open_cost"] = round(lot[1] * lot[2])
                 else:
-                    pnl_map[lot_id] = {"pnl": unrealized, "pnl_status": "unrealized",
-                                       "sold_qty": 0, "total_qty": lot_rec["qty"],
-                                       "realized": 0, "sold_cost": 0,
-                                       "unrealized": unrealized,
-                                       "open_cost": round(lot[1] * lot[2])}
+                    pnl_map[lot_id] = _new_lot_pnl(lot_rec["qty"], status="unrealized")
+                pnl_map[lot_id]["unrealized"] = unrealized
+                pnl_map[lot_id]["open_cost"] = round(lot[1] * lot[2])
 
         # 將 pnl 資訊寫入副本（不改原始 history）
         # 過濾掉非 BUY/SELL（例如 SYNC、DEPOSIT）— 這些是內部記帳，前端不顯示
@@ -586,7 +623,7 @@ class SectorTradingManager:
             rec_copy = dict(rec)
             info = pnl_map.get(id(rec))
             if info and rec["type"] == "BUY":
-                rec_copy["pnl"] = info["pnl"]
+                rec_copy["pnl"] = info["realized"] + info["unrealized"]
                 rec_copy["pnl_status"] = info["pnl_status"]
                 rec_copy["pnl_realized"] = info["realized"]
                 rec_copy["pnl_unrealized"] = info["unrealized"]
@@ -594,16 +631,13 @@ class SectorTradingManager:
                 rec_copy["open_cost"] = info["open_cost"]
                 # BUY pnl_pct = pnl / cost × 100
                 cost = float(rec.get("cost") or (rec.get("price", 0) * rec.get("qty", 0)))
-                if cost > 0:
-                    rec_copy["pnl_pct"] = round(info["pnl"] / cost * 100, 2)
+                rec_copy["pnl_pct"] = _pct(rec_copy["pnl"], cost)
             elif rec["type"] == "SELL":
                 # SELL profit_pct = profit / 持有成本 × 100
                 # 持有成本 = income - profit（從已存欄位反推）
                 profit = float(rec.get("profit") or 0)
                 income = float(rec.get("income") or 0)
-                scaled_cost = income - profit
-                if scaled_cost > 0:
-                    rec_copy["profit_pct"] = round(profit / scaled_cost * 100, 2)
+                rec_copy["profit_pct"] = _pct(profit, income - profit)
             annotated.append(rec_copy)
 
         # ── 篩選 ──
@@ -634,39 +668,15 @@ class SectorTradingManager:
                 return False
             annotated = [h for h in annotated if _match(h)]
 
-        # ── 篩選結果損益彙總 ──
-        # BUY 列的已實現部分與 SELL 列的 profit 是同一筆錢（FIFO 配對的兩端），
-        # 已實現預設取 SELL 列；若篩選條件排除了 SELL 列（僅買進 / 僅未實現），
-        # 改取 BUY 列的已實現部分，避免重複或漏計
-        sells_excluded = trade_type.upper() == "BUY" or pnl_status.lower() == "unrealized"
-        buy_rows = [h for h in annotated if h.get("type") == "BUY"]
-        sell_rows = [h for h in annotated if h.get("type") == "SELL"]
-        if sells_excluded:
-            realized = sum(h.get("pnl_realized") or 0 for h in buy_rows)
-            realized_cost = sum(h.get("sold_cost") or 0 for h in buy_rows)
-        else:
-            realized = sum(float(h.get("profit") or 0) for h in sell_rows)
-            # 持有成本 = income - profit（與 profit_pct 同一反推法）
-            realized_cost = sum(float(h.get("income") or 0) - float(h.get("profit") or 0)
-                                for h in sell_rows)
-        unrealized = sum(h.get("pnl_unrealized") or 0 for h in buy_rows)
-        unrealized_cost = sum(h.get("open_cost") or 0 for h in buy_rows)
-
-        def _pct(v, c):
-            return round(v / c * 100, 2) if c > 0 else None
-
-        summary = {
-            "realized": round(realized),
-            "realized_pct": _pct(realized, realized_cost),
-            "unrealized": round(unrealized),
-            "unrealized_pct": _pct(unrealized, unrealized_cost),
-            "total": round(realized + unrealized),
-            "total_pct": _pct(realized + unrealized, realized_cost + unrealized_cost),
-        }
+        summary = _summarize_filtered_history(annotated)
 
         total = len(annotated)
         start = (page - 1) * page_size
-        return {"data": annotated[start:start + page_size], "total": total, "page": page, "page_size": page_size,
+        # 彙總用的內部欄位不外洩到 API，避免變成 de-facto 契約
+        page_rows = [{k: v for k, v in h.items()
+                      if k not in ("pnl_realized", "pnl_unrealized", "sold_cost", "open_cost")}
+                     for h in annotated[start:start + page_size]]
+        return {"data": page_rows, "total": total, "page": page, "page_size": page_size,
                 "summary": summary}
 
     # ── 交易執行 ──
