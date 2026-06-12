@@ -1291,8 +1291,10 @@
                 const code = String(symbol).split('.')[0];
                 const entry = disposedStocks[code];
                 if (!entry) return '';
-                // 加重處置（紅）：interval 嚴格匹配「20分鐘」這幾個字；其它（含「5分鐘」）走一般（黃）
-                const isStrict = /^20\s*分鐘/.test(entry.interval || '');
+                // 加重處置（紅）= unit_limit 為 null（每筆都要 reserve）。
+                // 一般處置（黃）= unit_limit 有數值（小於門檻可直接送單）。
+                // 注意：interval 字串不只 5/20 分鐘，還看過 10/25 分鐘 — 不能用 regex 判定。
+                const isStrict = entry.unit_limit == null;
                 const bg = isStrict ? '#c62828' : '#d4a017';
                 const fg = isStrict ? '#fff' : '#000';
                 // end_date "2026-06-15" → "~06/15"
