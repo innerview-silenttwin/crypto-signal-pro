@@ -533,8 +533,12 @@ class SectorTradingManager:
                     lot_id = id(lot_rec)
                     if lot_id not in pnl_map:
                         pnl_map[lot_id] = {"pnl": 0, "pnl_status": "realized",
-                                           "sold_qty": 0, "total_qty": lot_rec["qty"]}
+                                           "sold_qty": 0, "total_qty": lot_rec["qty"],
+                                           "realized": 0, "sold_cost": 0,
+                                           "unrealized": 0, "open_cost": 0}
                     pnl_map[lot_id]["pnl"] += realized
+                    pnl_map[lot_id]["realized"] += realized
+                    pnl_map[lot_id]["sold_cost"] += round(matched_qty * lot[2])
                     pnl_map[lot_id]["sold_qty"] += matched_qty
 
                     lot[1] -= matched_qty
@@ -563,9 +567,14 @@ class SectorTradingManager:
                     # 部分已賣、部分未賣
                     pnl_map[lot_id]["pnl"] += unrealized
                     pnl_map[lot_id]["pnl_status"] = "partial"
+                    pnl_map[lot_id]["unrealized"] = unrealized
+                    pnl_map[lot_id]["open_cost"] = round(lot[1] * lot[2])
                 else:
                     pnl_map[lot_id] = {"pnl": unrealized, "pnl_status": "unrealized",
-                                       "sold_qty": 0, "total_qty": lot_rec["qty"]}
+                                       "sold_qty": 0, "total_qty": lot_rec["qty"],
+                                       "realized": 0, "sold_cost": 0,
+                                       "unrealized": unrealized,
+                                       "open_cost": round(lot[1] * lot[2])}
 
         # 將 pnl 資訊寫入副本（不改原始 history）
         # 過濾掉非 BUY/SELL（例如 SYNC、DEPOSIT）— 這些是內部記帳，前端不顯示
@@ -579,6 +588,10 @@ class SectorTradingManager:
             if info and rec["type"] == "BUY":
                 rec_copy["pnl"] = info["pnl"]
                 rec_copy["pnl_status"] = info["pnl_status"]
+                rec_copy["pnl_realized"] = info["realized"]
+                rec_copy["pnl_unrealized"] = info["unrealized"]
+                rec_copy["sold_cost"] = info["sold_cost"]
+                rec_copy["open_cost"] = info["open_cost"]
                 # BUY pnl_pct = pnl / cost × 100
                 cost = float(rec.get("cost") or (rec.get("price", 0) * rec.get("qty", 0)))
                 if cost > 0:
@@ -621,9 +634,40 @@ class SectorTradingManager:
                 return False
             annotated = [h for h in annotated if _match(h)]
 
+        # ── 篩選結果損益彙總 ──
+        # BUY 列的已實現部分與 SELL 列的 profit 是同一筆錢（FIFO 配對的兩端），
+        # 已實現預設取 SELL 列；若篩選條件排除了 SELL 列（僅買進 / 僅未實現），
+        # 改取 BUY 列的已實現部分，避免重複或漏計
+        sells_excluded = trade_type.upper() == "BUY" or pnl_status.lower() == "unrealized"
+        buy_rows = [h for h in annotated if h.get("type") == "BUY"]
+        sell_rows = [h for h in annotated if h.get("type") == "SELL"]
+        if sells_excluded:
+            realized = sum(h.get("pnl_realized") or 0 for h in buy_rows)
+            realized_cost = sum(h.get("sold_cost") or 0 for h in buy_rows)
+        else:
+            realized = sum(float(h.get("profit") or 0) for h in sell_rows)
+            # 持有成本 = income - profit（與 profit_pct 同一反推法）
+            realized_cost = sum(float(h.get("income") or 0) - float(h.get("profit") or 0)
+                                for h in sell_rows)
+        unrealized = sum(h.get("pnl_unrealized") or 0 for h in buy_rows)
+        unrealized_cost = sum(h.get("open_cost") or 0 for h in buy_rows)
+
+        def _pct(v, c):
+            return round(v / c * 100, 2) if c > 0 else None
+
+        summary = {
+            "realized": round(realized),
+            "realized_pct": _pct(realized, realized_cost),
+            "unrealized": round(unrealized),
+            "unrealized_pct": _pct(unrealized, unrealized_cost),
+            "total": round(realized + unrealized),
+            "total_pct": _pct(realized + unrealized, realized_cost + unrealized_cost),
+        }
+
         total = len(annotated)
         start = (page - 1) * page_size
-        return {"data": annotated[start:start + page_size], "total": total, "page": page, "page_size": page_size}
+        return {"data": annotated[start:start + page_size], "total": total, "page": page, "page_size": page_size,
+                "summary": summary}
 
     # ── 交易執行 ──
 

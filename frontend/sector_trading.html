@@ -1054,6 +1054,8 @@
                                     <button id="btn-filter" class="btn-global" style="padding:4px 14px; font-size:11px">篩選</button>
                                     <button id="btn-filter-clear" class="btn-global" style="padding:4px 10px; font-size:11px; opacity:0.6">清除</button>
                                 </div>
+                                <!-- 篩選結果損益彙總 -->
+                                <div id="history-summary" style="display:none; margin-bottom:12px; padding:8px 12px; border-radius:8px; background:rgba(148,163,184,0.06); font-size:12px; color:var(--text-main)"></div>
                                 <div style="overflow-x:auto; padding-bottom:10px;">
                                     <table class="history-table">
                                         <thead>
@@ -1738,6 +1740,27 @@
                     }).join('');
                 }
                 document.getElementById('page-info').textContent = `${historyPage} / ${Math.max(1, Math.ceil(data.total / (data.page_size || 50)))}`;
+
+                // 篩選結果損益彙總（後端跨全部篩選結果計算，非僅當頁）
+                const sumEl = document.getElementById('history-summary');
+                if (sumEl) {
+                    const s = data.summary;
+                    if (!s || !data.total) {
+                        sumEl.style.display = 'none';
+                    } else {
+                        const fmtPL = (v, p) => {
+                            const color = v >= 0 ? 'var(--buy-color)' : 'var(--sell-color)';
+                            const pct = (p == null) ? '' : ` <small>(${p >= 0 ? '+' : ''}${p.toFixed(2)}%)</small>`;
+                            return `<span style="color:${color}; font-weight:700">${v >= 0 ? '+' : ''}${v.toLocaleString()}${pct}</span>`;
+                        };
+                        sumEl.style.display = '';
+                        sumEl.innerHTML = `篩選結果 <strong>${data.total}</strong> 筆`
+                            + `　已實現: ${fmtPL(s.realized, s.realized_pct)}`
+                            + `　未實現: ${fmtPL(s.unrealized, s.unrealized_pct)}`
+                            + `　合計: ${fmtPL(s.total, s.total_pct)}`
+                            + ` <span class="info-tooltip" data-tip="統計範圍為符合篩選條件的全部交易（非僅當頁）。已實現=範圍內賣出的損益（僅買進/僅未實現篩選時改計買進列的已實現部分）；未實現=範圍內買進且仍持有的部位依最新價計。百分比=損益/對應持有成本。皆已扣手續費+證交稅。"><i>i</i></span>`;
+                    }
+                }
             }
 
             function renderSectorBarChart() {
