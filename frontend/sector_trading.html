@@ -1193,10 +1193,11 @@
                 // 2026-06-04 v3：解決「任一處搜尋三處都跟著動」需求
                 const triggerFilter = async () => {
                     const sym = document.getElementById('filter-symbol').value.trim();
-                    if (sym) {
+                    // doSearch 在另一個 <script> IIFE，必須走 window.csp.*（直呼會 ReferenceError）
+                    if (sym && window.csp && window.csp.doSearch) {
                         const searchInput = document.getElementById('stock-search-input');
                         if (searchInput) searchInput.value = sym;
-                        doSearch();  // doSearch 內含 refresh history + sector switch + localStorage 同步
+                        window.csp.doSearch();  // 內含查詢分數 + refresh history + sector switch + 跨頁 localStorage 同步
                     } else {
                         historyPage = 1;
                         refreshHistory();
@@ -2507,6 +2508,10 @@
             document.getElementById('arc-close-btn').addEventListener('click', () => {
                 document.getElementById('analysis-result-wrap').classList.remove('open');
             });
+
+            // 暴露給上一個 <script> IIFE（triggerFilter）用 — 兩個 IIFE 不同 scope
+            window.csp = window.csp || {};
+            window.csp.doSearch = doSearch;
 
             // 查詢按鈕
             document.getElementById('btn-search-stock').addEventListener('click', doSearch);
