@@ -2531,6 +2531,28 @@
                     doSearch();
                 }
             } catch (_) { /* localStorage 不可用就跳過 */ }
+
+            // 跨頁同步（接收端）：首頁/別頁查了台股，本頁已開著就即時跟查。
+            // 與 app.js 同款雙保險：storage event（別的 tab 寫入時 fire）+
+            // visibilitychange（同 tab 切回 / Safari hidden tab 節流時補位）。
+            // 以「載入時的值」為基準只對變化反應，避免切回分頁時拿舊紀錄誤觸發；
+            // 非台股（加密幣/期貨）不同步。doSearch 寫回相同值不會再 fire storage event，無迴圈。
+            let lastSyncSeen = '';
+            try { lastSyncSeen = localStorage.getItem('csp-last-symbol') || ''; } catch (_) {}
+            const syncFromLastSymbol = (sym) => {
+                if (!sym || sym === lastSyncSeen) return;
+                lastSyncSeen = sym;
+                if (!/\.(TW|TWO)$/.test(sym) || sym === lastSymbol) return;
+                document.getElementById('stock-search-input').value = sym.replace(/\.(TW|TWO)$/, '');
+                doSearch();
+            };
+            window.addEventListener('storage', (e) => {
+                if (e.key === 'csp-last-symbol') syncFromLastSymbol(e.newValue);
+            });
+            document.addEventListener('visibilitychange', () => {
+                if (document.hidden) return;
+                try { syncFromLastSymbol(localStorage.getItem('csp-last-symbol')); } catch (_) {}
+            });
         })();
     </script>
     <script src="tooltip.js"></script>
