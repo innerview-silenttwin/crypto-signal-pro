@@ -924,6 +924,14 @@ def process_sector(manager: SectorTradingManager):
         else:
             # 無持倉 → 買入需同時滿足：信號達標 + 綜合 ≥ 50
             # F3：TAIEX neutral 時用 effective_buy_th (≥50)，其它情境維持 sector buy_th
+
+            # no_buy_symbols：該股在此 sector 被標為「只賣不買」（如 2317 屬電子代工、
+            # 不該在 semiconductor 出現）。已有持倉走上面 SELL/停損分支，這裡只擋新進場。
+            no_buy_set = set(manager.state.get("no_buy_symbols", []))
+            if symbol in no_buy_set:
+                print(f"  [{manager.sector_name}] {symbol} 在 no_buy 清單，跳過買入")
+                continue
+
             standard_buy = (sig["direction"] == "BUY"
                             and sig["confidence"] >= effective_buy_th)
             pullback_buy, pb_detail = is_strong_pullback(sig)
