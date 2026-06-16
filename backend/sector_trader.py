@@ -238,6 +238,25 @@ SECTOR_IDS = {
 SECTOR_ID_TO_NAME = {v: k for k, v in SECTOR_IDS.items()}
 
 
+# ── 長線標的（穩定向上）─────────────────────────────────────
+# 大回檔對這些標的反而是「加碼機會」（dip-buy 候選），不是「停損訊號」。
+# 目前僅作 metadata 標記；dip-buy 邏輯尚未實作（依規矩信號策略先不動）。
+# 之後可用於：
+#   1. UI badge 顯示「長線標的」
+#   2. SELL 訊號加 warning 提示
+#   3. dip-buy 邏輯讀此清單決定加碼條件
+#
+# 破壞條件（半自動審視，待 audit 機制實作）：
+#   - 跌破 200MA 且 200MA 翻空
+#   - 從歷史高點回檔 ≥ 30%
+#   - 連 2 季 EPS 衰退
+# 詳見 memory/project_stable_uptrend_universe.md
+STABLE_UPTREND_SYMBOLS = {
+    "2330.TW",  # 台積電：長線護國神山
+    "0050.TW",  # 元大台灣 50：大盤 ETF
+}
+
+
 def compute_buy_qty_pure(*, price: float, max_order: float, available_cash: float) -> int:
     """純函式：給股價、單筆金額上限、可用現金，回傳買進股數。
 
