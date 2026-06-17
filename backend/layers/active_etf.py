@@ -23,21 +23,39 @@ from typing import Optional
 # Python 3.14 strict 模式會擋掉。改用容忍 legacy chain 的 session。
 from http_legacy_ssl import legacy_get
 
+# 台股 sid 格式：4-6 碼數字、可選結尾大寫字母（如 6770、6223、3035A 之類）
+# 用於 _fetch_holdings 過濾掉 ETF 持股中可能出現的美股代號（如 NVDA / AAPL）
+_TW_SID_RE = re.compile(r"^\d{4,6}[A-Z]?$")
+
 logger = logging.getLogger(__name__)
 
 # ── 領先大盤的主動式 ETF，依超額報酬排名（每季更新）──
-# 評估基準：各 ETF 成立以來 vs 0050 同期績效（2026-04-10 更新）
-# rank_weight: 第1名=8份, 第2名=7份...，正規化後確保加總=1
+# 評估基準：vs ^TWII 同期績效（2026-06-17 重排）
+# alpha_value 取 alpha_window 內報酬（6mo 優先；新發行 < 6mo 用 ytd）。
+# 用於：個股 active_etf_score 加分（看「個股被哪些優質 ETF 持有」）。
+#
+# ⚠️ 美股為主的主動 ETF（如 00988A / 00990A 持股 NVDA、AAPL 等）**不適合進 BEAT_ETFS**：
+#    - 持股 list 是美股 sid → 跟台股 sid 無交集 → 對台股加分為 0
+#    - 但仍會佔 rank_weight 高位 → 稀釋既有正規化分母
+#    - 因此放進 SECTOR_STOCKS["其他"] 當交易標的可以，但**不進 BEAT_ETFS**
+#
+# 2026-06-17 變動：原 8 檔保留 + 加 00982A (持台股、6mo +12.5pp) = 9 檔。
+# code review (H1) 識別 00988A / 00990A 是美股 ETF，從 BEAT_ETFS 移除（仍在交易池）。
 BEAT_ETFS = [
-    {"code": "00981A", "name": "主動統一台股增長", "alpha": 44.7},  # rank 1
-    {"code": "00994A", "name": "主動第一金台股優", "alpha": 23.9},  # rank 2
-    {"code": "00995A", "name": "主動中信台灣卓越", "alpha": 17.6},  # rank 3
-    {"code": "00992A", "name": "主動群益科技創新", "alpha": 15.1},  # rank 4
-    {"code": "00991A", "name": "主動復華未來50",   "alpha": 12.2},  # rank 5
-    {"code": "00985A", "name": "主動野村台灣50",   "alpha": 11.7},  # rank 6
-    {"code": "00987A", "name": "主動台新優勢成長", "alpha":  9.0},  # rank 7
-    {"code": "00980A", "name": "主動野村臺灣優選", "alpha":  8.0},  # rank 8
+    {"code": "00991A", "name": "主動復華未來50",   "alpha_value": 34.3, "alpha_window": "ytd"},
+    {"code": "00981A", "name": "主動統一台股增長", "alpha_value": 29.9, "alpha_window": "6mo"},
+    {"code": "00994A", "name": "主動第一金台股優", "alpha_value": 25.9, "alpha_window": "ytd"},
+    {"code": "00995A", "name": "主動中信台灣卓越", "alpha_value": 23.5, "alpha_window": "ytd"},
+    {"code": "00992A", "name": "主動群益科技創新", "alpha_value": 22.1, "alpha_window": "ytd"},
+    {"code": "00987A", "name": "主動台新優勢成長", "alpha_value": 15.9, "alpha_window": "ytd"},
+    # TODO(2026-06-17): 00982A 名稱「主動野村優選成長」是推測，待二次驗證；對 logic 無影響
+    {"code": "00982A", "name": "主動野村優選成長", "alpha_value": 12.5, "alpha_window": "6mo"},
+    {"code": "00985A", "name": "主動野村台灣50",   "alpha_value":  9.6, "alpha_window": "6mo"},
+    {"code": "00980A", "name": "主動野村臺灣優選", "alpha_value":  3.7, "alpha_window": "6mo"},
 ]
+# 向後相容：仍保留 alpha 欄位指向 alpha_value（既有 code 可能讀 .alpha）
+for _e in BEAT_ETFS:
+    _e["alpha"] = _e["alpha_value"]
 
 _N = len(BEAT_ETFS)
 _total_rank_points = _N * (_N + 1) // 2  # 1+2+...+N
@@ -126,6 +144,11 @@ def _fetch_holdings(etf_code: str, token: str) -> dict:
             if unit != "股":
                 continue
             if any(sid.startswith(p) for p in ["C_", "M_", "PFUR", "RDI", "RECV"]):
+                continue
+            # 防呆：只收台股 sid（4-6 碼數字、可選結尾字母）。
+            # 過濾如 NVDA / AAPL 等美股代號 — 若未來不小心把美股 ETF 加進 BEAT_ETFS
+            # 也不會污染分數計算（H1 review 防線）。
+            if not _TW_SID_RE.match(sid):
                 continue
             try:
                 result[sid] = (sname, float(pct_str))
