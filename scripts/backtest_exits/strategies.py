@@ -283,3 +283,43 @@ STRATEGIES = {
     "S7_adaptive_either": s7_adaptive_either,
     "S8_asymmetric": s8_asymmetric,
 }
+
+
+# ─────────────────────────────────────────────────────────────────
+# S9 chip-confirm 變種 — 用法人籌碼濾掉「S9 觸發但籌碼仍多」的假訊號
+#
+# 研究動機：S0 baseline 的 S9 (連 3 黑 + 收 < MA20) 是純技術觸發、不看籌碼。
+# 假設「S9 觸發但籌碼仍偏多」可能是假訊號（短線洗盤），等 chip 也走弱再賣較準。
+#
+# 變種：S9 觸發時加 chip_score < threshold 確認；S8 仍照舊不受 chip 影響。
+# 籌碼資料無法取得時：fallback 走原 S9（保守，避免無資料時意外不賣）。
+#
+# 接受 chip_score 為第 4 個 keyword-only arg；其它策略以 **_kw 吸收忽略。
+# ─────────────────────────────────────────────────────────────────
+
+def _make_baseline_with_chip_gate(chip_threshold: float):
+    """產生「S8 OR (S9 AND chip_score<threshold)」變種。"""
+    def _impl(row, pos, taiex_row, *, chip_score=None) -> Tuple[bool, str]:
+        # S8 不變
+        if _trend_break_s8(row, 3.0):
+            return True, "S8_3xATR"
+        # S9 加 chip 確認
+        if _ma20_break_red3(row):
+            if chip_score is None:
+                # 無 chip 資料 → fallback 原 S9（保守）
+                return True, "S9_red3+MA20_nochip"
+            if chip_score < chip_threshold:
+                return True, f"S9_red3+MA20_chip{chip_score:.0f}<{chip_threshold:.0f}"
+            # 籌碼還行 → 不賣（過濾）
+            return False, ""
+        return False, ""
+    return _impl
+
+
+s0_chip30 = _make_baseline_with_chip_gate(30.0)
+s0_chip40 = _make_baseline_with_chip_gate(40.0)
+s0_chip50 = _make_baseline_with_chip_gate(50.0)
+
+STRATEGIES["S0_chip30"] = s0_chip30
+STRATEGIES["S0_chip40"] = s0_chip40
+STRATEGIES["S0_chip50"] = s0_chip50

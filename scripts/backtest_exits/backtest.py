@@ -35,6 +35,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from sector_trader import SECTOR_STOCKS, DEFAULT_STRATEGIES  # noqa: E402
 
 from strategies import STRATEGIES, Position  # noqa: E402
+from chip_data import get_loader as _get_chip_loader  # noqa: E402
+
+# Lazy 化：第一次呼叫 _chip_score_for 才載入 cache（避免無需 chip 的策略也付載入成本）
+_CHIP_LOADER = None
+
+
+def _chip_score_for(symbol: str, decision_date, close_price: float):
+    """模擬 production 的 T-1 約束：用 decision_date 前一交易日法人資料算分。
+
+    回 None 代表此 symbol 無 chip 快取 → 策略 fallback 走原 S9。
+    """
+    global _CHIP_LOADER
+    if _CHIP_LOADER is None:
+        _CHIP_LOADER = _get_chip_loader()
+    py_date = decision_date.date() if hasattr(decision_date, "date") else decision_date
+    return _CHIP_LOADER.get_chip_score(symbol, py_date, close_price=close_price)
 
 CACHE_SIG_DIR = Path(__file__).resolve().parent / "cache" / "signals"
 OUT_DIR = Path(__file__).resolve().parent / "out"
@@ -202,8 +218,13 @@ def run_backtest(strategy_name: str,
                 to_close.append((sym, c, f"std_sell({ss:.0f})"))
                 continue
 
-            # 1c. 策略觸發
-            do_sell, reason = strategy_fn(row, pos, taiex_row)
+            # 1c. 策略觸發（chip score 用前一日法人資料、模擬 production T-1 約束）
+            chip_score = _chip_score_for(sym, date, c)
+            try:
+                do_sell, reason = strategy_fn(row, pos, taiex_row, chip_score=chip_score)
+            except TypeError:
+                # 舊策略不收 chip_score kwarg
+                do_sell, reason = strategy_fn(row, pos, taiex_row)
             if do_sell:
                 to_close.append((sym, c, reason))
 

@@ -370,6 +370,47 @@ scripts/backtest_exits/
 source ~/.pyenv/versions/kentsai-crypto/bin/activate
 python scripts/backtest_exits/data_fetch.py     # 一次性，~5s（快取後不會重抓）
 python scripts/backtest_exits/signal_cache.py   # 一次性，~130s
-python scripts/backtest_exits/backtest.py       # ~20s（5 策略）
+python scripts/backtest_exits/backtest.py       # ~80s（16 策略）
 python scripts/backtest_exits/period_analysis.py
 ```
+
+---
+
+## 後續實驗：S9 加籌碼 confirm（2026-06-17 by claude）
+
+### 動機
+
+S9 是純技術觸發、不看籌碼。直覺假設：**「S9 觸發但籌碼仍偏多」可能是假訊號**，
+等籌碼也走弱再賣應該更準。實證驗證。
+
+### 實作
+
+`scripts/backtest_exits/chip_data.py` — 從 FinMind 法人快取（51 symbols × ~1760 days）
+算簡化版 chip_score（外資 46% + 投信 38% + 自營 16%，忽略融資/融券）。
+**模擬 production T-1 約束**：當日決策用前一交易日資料。
+
+加 3 變種：
+- **S0_chip30**：S8 OR (S9 AND chip_score < 30)
+- **S0_chip40**：S8 OR (S9 AND chip_score < 40)
+- **S0_chip50**：S8 OR (S9 AND chip_score < 50)
+
+### 結果（全部輸 S0 baseline）
+
+| 策略 | Without F3 | With F3 |
+|---|---:|---:|
+| **S0_baseline**（對照） | **+45.6% / -84.8%** | **+55.5% / -60.5%** |
+| S0_chip30 | +38.6% / -86.5% ⬇️ | +47.6% / -62.4% ⬇️ |
+| S0_chip40 | +43.2% / -84.4% ⬇️ | +52.5% / -60.9% ⬇️ |
+| S0_chip50 | +43.8% / -85.6% ⬇️ | +53.9% / -61.4% ⬇️ |
+
+### 結論：**直覺錯了**
+
+| 原因 |
+|---|
+| chip 資料 T-1 lag，價格已破壞趨勢時、籌碼還是昨日資料 → 無法即時 confirm |
+| chip 過濾掉的是真 SELL（不是假訊號）→ giveback 4.3% → 4.5% 增加、被吃進更多跌幅 |
+| 越嚴越慘：chip30 比 baseline 差 -7pp 報酬，chip50 也差 -1.8pp |
+
+→ **SELL 端 should 純技術 / 即時**。chip confirm 適合 BUY 端（看品質），不適合 SELL gate（要快）。
+
+**結論寫進 memory：[project_s9_chip_confirm_rejected.md](../../memory/project_s9_chip_confirm_rejected.md) 避免未來重做。**
