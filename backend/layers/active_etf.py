@@ -48,8 +48,7 @@ BEAT_ETFS = [
     {"code": "00995A", "name": "主動中信台灣卓越", "alpha_value": 23.5, "alpha_window": "ytd"},
     {"code": "00992A", "name": "主動群益科技創新", "alpha_value": 22.1, "alpha_window": "ytd"},
     {"code": "00987A", "name": "主動台新優勢成長", "alpha_value": 15.9, "alpha_window": "ytd"},
-    # TODO(2026-06-17): 00982A 名稱「主動野村優選成長」是推測，待二次驗證；對 logic 無影響
-    {"code": "00982A", "name": "主動野村優選成長", "alpha_value": 12.5, "alpha_window": "6mo"},
+    {"code": "00982A", "name": "主動群益台灣強棒", "alpha_value": 12.5, "alpha_window": "6mo"},
     {"code": "00985A", "name": "主動野村台灣50",   "alpha_value":  9.6, "alpha_window": "6mo"},
     {"code": "00980A", "name": "主動野村臺灣優選", "alpha_value":  3.7, "alpha_window": "6mo"},
 ]
