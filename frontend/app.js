@@ -1410,6 +1410,35 @@ function renderThreeLayerAnalysis(data) {
             chipEl.innerHTML = '<span style="color:var(--text-muted)">無籌碼資料</span>';
             if (chipScoreBadge) chipScoreBadge.textContent = '';
         }
+
+        // ── 大戶持股 % (TDCC 集保戶、純揭露不進評分) ──
+        // 不論 chipflow status 是否 active 都顯示（資料源獨立）
+        const lhSymbol = (data.symbol || '').split('.')[0];
+        if (lhSymbol) {
+            fetch('/api/sector-trading/large-holder/' + encodeURIComponent(lhSymbol))
+                .then(r => r.json())
+                .then(d => {
+                    if (!d.ok) return;
+                    const pct = d.large_pct;
+                    const conc = d.concentration;
+                    let color = '#888';
+                    if (pct >= 85) color = '#2e7d32';
+                    else if (pct >= 70) color = '#558b2f';
+                    else if (pct >= 50) color = '#d4a017';
+                    const row = document.createElement('div');
+                    row.className = 'tla-row';
+                    row.style.marginTop = '6px';
+                    row.style.borderTop = '1px dashed var(--text-muted)';
+                    row.style.paddingTop = '6px';
+                    row.innerHTML =
+                        '<span class="tla-row-label" title="TDCC 集保戶股權分散表、每週公布、ID 歸戶。獨立揭露、不進五面評分。">' +
+                        '大戶 (>1000張)</span>' +
+                        '<span style="color:' + color + ';font-weight:600">' +
+                        pct.toFixed(2) + '% <span style="font-size:10px;color:var(--text-muted)">(' + conc + ')</span></span>';
+                    chipEl.appendChild(row);
+                })
+                .catch(() => { /* 失敗就不顯示 */ });
+        }
     }
 
     // ── 消息面 ──
