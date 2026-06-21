@@ -129,6 +129,72 @@ async def list_sectors():
 
 # ── 處置股 ──
 
+@router.get("/large-holders-batch")
+async def get_large_holders_batch():
+    """全市場大戶持股 % snapshot（給前端一次拿、本地 lookup 避免 N 個 API call）。
+
+    回傳：
+      {
+        "meta": {"fetch_date": "2026-06-18", "symbol_count": 3992},
+        "stocks": {"2330": {"large_pct": 85.22, "concentration": "極度集中"}, ...}
+      }
+    無資料回 {"meta": {...}, "stocks": {}}
+    """
+    try:
+        from layers.large_holder import get_cache, interpret_concentration
+        cache = get_cache()
+        meta = cache.snapshot_meta()
+        # 用 batch_snapshot 維持封裝、避免外部直接戳 _snapshot / _lock
+        stocks = cache.batch_snapshot(lambda info: {
+            "large_pct": info["large_pct"],
+            "concentration": interpret_concentration(info["large_pct"]),
+        })
+        return {"meta": meta, "stocks": stocks}
+    except Exception as e:
+        return {"meta": {"fetch_date": None, "symbol_count": 0}, "stocks": {}, "error": str(e)}
+
+
+@router.get("/large-holder/{symbol}")
+async def get_large_holder(symbol: str):
+    """個股大戶持股 % — 純揭露資訊，不進五面評分。
+
+    來源：TDCC 集保戶股權分散表（每週公布、ID 歸戶）
+    級距 15 = 持股 > 1000 張（即「大戶」）；級 12-14 = 400-1000 張（中大戶）
+
+    回傳 schema：
+      {
+        "symbol": "2330",
+        "date": "2026-06-18",         # 集保資料日
+        "large_pct": 85.22,           # 大戶 (>1000 張) 占比
+        "large_holders": 1484,        # 大戶戶數
+        "medium_large_pct": 2.70,     # 中大戶 (400-1000 張) 占比
+        "large_plus_medium_pct": 87.92, # 合計 >400 張占比
+        "total_holders": 2835392,     # 總集保戶數
+        "concentration": "極度集中",     # 文字描述
+      }
+    無資料回 {"symbol": ..., "ok": false}
+    """
+    try:
+        from layers.large_holder import get_large_holder_info, interpret_concentration
+        info = get_large_holder_info(symbol)
+        if info is None:
+            return {"symbol": symbol, "ok": False, "msg": "無 TDCC 集保資料"}
+        return {
+            "symbol": symbol,
+            "ok": True,
+            "date": info["date"],
+            "large_pct": info["large_pct"],
+            "large_holders": info["large_holders"],
+            "medium_large_pct": info["medium_large_pct"],
+            "medium_large_holders": info["medium_large_holders"],
+            "large_plus_medium_pct": info["large_plus_medium_pct"],
+            "total_holders": info["total_holders"],
+            "concentration": interpret_concentration(info["large_pct"]),
+        }
+    except Exception as e:
+        return {"symbol": symbol, "ok": False, "error": str(e)}
+
+
 @router.get("/disposition-stocks")
 async def get_disposition_stocks():
     """目前的處置股清單 + 完整資訊（給前端做 badge 標示 + 日期）。

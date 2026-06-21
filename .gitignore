@@ -20,6 +20,8 @@ data/sector_accounts/
 # Historical market data (can be re-downloaded)
 backend/data/history/
 backend/data/last_prices.json
+# TDCC 大戶持股 CSV cache (每週自動 refresh)
+backend/data/tdcc/
 
 # Test data
 test_data.json

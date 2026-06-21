@@ -1285,6 +1285,39 @@
                 } catch (_) { /* 失敗就用上次的，不影響主流程 */ }
             }
 
+            // 大戶持股 % (TDCC 集保戶、每週更新)
+            // largeHolderStocks: { "2330": {large_pct: 85.22, concentration: "極度集中"} }
+            // 注意：每週才更新一次的 weekly data，不該每 15 秒 refresh（傳 150KB × 4 次/分鐘）。
+            // 只在頁面首次載入時抓一次；下次重整頁面才會重抓。
+            let largeHolderStocks = {};
+            let largeHolderDate = null;
+            let largeHolderLoaded = false;
+            async function refreshLargeHolderList() {
+                if (largeHolderLoaded) return;  // dedupe：每次 page load 只拉 1 次
+                try {
+                    const res = await fetch(API + '/api/sector-trading/large-holders-batch');
+                    const d = await res.json();
+                    largeHolderStocks = d.stocks || {};
+                    largeHolderDate = d.meta?.fetch_date;
+                    largeHolderLoaded = true;
+                } catch (_) { /* 失敗下次 refreshAll 再試 */ }
+            }
+
+            // 取得 holding 的大戶 % 顯示字串
+            function largeHolderInfo(symbol) {
+                const code = String(symbol).split('.')[0];
+                const entry = largeHolderStocks[code];
+                if (!entry) return '';
+                const pct = entry.large_pct;
+                const conc = entry.concentration;
+                // 集中度顏色：極度集中=綠（好）、集中=淡綠、中等=黃、散戶=灰
+                let color = '#888';
+                if (pct >= 85) color = '#2e7d32';
+                else if (pct >= 70) color = '#558b2f';
+                else if (pct >= 50) color = '#d4a017';
+                return ` <span style="color:${color};font-size:10px" title="TDCC 大戶持股 ${pct.toFixed(1)}% (${conc})、>1000張、ID 歸戶">大戶 ${pct.toFixed(0)}%</span>`;
+            }
+
             // HTML 跳脫（防 broker / 上游回傳含特殊字元時被注入）
             function esc(s) {
                 return String(s ?? '').replace(/[&<>"']/g, c => (
@@ -1312,9 +1345,10 @@
 
             async function refreshAll() {
                 try {
-                    // 處置股清單跟 sector 資料平行抓
-                    const [, res] = await Promise.all([
+                    // 處置股 + 大戶 + sector 資料平行抓
+                    const [, , res] = await Promise.all([
                         refreshDispositionList(),
+                        refreshLargeHolderList(),
                         fetch(API + '/api/sector-trading/sectors'),
                     ]);
                     const data = await res.json();
@@ -1672,10 +1706,12 @@
                         const pctText = noPrice ? '' : ` <span style="font-size:10px">(${plPct >= 0 ? '+' : ''}${plPct}%)</span>`;
                         // 處置股 badge（含 end_date + interval 區分）
                         const dispoBadge = dispositionBadge(sym);
+                        // 大戶持股 % info（純揭露、不影響策略）
+                        const lhInfo = largeHolderInfo(sym);
                         return `<div class="holding-item">
                         <div>
                             <div class="holding-name" style="cursor:pointer;text-decoration:underline dotted" onclick="window.goToStock('${sym}')" title="前往主頁查看 ${h.name || sym}">${h.name || sym}${dispoBadge}</div>
-                            <div class="holding-detail">${h.qty.toLocaleString()} 股 @ ${h.avg_price}</div>
+                            <div class="holding-detail">${h.qty.toLocaleString()} 股 @ ${h.avg_price}${lhInfo}</div>
                         </div>
                         <div style="text-align:right">
                             <div style="font-weight:700; font-size:13px">

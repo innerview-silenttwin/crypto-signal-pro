@@ -1624,6 +1624,8 @@ async def trigger_premarket_check():
     try:
         # 順手暖機處置股清單（08:30 在 reserve_stock 服務時段 08:00-14:30 內）
         await asyncio.to_thread(_warm_disposition_cache)
+        # TDCC 大戶持股 weekly 抓取（內部 dedupe、同週不重抓）
+        await asyncio.to_thread(_warm_large_holder_cache)
         report = await asyncio.to_thread(_compute_data_freshness_report)
         await asyncio.to_thread(_send_premarket_telegram, report)
         return {"status": "ok", "triggered_by": "launchd", "now": now.isoformat()}
@@ -1687,6 +1689,24 @@ def _warm_disposition_cache():
         # 暖機失敗不擋 premarket 主流程；但要印出 traceback 否則 silent fail 找不到原因
         import traceback
         print(f"[disposition-warmup] error: {e!r}\n{traceback.format_exc()}")
+
+
+def _warm_large_holder_cache():
+    """TDCC 大戶持股 weekly 抓取（cache 內部 dedupe、同週不重抓）。
+
+    由 trigger_premarket_check 在 _warm_disposition_cache 之後呼叫。
+    純揭露用、不影響交易；失敗不擋主流程。
+    """
+    try:
+        from layers.large_holder import get_cache as get_large_holder_cache
+        cache = get_large_holder_cache()
+        updated = cache.fetch()
+        meta = cache.snapshot_meta()
+        print(f"[large-holder-warmup] updated={updated} fetch_date={meta['fetch_date']} "
+              f"symbols={meta['symbol_count']}")
+    except Exception as e:
+        import traceback
+        print(f"[large-holder-warmup] error: {e!r}\n{traceback.format_exc()}")
 
 
 @app.post("/api/internal/trigger-evening-summary", dependencies=[Depends(require_internal_key)])
