@@ -64,41 +64,54 @@ def _compute_sector_regime(sector_id: str):
 
     results = {}
     for symbol in mgr.state.get("stocks", []):
-        df = fetch_signal_data(symbol)
-        if df is None:
-            results[symbol] = {"regime": "無數據", "details": {}}
-            continue
+        # 單檔股票失敗不擋全 sector — 之前曾因某檔 fetch/analyze 例外導致整個盤勢分析
+        # 回 500、前端「沒有資料」（user 2026-06-23 觀察）。
+        try:
+            df = fetch_signal_data(symbol)
+            if df is None:
+                results[symbol] = {"regime": "無數據", "details": {},
+                                   "name": mgr.stocks.get(symbol, symbol)}
+                continue
 
-        aggregator = SignalAggregator(weights=strategy["weights"])
-        signal = aggregator.analyze(
-            df.copy(), symbol, "1d",
-            layers=layers, sector_id=sector_id,
-        )
+            aggregator = SignalAggregator(weights=strategy["weights"])
+            signal = aggregator.analyze(
+                df.copy(), symbol, "1d",
+                layers=layers, sector_id=sector_id,
+            )
 
-        bs = round(float(signal.buy_score), 1)
-        ss = round(float(signal.sell_score), 1)
+            bs = round(float(signal.buy_score), 1)
+            ss = round(float(signal.sell_score), 1)
 
-        modifier = signal.layer_modifiers[0] if signal.layer_modifiers else None
-        details = _sanitize(modifier.details) if modifier else {}
-        results[symbol] = {
-            "name": mgr.stocks.get(symbol, symbol),
-            "price": round(float(df['close'].iloc[-1]), 2),
-            "regime": signal.regime or "未知",
-            "buy_score": bs,
-            "sell_score": ss,
-            "raw_buy_score": round(float(signal.raw_buy_score), 1),
-            "raw_sell_score": round(float(signal.raw_sell_score), 1),
-            "direction": signal.direction,
-            "signal_level": signal.signal_level,
-            "details": details,
-            "reason": modifier.reason if modifier else "",
-            # ── 健康狀況：離觸發還差多少 ──
-            "buy_threshold": effective_buy_th,           # 實際使用的買入門檻（含 F3 調整）
-            "sell_threshold": sell_th,                   # 賣出門檻
-            "buy_gap": round(effective_buy_th - bs, 1),  # 正數=還差幾分、負數=已過門檻
-            "sell_gap": round(sell_th - ss, 1),
-            "taiex_regime": taiex_regime,                # 提示 F3 是否激活
-        }
+            modifier = signal.layer_modifiers[0] if signal.layer_modifiers else None
+            details = _sanitize(modifier.details) if modifier else {}
+            results[symbol] = {
+                "name": mgr.stocks.get(symbol, symbol),
+                "price": round(float(df['close'].iloc[-1]), 2),
+                "regime": signal.regime or "未知",
+                "buy_score": bs,
+                "sell_score": ss,
+                "raw_buy_score": round(float(signal.raw_buy_score), 1),
+                "raw_sell_score": round(float(signal.raw_sell_score), 1),
+                "direction": signal.direction,
+                "signal_level": signal.signal_level,
+                "details": details,
+                "reason": modifier.reason if modifier else "",
+                # ── 健康狀況：離觸發還差多少 ──
+                "buy_threshold": effective_buy_th,           # 實際使用的買入門檻（含 F3 調整）
+                "sell_threshold": sell_th,                   # 賣出門檻
+                "buy_gap": round(effective_buy_th - bs, 1),  # 正數=還差幾分、負數=已過門檻
+                "sell_gap": round(sell_th - ss, 1),
+                "taiex_regime": taiex_regime,                # 提示 F3 是否激活
+            }
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            results[symbol] = {
+                "regime": "計算失敗",
+                "details": {},
+                "name": mgr.stocks.get(symbol, symbol),
+                "error": f"{type(e).__name__}: {e}",
+            }
 
     return {
         "sector_id": sector_id,

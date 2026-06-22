@@ -1435,11 +1435,19 @@
                 const reqSector = currentSector;
                 try {
                     const res = await fetch(API + `/api/sector-trading/${reqSector}/regime`);
+                    if (!res.ok) {
+                        console.error('refreshRegime HTTP', res.status);
+                        const el = document.getElementById('regime-list');
+                        if (el) el.innerHTML = `<div style="color:var(--sell-color)">⚠️ 載入失敗 (HTTP ${res.status})，將自動重試</div>`;
+                        return;
+                    }
                     const data = await res.json();
                     if (reqSector !== currentSector) return;
                     renderRegime(data);
                 } catch (e) {
                     console.error('refreshRegime error:', e);
+                    const el = document.getElementById('regime-list');
+                    if (el) el.innerHTML = `<div style="color:var(--sell-color)">⚠️ 載入失敗：${e.message}，將自動重試</div>`;
                 }
             }
 
