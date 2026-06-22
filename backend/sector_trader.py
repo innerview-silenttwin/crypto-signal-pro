@@ -641,11 +641,13 @@ class SectorTradingManager:
                 pnl_map[lot_id]["open_cost"] = round(lot[1] * lot[2])
 
         # 將 pnl 資訊寫入副本（不改原始 history）
-        # 過濾掉非 BUY/SELL（例如 SYNC、DEPOSIT）— 這些是內部記帳，前端不顯示
-        # 若要看 audit log，去 JSON 看原始 history
+        # 顯示 BUY / SELL / SYNC (對帳清零、broker 切換時 reconcile 用)
+        # DEPOSIT / WITHDRAW 已有獨立分支處理（如 broker_state 已加錢）
+        # SYNC 顯示讓用戶看 audit trail — 避免「某批 BUY 之後消失」的困惑
+        # 詳見 memory/project_2026_05_15_sync_event.md
         annotated = []
         for rec in history:
-            if rec.get("type", "") not in ("BUY", "SELL"):
+            if rec.get("type", "") not in ("BUY", "SELL", "SYNC"):
                 continue
             rec_copy = dict(rec)
             info = pnl_map.get(id(rec))

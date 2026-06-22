@@ -1743,6 +1743,22 @@
                 } else {
                     body.innerHTML = data.data.map(h => {
                         const fmtPct = (p) => (p == null) ? '' : ` <small style="color:var(--text-muted)">(${p >= 0 ? '+' : ''}${p.toFixed(2)}%)</small>`;
+                        // SYNC 對帳記錄（broker 切換時 reconcile 用、無實際損益）
+                        if (h.type === 'SYNC') {
+                            const qbefore = h.qty_before ?? '?';
+                            const qafter = h.qty_after ?? '?';
+                            const subtype = h.subtype || 'reconcile';
+                            const balChg = h.balance_change || 0;
+                            return `<tr style="background:rgba(128,128,128,0.06); color:var(--text-muted)">
+                                <td>${h.time}</td>
+                                <td style="cursor:pointer" onclick="window.goToStock('${h.symbol}')">${h.name || h.symbol}
+                                    <span style="background:#666;color:#fff;font-size:9px;padding:1px 4px;border-radius:3px;margin-left:4px" title="broker 切換時對帳，無實際損益；詳見 memory/project_2026_05_15_sync_event">對帳</span>
+                                </td>
+                                <td colspan="3" style="font-style:italic">${subtype} ${qbefore}→${qafter} 股</td>
+                                <td><span style="color:var(--text-muted)">${balChg >= 0 ? '+' : ''}${Math.round(balChg).toLocaleString()}</span> <small>cost 退回</small></td>
+                                <td style="font-size:11px;color:var(--text-muted)">虛擬持倉清零，不算實現損益</td>
+                            </tr>`;
+                        }
                         if (h.type === 'DEPOSIT' || h.type === 'WITHDRAW') {
                             const amt = h.amount || 0;
                             const isIn = h.type === 'DEPOSIT';
