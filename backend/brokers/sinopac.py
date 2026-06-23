@@ -170,9 +170,11 @@ class SinopacBroker:
         Raises:
             最後一次 attempt 的例外（不吞）
         """
-        # 可重試的錯誤類型（5/21 觀察：rshioaji 1.5.13 開始拋 ShioajiConnectionError）
+        # 可重試的錯誤類型（官方 shioaji 1.5.x 拋 ShioajiConnectionError / ShioajiTimeoutError 等）
         # 共通點：都是「短暫的連線/通訊問題」，sleep 後再試很可能成功
         # 不重試：認證錯誤、參數錯誤、權限問題 — 重試也是白費
+        # 註：2026-06-24 前曾誤裝社群版 rshioaji 1.5.13、現已換回官方 shioaji 1.5.3；
+        #     詳見 memory/project_rshioaji_cleanup_2026_06_24
         RETRYABLE_KEYWORDS = ("Timeout", "Connection", "Solace", "Network", "Disconnect")
         # 永豐客服 5/21 建議 exponential backoff：1s, 2s, 4s
         BACKOFF_SCHEDULE = [1.0, 2.0, 4.0]

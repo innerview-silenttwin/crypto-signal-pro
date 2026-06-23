@@ -121,7 +121,7 @@ class _FakeShioajiAPI:
             raise TimeoutError("simulated persistent timeout")
         if getattr(self, "_place_order_value_error", False):
             raise ValueError("non-retryable error should not retry")
-        # ShioajiConnectionError 系列：模擬 rshioaji 1.5.13 抛的連線錯誤
+        # ShioajiConnectionError 系列：模擬 shioaji 1.5.x 拋的連線錯誤
         if hasattr(self, "_place_order_conn_errs_left") and self._place_order_conn_errs_left > 0:
             self._place_order_conn_errs_left -= 1
             exc = type("ShioajiConnectionError", (Exception,), {})

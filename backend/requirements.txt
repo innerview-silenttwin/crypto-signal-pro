@@ -13,8 +13,11 @@ httpx>=0.24.0
 pyyaml>=6.0
 
 # 永豐證券 Shioaji（僅 prod 機需要；dev 機可不裝，broker factory 會 fallback 為 VirtualBroker）
-# pip install shioaji
-# shioaji>=1.2.0
+# ⚠️ 必須裝官方 shioaji（PyPI 名稱: shioaji），不要裝 rshioaji（社群 Rust fork、非永豐官方、客服不支援）
+# 2026-06-24 mini 上發現誤裝 rshioaji 1.5.13、已移除並改回官方 shioaji 1.5.3
+# 詳見 memory/project_rshioaji_cleanup_2026_06_24
+# pip install shioaji==1.5.3
+# shioaji==1.5.3
 
 # ── Dev / Test ──
 pytest>=8.0.0
