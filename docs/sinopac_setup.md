@@ -59,7 +59,8 @@ sudo -u trader git clone git@github.com:ken-tsai-prod/crypto-signal-pro.git /opt
 cd /opt/crypto-signal-pro
 
 sudo -u trader pip3 install --user -r backend/requirements.txt
-sudo -u trader pip3 install --user shioaji
+# ⚠️ 必須裝官方 shioaji（PyPI: shioaji）、不要裝 rshioaji（社群 Rust fork、非永豐官方）
+sudo -u trader pip3 install --user "shioaji==1.5.3"
 ```
 
 ### 2.3 安裝 systemd service
@@ -131,7 +132,7 @@ sudo -u trader env $(grep -v '^#' /etc/crypto-signal-pro/.env | xargs) \
 ```
 
 失敗時的常見原因：
-- `ImportError: shioaji` → `pip install shioaji`
+- `ImportError: shioaji` → `pip install "shioaji==1.5.3"`（注意：必須裝官方 `shioaji`、不是 `rshioaji`）
 - `login failed` → 檢查 API_KEY/SECRET_KEY；確認永豐已開通簽核
 - `no stock_account` → 確認永豐 API 測試權限已開通
 
@@ -228,7 +229,7 @@ sudo journalctl -u crypto-signal-pro -n 100 --no-pager
 ```
 
 常見：
-- `ModuleNotFoundError: shioaji` → `sudo -u trader pip3 install --user shioaji`
+- `ModuleNotFoundError: shioaji` → `sudo -u trader pip3 install --user "shioaji==1.5.3"`（官方版本，不是 rshioaji）
 - `Permission denied` 對 `/etc/crypto-signal-pro/.env` → 檢查 owner / mode
 
 ### 下單拋例外

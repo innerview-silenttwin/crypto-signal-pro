@@ -91,7 +91,7 @@ def fetch_sinopac_positions() -> dict[str, dict]:
     try:
         import shioaji as sj
     except ImportError:
-        _fail("shioaji 未安裝；請在 venv 內跑 pip install shioaji", code=2)
+        _fail("shioaji 未安裝；請在 venv 內跑 pip install \"shioaji==1.5.3\"（官方版本，不是 rshioaji）", code=2)
 
     api = sj.Shioaji(simulation=True)
     try:

@@ -13,7 +13,7 @@
     📒 future account: ...
 
 故障排除：
-  - "ImportError: shioaji" → pip install shioaji
+  - "ImportError: shioaji" → pip install "shioaji==1.5.3"  (官方版本，不是 rshioaji)
   - "login failed" → 檢查 SHIOAJI_API_KEY/SECRET_KEY 是否正確；簽過風險預告書
   - "no stock_account" → 確認永豐已開通 API 測試權限
 """
@@ -53,7 +53,7 @@ def main() -> int:
     try:
         import shioaji as sj
     except ImportError:
-        print("❌ shioaji 未安裝。執行：pip install shioaji")
+        print("❌ shioaji 未安裝。執行：pip install \"shioaji==1.5.3\"（官方版本，不是 rshioaji）")
         return 3
 
     print(f"➡️  連線 Shioaji（simulation={simulation}）...")

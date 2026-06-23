@@ -15,7 +15,7 @@
 
 ### 前置條件
 - Python 3.10+
-- pip install shioaji
+- pip install "shioaji==1.5.3"  (官方版本，不是 rshioaji)
 - 簽署過程中拿到的 SHIOAJI_API_KEY 與 SHIOAJI_SECRET_KEY
 - 你的身分證字號 (SHIOAJI_PERSON_ID)
 - **時間：營業日 8am – 8pm 台灣時間**（永豐 simulation 環境只在這時段開放）
@@ -148,7 +148,7 @@ def main() -> int:
     try:
         import shioaji as sj
     except ImportError:
-        _fail("shioaji 未安裝。執行：pip install shioaji", code=2)
+        _fail("shioaji 未安裝。執行：pip install \"shioaji==1.5.3\"（官方版本，不是 rshioaji）", code=2)
 
     print(f"\n── shioaji 版本：{getattr(sj, '__version__', 'unknown')} ──")
 

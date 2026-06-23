@@ -64,7 +64,7 @@ class SinopacBroker:
             import shioaji as sj
         except ImportError as e:
             raise RuntimeError(
-                "shioaji 未安裝；prod 機請執行 pip install shioaji"
+                "shioaji 未安裝；prod 機請執行 pip install \"shioaji==1.5.3\"（官方版本，不是 rshioaji）"
             ) from e
 
         self._sj = sj
