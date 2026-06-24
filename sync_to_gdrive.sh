@@ -5,18 +5,24 @@ SRC="/Users/ken_tsai/Documents/kentsai/crypto-signal-pro"
 DEST="$HOME/Library/CloudStorage/GoogleDrive-ironsien007@gmail.com/我的雲端硬碟/crypto-signal-pro"
 
 # Step 1：同步程式碼（排除 data/ 大型快取）
-rsync -av --delete \
+# ⚠️ --delete-excluded 必要：rsync 預設不會刪 dest 已存在但被 exclude 的檔，
+#    沒這 flag 過去手動 copy 過去的 .env / .git 等敏感檔會永久殘留在 GDrive
+rsync -av --delete --delete-excluded \
+  --include='.env.example' \
+  --exclude='.env' \
+  --exclude='.env.*' \
   --exclude='.git/' \
   --exclude='.pytest_cache/' \
   --exclude='node_modules/' \
   --exclude='__pycache__/' \
   --exclude='.venv/' \
   --exclude='venv/' \
-  --exclude='.env' \
-  --exclude='.env.*' \
   --exclude='.DS_Store' \
   --exclude='.vscode/' \
   --exclude='.claude/settings.local.json' \
+  --exclude='.claude/worktrees/' \
+  --exclude='shioaji.log' \
+  --exclude='*.log' \
   --exclude='data/' \
   "$SRC/" "$DEST/"
 
