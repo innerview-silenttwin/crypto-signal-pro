@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-TW" data-theme="kawaii">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ETF 抗跌/領漲比較 | CryptoSignal Pro</title>
+    <link rel="stylesheet" href="style.css">
+    <script>
+        (function () {
+            var t = localStorage.getItem('csp-theme') || 'kawaii';
+            document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
+    <style>
+        .ec-wrap { max-width: 1080px; margin: 0 auto; padding: 20px; }
+        .ec-title { font-size: 22px; font-weight: 700; color: var(--text-main); margin: 8px 0 4px; }
+        .ec-sub { color: var(--text-muted); font-size: 13px; margin-bottom: 18px; }
+        .ec-card {
+            background: var(--bg-card); border: 1px solid var(--border-color);
+            border-radius: 16px; box-shadow: var(--glass-shadow);
+            padding: 16px; margin-bottom: 16px; backdrop-filter: blur(8px);
+        }
+        .ec-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+        .ec-row + .ec-row { margin-top: 10px; }
+        .ec-label { color: var(--text-muted); font-size: 12px; font-weight: 600; margin-right: 4px; }
+        .ec-btn {
+            border: 1px solid var(--border-color); background: transparent;
+            color: var(--text-main); border-radius: 10px; padding: 6px 12px;
+            font-size: 13px; cursor: pointer; transition: all .15s;
+        }
+        .ec-btn:hover { border-color: var(--primary); }
+        .ec-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .ec-input {
+            border: 1px solid var(--border-color); background: var(--bg-card);
+            color: var(--text-main); border-radius: 10px; padding: 6px 10px; font-size: 13px;
+        }
+        .ec-go {
+            background: var(--primary); color: #fff; border: none; border-radius: 10px;
+            padding: 7px 16px; font-size: 13px; font-weight: 600; cursor: pointer;
+        }
+        .ec-go:hover { box-shadow: 0 0 12px var(--glow-primary); }
+        .ec-bench {
+            font-size: 14px; color: var(--text-main); padding: 10px 14px;
+            background: rgba(167,139,250,0.08); border-radius: 12px; margin-bottom: 12px;
+        }
+        table.ec-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+        table.ec-tbl th, table.ec-tbl td { padding: 9px 10px; text-align: right; white-space: nowrap; }
+        table.ec-tbl th {
+            color: var(--text-muted); font-weight: 600; border-bottom: 1px solid var(--border-color);
+            cursor: pointer; user-select: none;
+        }
+        table.ec-tbl th.l, table.ec-tbl td.l { text-align: left; }
+        table.ec-tbl td { border-bottom: 1px solid var(--border-color); color: var(--text-main); }
+        table.ec-tbl tbody tr:hover { background: rgba(167,139,250,0.06); }
+        .up { color: var(--buy-color); font-weight: 600; }
+        .down { color: var(--sell-color); font-weight: 600; }
+        .src { font-size: 11px; padding: 2px 7px; border-radius: 8px; }
+        .src-alpha { background: rgba(110,231,183,0.18); color: var(--buy-color); }
+        .src-custom { background: rgba(125,211,252,0.18); color: var(--accent-sky); }
+        .win { font-weight: 700; }
+        .lose { opacity: 0.6; }
+        .ec-del { border: none; background: transparent; color: var(--sell-color); cursor: pointer; font-size: 14px; }
+        .ec-msg { font-size: 12px; margin-left: 8px; }
+        .ec-na { color: var(--text-muted); }
+        .ec-scroll { overflow-x: auto; }
+        @media (max-width: 640px) { .ec-wrap { padding: 12px; } }
+    </style>
+</head>
+
+<body>
+    <div class="ec-wrap">
+        <div class="ec-row" style="margin-bottom:10px">
+            <a href="sector_trading.html" class="ec-btn">← 台股交易中心</a>
+            <a href="index.html" class="ec-btn">分析儀表板</a>
+            <a href="settings.html" class="ec-btn">⚙️ 後台設定</a>
+        </div>
+        <div class="ec-title">📊 ETF 抗跌 / 領漲比較</div>
+        <div class="ec-sub">9 檔 alpha 清單 + 你自訂的 ETF，在指定區間 vs 大盤的漲跌幅。下跌窗口看抗跌、上漲窗口看領漲。</div>
+
+        <!-- 控制列 -->
+        <div class="ec-card">
+            <div class="ec-row">
+                <span class="ec-label">區間</span>
+                <button class="ec-btn" data-preset="5">近5日</button>
+                <button class="ec-btn" data-preset="30">近1月</button>
+                <button class="ec-btn" data-preset="90">近3月</button>
+                <button class="ec-btn" data-preset="ytd">YTD</button>
+            </div>
+            <div class="ec-row">
+                <span class="ec-label">自訂</span>
+                <input type="date" id="ec-start" class="ec-input">
+                <span class="ec-label">→</span>
+                <input type="date" id="ec-end" class="ec-input">
+                <span class="ec-label">大盤</span>
+                <select id="ec-bench" class="ec-input">
+                    <option value="^TWII">加權指數</option>
+                    <option value="0050.TW">元大台灣50</option>
+                </select>
+                <button class="ec-go" id="ec-go">查詢</button>
+            </div>
+        </div>
+
+        <!-- 新增 ETF -->
+        <div class="ec-card">
+            <div class="ec-row">
+                <span class="ec-label">新增 ETF</span>
+                <input type="text" id="ec-add-code" class="ec-input" placeholder="代號 如 0056" style="width:120px">
+                <input type="text" id="ec-add-name" class="ec-input" placeholder="名稱（可留空，自動帶入）" style="width:200px">
+                <button class="ec-go" id="ec-add-btn">＋ 加入</button>
+                <span class="ec-msg ec-na" id="ec-add-msg"></span>
+            </div>
+        </div>
+
+        <div class="ec-bench" id="ec-bench-line">載入中…</div>
+
+        <div class="ec-card ec-scroll">
+            <table class="ec-tbl">
+                <thead>
+                    <tr>
+                        <th class="l">ETF</th>
+                        <th class="l">來源</th>
+                        <th data-sort="ret_pct">區間漲跌% ↕</th>
+                        <th>vs 大盤</th>
+                        <th data-sort="max_dd_pct">最大回撤% ↕</th>
+                        <th>vs 大盤</th>
+                        <th>天數</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="ec-body">
+                    <tr><td colspan="8" class="ec-na" style="text-align:center;padding:24px">載入中…</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const $ = (id) => document.getElementById(id);
+        let lastData = null;
+        let sortKey = 'ret_pct', sortDesc = true;
+
+        // 防注入：ETF 名稱/代號可能來自使用者輸入或 yfinance，innerHTML 前一律 escape
+        function esc(s) {
+            return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+                ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+
+        function fmtPct(v) {
+            if (v === null || v === undefined) return '<span class="ec-na">N/A</span>';
+            const cls = v >= 0 ? 'up' : 'down';
+            const sign = v > 0 ? '+' : '';
+            return `<span class="${cls}">${sign}${v.toFixed(2)}%</span>`;
+        }
+        function vsMark(beat) {
+            if (beat === null || beat === undefined) return '<span class="ec-na">—</span>';
+            return beat ? '<span class="win">✅ 贏</span>' : '<span class="lose">🔻 輸</span>';
+        }
+
+        function isoDaysAgo(days) {
+            const d = new Date();
+            d.setDate(d.getDate() - days);
+            return d.toISOString().slice(0, 10);
+        }
+        function todayIso() { return new Date().toISOString().slice(0, 10); }
+
+        function setPreset(p) {
+            document.querySelectorAll('.ec-btn[data-preset]').forEach(b =>
+                b.classList.toggle('active', b.dataset.preset === String(p)));
+            const end = todayIso();
+            let start;
+            if (p === 'ytd') start = new Date().getFullYear() + '-01-01';
+            else if (p === '5') start = isoDaysAgo(7);   // ~5 交易日
+            else start = isoDaysAgo(parseInt(p, 10));
+            $('ec-start').value = start;
+            $('ec-end').value = end;
+            load();
+        }
+
+        async function load() {
+            const start = $('ec-start').value, end = $('ec-end').value;
+            const bench = $('ec-bench').value;
+            $('ec-body').innerHTML = '<tr><td colspan="8" class="ec-na" style="text-align:center;padding:24px">查詢中…</td></tr>';
+            try {
+                const qs = new URLSearchParams({ benchmark: bench });
+                if (start) qs.set('start', start);
+                if (end) qs.set('end', end);
+                const res = await fetch('/api/etf-compare?' + qs.toString());
+                lastData = await res.json();
+                render();
+            } catch (e) {
+                $('ec-body').innerHTML = `<tr><td colspan="8" class="down" style="text-align:center;padding:24px">載入失敗：${e}</td></tr>`;
+            }
+        }
+
+        function render() {
+            if (!lastData) return;
+            const b = lastData.benchmark;
+            $('ec-bench-line').innerHTML =
+                `區間 <b>${esc(lastData.start)} → ${esc(lastData.end)}</b>　大盤 <b>${esc(b.name)}</b>：` +
+                `漲跌 ${fmtPct(b.ret_pct)}　最大回撤 ${fmtPct(b.max_dd_pct)}`;
+
+            const rows = [...lastData.etfs].sort((x, y) => {
+                const a = x[sortKey], c = y[sortKey];
+                if (a === null) return 1;
+                if (c === null) return -1;
+                return sortDesc ? c - a : a - c;
+            });
+
+            $('ec-body').innerHTML = rows.map(e => {
+                const srcCls = e.source === 'alpha' ? 'src-alpha' : 'src-custom';
+                const srcTxt = e.source === 'alpha' ? 'alpha' : '自訂';
+                const del = e.source === 'custom'
+                    ? `<button class="ec-del" title="移除" data-del="${esc(e.code)}">✕</button>` : '';
+                const nameCell = `<b>${esc(e.name)}</b><br><span class="ec-na">${esc(e.code)}</span>`;
+                if (!e.ok) {
+                    return `<tr><td class="l">${nameCell}</td>
+                        <td class="l"><span class="src ${srcCls}">${srcTxt}</span></td>
+                        <td colspan="5" class="ec-na" style="text-align:center">查無價格資料</td>
+                        <td>${del}</td></tr>`;
+                }
+                const partialNote = e.partial
+                    ? ` <span class="ec-na" title="此 ETF 在區間內才掛牌，報酬自 ${esc(e.since)} 起算">⚠️自${esc(e.since)}</span>`
+                    : '';
+                return `<tr>
+                    <td class="l">${nameCell}</td>
+                    <td class="l"><span class="src ${srcCls}">${srcTxt}</span></td>
+                    <td>${fmtPct(e.ret_pct)}${partialNote}</td>
+                    <td>${vsMark(e.beat_ret)}</td>
+                    <td>${fmtPct(e.max_dd_pct)}</td>
+                    <td>${vsMark(e.beat_dd)}</td>
+                    <td class="ec-na">${e.n_days}</td>
+                    <td>${del}</td>
+                </tr>`;
+            }).join('');
+
+            document.querySelectorAll('[data-del]').forEach(btn =>
+                btn.addEventListener('click', () => removeEtf(btn.dataset.del)));
+        }
+
+        async function addEtf() {
+            const code = $('ec-add-code').value.trim();
+            const name = $('ec-add-name').value.trim();
+            if (!code) return;
+            $('ec-add-msg').textContent = '驗證中…';
+            $('ec-add-msg').className = 'ec-msg ec-na';
+            try {
+                const qs = new URLSearchParams({ code });
+                if (name) qs.set('name', name);
+                const res = await fetch('/api/etf-compare/watchlist?' + qs.toString(), { method: 'POST' });
+                const j = await res.json();
+                if (j.added) {
+                    $('ec-add-msg').textContent = `已加入 ${j.name}`;
+                    $('ec-add-msg').className = 'ec-msg up';
+                    $('ec-add-code').value = ''; $('ec-add-name').value = '';
+                    load();
+                } else if (j.existed) {
+                    $('ec-add-msg').textContent = '清單已有此 ETF';
+                    $('ec-add-msg').className = 'ec-msg ec-na';
+                } else {
+                    const reason = j.reason === 'no_data' ? '查無此代號的價格資料' : (j.reason || '失敗');
+                    $('ec-add-msg').textContent = '無法加入：' + reason;
+                    $('ec-add-msg').className = 'ec-msg down';
+                }
+            } catch (e) {
+                $('ec-add-msg').textContent = '錯誤：' + e;
+                $('ec-add-msg').className = 'ec-msg down';
+            }
+        }
+
+        async function removeEtf(code) {
+            try {
+                await fetch('/api/etf-compare/watchlist?code=' + encodeURIComponent(code), { method: 'DELETE' });
+                load();
+            } catch (e) { /* noop */ }
+        }
+
+        // 事件綁定
+        document.querySelectorAll('.ec-btn[data-preset]').forEach(b =>
+            b.addEventListener('click', () => setPreset(b.dataset.preset)));
+        $('ec-go').addEventListener('click', () => {
+            document.querySelectorAll('.ec-btn[data-preset]').forEach(b => b.classList.remove('active'));
+            load();
+        });
+        $('ec-add-btn').addEventListener('click', addEtf);
+        $('ec-add-code').addEventListener('keydown', e => { if (e.key === 'Enter') addEtf(); });
+        document.querySelectorAll('th[data-sort]').forEach(th =>
+            th.addEventListener('click', () => {
+                const k = th.dataset.sort;
+                if (sortKey === k) sortDesc = !sortDesc; else { sortKey = k; sortDesc = true; }
+                render();
+            }));
+
+        // 初始：近1月
+        setPreset(30);
+    </script>
+</body>
+
+</html>

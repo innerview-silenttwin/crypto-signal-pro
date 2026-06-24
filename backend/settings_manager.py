@@ -55,6 +55,38 @@ def add_custom_stock(symbol: str, name: str, sector: str):
     _sync_to_sector_trader(symbol, name, sector)
     return settings
     
+def get_watch_etfs():
+    """使用者自訂的 ETF 抗跌比較清單（[{"code","name"}]）。"""
+    return _load_settings().get("etf_watchlist", [])
+
+
+def add_watch_etf(code: str, name: str = ""):
+    """新增自訂 ETF 到比較清單。回傳 True=新增、False=已存在（已更新名稱）。"""
+    settings = _load_settings()
+    wl = settings.setdefault("etf_watchlist", [])
+    code = code.strip().upper()
+    for e in wl:
+        if e["code"] == code:
+            if name:
+                e["name"] = name
+            _save_settings(settings)
+            return False
+    wl.append({"code": code, "name": name or code})
+    _save_settings(settings)
+    return True
+
+
+def remove_watch_etf(code: str):
+    """從比較清單移除。回傳 True=有移除、False=本來就沒有。"""
+    settings = _load_settings()
+    wl = settings.setdefault("etf_watchlist", [])
+    code = code.strip().upper()
+    before = len(wl)
+    settings["etf_watchlist"] = [e for e in wl if e["code"] != code]
+    _save_settings(settings)
+    return len(settings["etf_watchlist"]) < before
+
+
 def _sync_to_sector_trader(symbol, name, sector_name):
     # This will inject the stock into sector_trader
     try:
