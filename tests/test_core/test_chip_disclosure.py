@@ -92,13 +92,25 @@ def test_pc_ratio_skips_header_and_bad_rows(monkeypatch):
     assert len(out) == 1 and out[0]["date"] == "2026-06-24"
 
 
+def test_fetch_index_close(monkeypatch):
+    import pandas as pd
+    import yfinance
+    df = pd.DataFrame({"Close": [45809.19, 47100.65]},
+                      index=pd.to_datetime(["2026-06-16", "2026-06-23"]))
+    monkeypatch.setattr(yfinance, "download", lambda *a, **k: df)
+    out = cd.fetch_index_close(10)
+    assert out == [{"date": "2026-06-16", "close": 45809.19},
+                   {"date": "2026-06-23", "close": 47100.65}]
+
+
 def test_market_overview_shape(monkeypatch):
+    monkeypatch.setattr(cd, "fetch_index_close", lambda days: [{"date": "d", "close": 1.0}])
     monkeypatch.setattr(cd, "fetch_futures_oi", lambda days: [{"date": "d"}])
     monkeypatch.setattr(cd, "fetch_market_institutional", lambda days: [])
     monkeypatch.setattr(cd, "fetch_pc_ratio", lambda days: [])
     o = cd.market_overview(15)
     assert o["days"] == 15
-    assert set(o.keys()) >= {"days", "futures_oi", "market_institutional", "pc_ratio", "notes"}
+    assert set(o.keys()) >= {"days", "index", "futures_oi", "market_institutional", "pc_ratio", "notes"}
 
 
 def test_cache_returns_same_object(monkeypatch):

@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>大盤籌碼揭露 | CryptoSignal Pro</title>
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script>
         (function () {
             var t = localStorage.getItem('csp-theme') || 'kawaii';
@@ -71,6 +72,17 @@
         </div>
 
         <div class="cd-card">
+            <h3>📉 籌碼 vs 大盤 趨勢疊圖</h3>
+            <div class="cd-note">
+                大盤走真實價格（左軸）；三種籌碼各自正規化到 0–100 疊在右軸（<b>只看形狀/轉折</b>，非實際值）。
+                點圖例可開關任一條。用來一眼看「籌碼轉折 vs 大盤後勢」的領先或背離。
+            </div>
+            <div style="position:relative;height:360px">
+                <canvas id="cd-chart"></canvas>
+            </div>
+        </div>
+
+        <div class="cd-card">
             <h3>① 台指期三大法人未平倉淨額（口數）</h3>
             <div class="cd-note">期貨方向領先指標。淨口數 正=偏多、負=偏空；外資期貨淨部位最受關注。</div>
             <div class="cd-latest" id="fut-latest"></div>
@@ -131,6 +143,74 @@
                 `<thead><tr><th class="l">日期</th><th>未平倉量比%</th><th>成交量比%</th></tr></thead><tbody>${body}</tbody>`;
         }
 
+        // ── 趨勢疊圖 ──
+        let cdChart = null;
+        const cssVar = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+        function normalize(map, dates) {
+            // map: date->value；對 dates 取值、min-max 縮放到 0~100（只看形狀）
+            const vals = dates.map(d => map.has(d) ? map.get(d) : null);
+            const present = vals.filter(v => v !== null);
+            if (!present.length) return vals;
+            const lo = Math.min(...present), hi = Math.max(...present);
+            const span = hi - lo;
+            return vals.map(v => v === null ? null : (span === 0 ? 50 : (v - lo) / span * 100));
+        }
+
+        function toMap(rows, key) {
+            const m = new Map();
+            (rows || []).forEach(r => { if (r[key] !== undefined && r[key] !== null) m.set(r.date, r[key]); });
+            return m;
+        }
+
+        function renderChart(d) {
+            if (typeof Chart === 'undefined') return;
+            // X 軸 = 所有序列日期的聯集（遞增）
+            const dateSet = new Set();
+            (d.index || []).forEach(r => dateSet.add(r.date));
+            (d.futures_oi || []).forEach(r => dateSet.add(r.date));
+            (d.market_institutional || []).forEach(r => dateSet.add(r.date));
+            (d.pc_ratio || []).forEach(r => dateSet.add(r.date));
+            const dates = [...dateSet].sort();
+
+            const idxMap = toMap(d.index, 'close');
+            const price = dates.map(dt => idxMap.has(dt) ? idxMap.get(dt) : null);
+            const futForeign = normalize(toMap(d.futures_oi, 'foreign'), dates);
+            const instForeign = normalize(toMap(d.market_institutional, 'foreign'), dates);
+            const pcOi = normalize(toMap(d.pc_ratio, 'pc_oi'), dates);
+
+            const mkLine = (label, data, color, axis, dash) => ({
+                label, data, borderColor: color, backgroundColor: color,
+                yAxisID: axis, borderWidth: axis === 'yP' ? 2.5 : 1.8,
+                pointRadius: 0, tension: 0.25, spanGaps: true,
+                borderDash: dash || [],
+            });
+
+            const ds = [
+                mkLine('大盤(實際價)', price, cssVar('--primary') || '#a78bfa', 'yP'),
+                mkLine('外資期貨OI(形狀)', futForeign, cssVar('--accent-sky') || '#7dd3fc', 'yN'),
+                mkLine('外資現貨買賣超(形狀)', instForeign, cssVar('--accent-mint') || '#6ee7b7', 'yN'),
+                mkLine('選擇權P/C未平倉比(形狀)', pcOi, cssVar('--accent-peach') || '#fdba74', 'yN', [5, 4]),
+            ];
+
+            const txt = cssVar('--text-muted') || '#9b8ab8';
+            const grid = 'rgba(150,150,180,0.12)';
+            if (cdChart) cdChart.destroy();
+            cdChart = new Chart($('cd-chart'), {
+                type: 'line',
+                data: { labels: dates, datasets: ds },
+                options: {
+                    responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+                    plugins: { legend: { labels: { color: txt, usePointStyle: true, boxWidth: 8 } } },
+                    scales: {
+                        x: { ticks: { color: txt, maxTicksLimit: 10 }, grid: { color: grid } },
+                        yP: { position: 'left', ticks: { color: txt }, grid: { color: grid }, title: { display: true, text: '大盤指數', color: txt } },
+                        yN: { position: 'right', min: 0, max: 100, ticks: { color: txt }, grid: { drawOnChartArea: false }, title: { display: true, text: '籌碼相對位置 0–100', color: txt } },
+                    },
+                },
+            });
+        }
+
         async function load(days) {
             document.querySelectorAll('.cd-btn[data-days]').forEach(b =>
                 b.classList.toggle('active', b.dataset.days === String(days)));
@@ -139,6 +219,7 @@
             try {
                 const res = await fetch('/api/chip-disclosure/market?days=' + days);
                 const d = await res.json();
+                renderChart(d);
                 renderNetTable('fut-tbl', 'fut-latest', d.futures_oi, 0, '口');
                 renderNetTable('inst-tbl', 'inst-latest', d.market_institutional, 1, '億元');
                 renderPC(d.pc_ratio);

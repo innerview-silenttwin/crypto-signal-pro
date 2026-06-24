@@ -166,10 +166,34 @@ def fetch_pc_ratio(days: int = 20) -> list[dict]:
     return _store(key, out)
 
 
+def fetch_index_close(days: int = 20, symbol: str = "^TWII") -> list[dict]:
+    """大盤收盤序列（給趨勢圖疊圖用）。回 [{date, close}]（依日期遞增）。"""
+    key = f"idx:{symbol}:{days}"
+    c = _cached(key)
+    if c is not None:
+        return c
+    out: list[dict] = []
+    try:
+        import yfinance as yf
+        df = yf.download(symbol, start=_start_date(days), progress=False, auto_adjust=True)
+        if df is not None and len(df) and "Close" in df:
+            close = df["Close"]
+            if hasattr(close, "ndim") and close.ndim > 1:
+                close = close.iloc[:, 0]
+            for idx, val in close.dropna().items():
+                out.append({"date": str(idx.date()), "close": round(float(val), 2)})
+    except Exception as e:
+        logger.warning("大盤指數 %s 抓取失敗: %s", symbol, e)
+        return []
+    out = out[-days:]
+    return _store(key, out)
+
+
 def market_overview(days: int = 20) -> dict:
-    """彙整三項市場層級籌碼揭露。純資料、不含任何買賣建議。"""
+    """彙整三項市場層級籌碼揭露 + 大盤收盤。純資料、不含任何買賣建議。"""
     return {
         "days": days,
+        "index": fetch_index_close(days),
         "futures_oi": fetch_futures_oi(days),
         "market_institutional": fetch_market_institutional(days),
         "pc_ratio": fetch_pc_ratio(days),
