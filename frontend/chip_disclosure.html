@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-TW" data-theme="kawaii">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大盤籌碼揭露 | CryptoSignal Pro</title>
+    <link rel="stylesheet" href="style.css">
+    <script>
+        (function () {
+            var t = localStorage.getItem('csp-theme') || 'kawaii';
+            document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
+    <style>
+        .cd-wrap { max-width: 1100px; margin: 0 auto; padding: 20px; }
+        .cd-title { font-size: 22px; font-weight: 700; color: var(--text-main); margin: 8px 0 4px; }
+        .cd-sub { color: var(--text-muted); font-size: 13px; margin-bottom: 16px; }
+        .cd-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+        .cd-btn {
+            border: 1px solid var(--border-color); background: transparent; color: var(--text-main);
+            border-radius: 10px; padding: 6px 12px; font-size: 13px; cursor: pointer; text-decoration: none;
+        }
+        .cd-btn:hover { border-color: var(--primary); }
+        .cd-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+        .cd-card {
+            background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px;
+            box-shadow: var(--glass-shadow); padding: 16px; margin-bottom: 16px; backdrop-filter: blur(8px);
+        }
+        .cd-card h3 { font-size: 15px; color: var(--text-main); margin: 0 0 4px; }
+        .cd-note { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
+        .cd-latest { font-size: 13px; color: var(--text-main); margin-bottom: 10px; }
+        .cd-scroll { overflow-x: auto; }
+        table.cd-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+        table.cd-tbl th, table.cd-tbl td { padding: 7px 10px; text-align: right; white-space: nowrap; }
+        table.cd-tbl th { color: var(--text-muted); font-weight: 600; border-bottom: 1px solid var(--border-color); }
+        table.cd-tbl td { border-bottom: 1px solid var(--border-color); color: var(--text-main); }
+        table.cd-tbl th.l, table.cd-tbl td.l { text-align: left; }
+        table.cd-tbl tbody tr:hover { background: rgba(167,139,250,0.06); }
+        .pos { color: var(--buy-color); font-weight: 600; }
+        .neg { color: var(--sell-color); font-weight: 600; }
+        .cd-na { color: var(--text-muted); }
+        .cd-disclaimer {
+            font-size: 12px; color: var(--text-muted); background: rgba(167,139,250,0.06);
+            border-radius: 12px; padding: 10px 14px; margin-bottom: 16px;
+        }
+        @media (max-width: 640px) { .cd-wrap { padding: 12px; } }
+    </style>
+</head>
+
+<body>
+    <div class="cd-wrap">
+        <div class="cd-row" style="margin-bottom:10px">
+            <a href="sector_trading.html" class="cd-btn">← 台股交易中心</a>
+            <a href="index.html" class="cd-btn">分析儀表板</a>
+            <a href="etf_compare.html" class="cd-btn">📈 ETF 比較</a>
+        </div>
+        <div class="cd-title">🧭 大盤籌碼揭露</div>
+        <div class="cd-sub">市場層級籌碼走向，純資料揭露、不做買賣判斷。</div>
+
+        <div class="cd-disclaimer">
+            ⚠️ 本頁僅呈現籌碼數據供你自行判讀，<b>不產生任何買賣訊號或建議</b>。籌碼資料為 T+1 公布、有滯後。
+            官股（券商分點）因免費資料源不可得本期未納入；個股層級借券/當沖/投信連買/大戶為後續階段。
+        </div>
+
+        <div class="cd-row" style="margin-bottom:16px">
+            <span class="cd-na" style="font-size:12px;font-weight:600">天數</span>
+            <button class="cd-btn" data-days="10">近10日</button>
+            <button class="cd-btn" data-days="20">近20日</button>
+            <button class="cd-btn" data-days="60">近60日</button>
+        </div>
+
+        <div class="cd-card">
+            <h3>① 台指期三大法人未平倉淨額（口數）</h3>
+            <div class="cd-note">期貨方向領先指標。淨口數 正=偏多、負=偏空；外資期貨淨部位最受關注。</div>
+            <div class="cd-latest" id="fut-latest"></div>
+            <div class="cd-scroll"><table class="cd-tbl" id="fut-tbl"></table></div>
+        </div>
+
+        <div class="cd-card">
+            <h3>② 大盤三大法人現貨買賣超（億元）</h3>
+            <div class="cd-note">正=買超、負=賣超。自營含自行買賣 + 避險。</div>
+            <div class="cd-latest" id="inst-latest"></div>
+            <div class="cd-scroll"><table class="cd-tbl" id="inst-tbl"></table></div>
+        </div>
+
+        <div class="cd-card">
+            <h3>③ 選擇權 Put/Call 比（%）</h3>
+            <div class="cd-note">未平倉量比（pc_oi）常被當情緒指標：偏高=避險買權多。僅供參考、無方向判斷。</div>
+            <div class="cd-latest" id="pc-latest"></div>
+            <div class="cd-scroll"><table class="cd-tbl" id="pc-tbl"></table></div>
+        </div>
+    </div>
+
+    <script>
+        const $ = (id) => document.getElementById(id);
+        function esc(s) {
+            return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+                ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+        const num = (v, d = 0) => (v >= 0 ? '<span class="pos">+' : '<span class="neg">') + Number(v).toFixed(d) + '</span>';
+        const plain = (v, d = 0) => `<span>${Number(v).toFixed(d)}</span>`;
+
+        function renderNetTable(elId, latestId, rows, dec, label) {
+            if (!rows || !rows.length) {
+                $(elId).innerHTML = '<tr><td class="cd-na" style="padding:16px">查無資料</td></tr>';
+                $(latestId).innerHTML = '';
+                return;
+            }
+            const last = rows[rows.length - 1];
+            $(latestId).innerHTML = `最新 <b>${esc(last.date)}</b>：` +
+                `外資 ${num(last.foreign, dec)}　投信 ${num(last.trust, dec)}　自營 ${num(last.dealer, dec)}（${esc(label)}）`;
+            const body = [...rows].reverse().map(r =>
+                `<tr><td class="l">${esc(r.date)}</td>` +
+                `<td>${num(r.foreign, dec)}</td><td>${num(r.trust, dec)}</td><td>${num(r.dealer, dec)}</td></tr>`).join('');
+            $(elId).innerHTML =
+                `<thead><tr><th class="l">日期</th><th>外資</th><th>投信</th><th>自營</th></tr></thead><tbody>${body}</tbody>`;
+        }
+
+        function renderPC(rows) {
+            if (!rows || !rows.length) {
+                $('pc-tbl').innerHTML = '<tr><td class="cd-na" style="padding:16px">查無資料</td></tr>';
+                $('pc-latest').innerHTML = '';
+                return;
+            }
+            const last = rows[rows.length - 1];
+            $('pc-latest').innerHTML = `最新 <b>${esc(last.date)}</b>：未平倉量比 <b>${plain(last.pc_oi, 2)}</b>　成交量比 ${plain(last.pc_vol, 2)}`;
+            const body = [...rows].reverse().map(r =>
+                `<tr><td class="l">${esc(r.date)}</td><td>${plain(r.pc_oi, 2)}</td><td>${plain(r.pc_vol, 2)}</td></tr>`).join('');
+            $('pc-tbl').innerHTML =
+                `<thead><tr><th class="l">日期</th><th>未平倉量比%</th><th>成交量比%</th></tr></thead><tbody>${body}</tbody>`;
+        }
+
+        async function load(days) {
+            document.querySelectorAll('.cd-btn[data-days]').forEach(b =>
+                b.classList.toggle('active', b.dataset.days === String(days)));
+            ['fut-tbl', 'inst-tbl', 'pc-tbl'].forEach(id =>
+                $(id).innerHTML = '<tr><td class="cd-na" style="padding:16px">載入中…</td></tr>');
+            try {
+                const res = await fetch('/api/chip-disclosure/market?days=' + days);
+                const d = await res.json();
+                renderNetTable('fut-tbl', 'fut-latest', d.futures_oi, 0, '口');
+                renderNetTable('inst-tbl', 'inst-latest', d.market_institutional, 1, '億元');
+                renderPC(d.pc_ratio);
+            } catch (e) {
+                ['fut-tbl', 'inst-tbl', 'pc-tbl'].forEach(id =>
+                    $(id).innerHTML = `<tr><td class="neg" style="padding:16px">載入失敗：${esc(e)}</td></tr>`);
+            }
+        }
+
+        document.querySelectorAll('.cd-btn[data-days]').forEach(b =>
+            b.addEventListener('click', () => load(parseInt(b.dataset.days, 10))));
+        load(20);
+    </script>
+</body>
+
+</html>
