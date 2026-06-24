@@ -101,6 +101,37 @@ def get_allowed_sectors_for_sinopac() -> set[str]:
     return {sid for sid, b in per_sector.items() if str(b).lower() == "sinopac"}
 
 
+def detect_broker_degradation(brokers_by_sector: dict) -> dict:
+    """偵測「期望永豐、實際降級為虛擬」的 sector。
+
+    用途：broker init 時若永豐 login 失敗（如 503 SystemMaintenance），
+    factory 會 silent fallback VirtualBroker。這個函式讓上層能主動察覺降級、
+    發 Telegram 告警，而不是讓使用者靠肉眼看交易標籤才發現。
+
+    Args:
+        brokers_by_sector: {sector_id: Broker instance}
+
+    Returns:
+        {"mode": <BROKER_MODE>, "degraded": [sid...], "ok": [sid...]}
+        - degraded：白名單內、期望 SinopacBroker 但實際拿到別的（= 降級）
+        - ok：白名單內、確實是 SinopacBroker
+        - BROKER_MODE != "sinopac" → degraded 永遠空（虛擬是預期行為、非異常）
+    """
+    mode = os.environ.get("BROKER_MODE", "virtual").strip().lower()
+    if mode != "sinopac":
+        return {"mode": mode, "degraded": [], "ok": []}
+    allowed = get_allowed_sectors_for_sinopac()
+    degraded, ok = [], []
+    for sid, broker in (brokers_by_sector or {}).items():
+        if sid not in allowed:
+            continue  # 白名單外本來就該虛擬、不算降級
+        if broker.__class__.__name__ == "SinopacBroker":
+            ok.append(sid)
+        else:
+            degraded.append(sid)
+    return {"mode": mode, "degraded": degraded, "ok": ok}
+
+
 # ── 主要對外函式 ──
 
 def build_broker_for_sector(sector_id: str) -> Broker:

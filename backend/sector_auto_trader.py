@@ -1042,6 +1042,10 @@ class SectorAutoTrader:
         except Exception as e:
             logger.exception("broker setup failed (%s); 全部 sector 走 VirtualBroker 預設", e.__class__.__name__)
             self._broker_inited = True
+            # build_setup 整個失敗 = 最嚴重的降級（所有 sector 都沒 broker）。
+            # 這條路徑 _broker_setup 仍是 None、per-sector 偵測攔不到、21:00 報告也會 silent，
+            # 所以這裡直接發一封 catastrophic 告警，避免「最壞情況反而無聲」。
+            self._alert_broker_setup_failed(e)
             return
 
         for sid, mgr in managers.items():
@@ -1053,6 +1057,63 @@ class SectorAutoTrader:
             )
             logger.info("sector %s broker=%s", sid, broker.name if broker else "default")
         self._broker_inited = True
+        self._alert_broker_degradation()
+
+    def _alert_broker_degradation(self) -> None:
+        """broker init 後，若「期望永豐、實際降級虛擬」就發一次性 Telegram 告警。
+
+        典型情境：永豐 sim 503 SystemMaintenance（如 2026-06-24），factory silent
+        fallback VirtualBroker、整天紙上交易。過去使用者只能靠肉眼看交易標籤發現；
+        這裡主動告警，補上 heartbeat「只報健康、不報 broker 降級」的盲點。
+
+        附註：目前 broker 是 startup 一次性 build，恢復後不會自動切回，所以這裡也只會
+        在每次 service restart 後告警一次（待 broker init retry 實作後再做恢復通知）。
+        """
+        try:
+            from brokers.factory import detect_broker_degradation
+            from notifier import send_telegram
+
+            setup = self._broker_setup
+            if setup is None:
+                return
+            status = detect_broker_degradation(setup.brokers_by_sector)
+            degraded = status.get("degraded") or []
+            if not degraded:
+                return
+            ok = status.get("ok") or []
+            lines = [
+                "⚠️ <b>Broker 降級告警</b>",
+                "期望：永豐 simulation；實際：部分 sector fallback 虛擬交易",
+                f"\U0001f4c9 降級虛擬：{', '.join(degraded)}",
+            ]
+            if ok:
+                lines.append(f"\U0001f3e6 仍走永豐：{', '.join(ok)}")
+            lines.append("可能原因：永豐 login 失敗（如 503 SystemMaintenance）/ 連線異常。")
+            lines.append("今日這些 sector 的交易為紙上單、未送永豐。下次 service restart 會重試。")
+            send_telegram("\n".join(lines))
+            logger.warning("broker 降級告警已發送：degraded=%s ok=%s", degraded, ok)
+        except Exception:
+            # 告警失敗絕不可影響交易引擎啟動
+            logger.exception("_alert_broker_degradation failed (non-fatal)")
+
+    def _alert_broker_setup_failed(self, exc: Exception) -> None:
+        """build_setup 整個失敗時發 catastrophic Telegram 告警。
+
+        只在 BROKER_MODE=sinopac 時告警（virtual 模式整個失敗另有預設處理、非異常）。
+        """
+        try:
+            if os.environ.get("BROKER_MODE", "virtual").strip().lower() != "sinopac":
+                return
+            from notifier import send_telegram
+            send_telegram(
+                "\U0001f6a8 <b>Broker 初始化整個失敗</b>\n"
+                f"錯誤：{exc.__class__.__name__}\n"
+                "所有 sector 退回預設、今日交易未送永豐。\n"
+                "請檢查 logs/ 與 .env / broker_config.yaml；下次 service restart 會重試。"
+            )
+            logger.warning("broker setup 失敗 catastrophic 告警已發送")
+        except Exception:
+            logger.exception("_alert_broker_setup_failed failed (non-fatal)")
 
     def start(self):
         if self._running:

@@ -733,6 +733,25 @@ def _send_evening_summary_telegram():
         broker_mode = os.environ.get("BROKER_MODE", "virtual")
         lines.append(f"🟢 服務運行中 (PID {os.getpid()})")
         lines.append(f"   broker={broker_mode} / quote={quote_src}")
+        # broker 真實狀態：BROKER_MODE 只是「意圖」，永豐 login 失敗會 silent fallback
+        # 虛擬。這裡讀實際 broker 物件、把降級攤在盤後摘要裡（補 heartbeat 盲點）。
+        try:
+            from sector_auto_trader import auto_trader
+            from brokers.factory import detect_broker_degradation
+            setup = getattr(auto_trader, "_broker_setup", None)
+            if setup is not None and getattr(setup, "brokers_by_sector", None):
+                st = detect_broker_degradation(setup.brokers_by_sector)
+                if st["mode"] == "sinopac":
+                    if st["degraded"]:
+                        lines.append(
+                            f"   ⚠️ broker 降級虛擬：{', '.join(st['degraded'])}"
+                            + (f"（仍走永豐：{', '.join(st['ok'])}）" if st["ok"] else "")
+                        )
+                        lines.append("   → 這些 sector 今日為紙上單、未送永豐")
+                    elif st["ok"]:
+                        lines.append(f"   ✅ 永豐 broker 正常：{', '.join(st['ok'])}")
+        except Exception:
+            pass
     except Exception:
         pass
 
