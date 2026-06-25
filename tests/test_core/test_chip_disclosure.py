@@ -92,6 +92,64 @@ def test_pc_ratio_skips_header_and_bad_rows(monkeypatch):
     assert len(out) == 1 and out[0]["date"] == "2026-06-24"
 
 
+def test_lots_conversion():
+    assert cd._lots(98846700) == pytest.approx(98846.7)
+    assert cd._lots(None) is None
+    assert cd._lots("bad") is None
+
+
+def test_securities_lending_aggregates_by_date(monkeypatch):
+    rows = [
+        {"date": "2026-06-23", "volume": 1000},
+        {"date": "2026-06-23", "volume": 500},   # 同日多筆 → 加總
+        {"date": "2026-06-24", "volume": 2000},
+        {"date": None, "volume": 999},            # 無日期 → 略過
+    ]
+    monkeypatch.setattr(cd, "_finmind", lambda *a, **k: rows)
+    out = cd.fetch_securities_lending("2330", 20)
+    # volume 已是「張」、不可再 ÷1000：同日加總 1000+500=1500
+    assert out == [{"date": "2026-06-23", "lending_lots": 1500},
+                   {"date": "2026-06-24", "lending_lots": 2000}]
+
+
+def test_day_trading_conversion(monkeypatch):
+    rows = [{"stock_id": "2330", "date": "2026-06-24", "Volume": 9408000,
+             "BuyAmount": 22734670000, "SellAmount": 22777355000}]
+    monkeypatch.setattr(cd, "_finmind", lambda *a, **k: rows)
+    out = cd.fetch_day_trading("2330", 20)
+    assert out[0]["dt_lots"] == pytest.approx(9408.0)
+    assert out[0]["dt_net_yi"] == pytest.approx((22734670000 - 22777355000) / 1e8, abs=0.01)
+
+
+def test_stock_overview_unit_handling(monkeypatch):
+    """法人(股)要÷1000換張；融資/融券(已是張)不可再除——回歸 code-review 抓到的 bug。"""
+    import layers.chipflow as cf
+    monkeypatch.setattr(cf, "fetch_chip_summary", lambda symbol, days: {
+        "foreign_consec_buy": -3, "trust_consec_buy": 3,
+        "foreign_total_net": -98846738,   # 股 → 應變 -98846.7 張
+        "trust_total_net": 5264700, "dealer_total_net": 0,
+        "margin_change_sum": -81,         # 已是張 → 應維持 -81（非 -0.08）
+        "short_balance_latest": 1200,     # 已是張 → 維持 1200
+        "daily_data": [],
+    })
+    import layers.large_holder as lh
+    monkeypatch.setattr(lh, "get_large_holder_info", lambda code: None)
+    monkeypatch.setattr(cd, "fetch_securities_lending", lambda code, days: [])
+    monkeypatch.setattr(cd, "fetch_day_trading", lambda code, days: [])
+
+    o = cd.stock_overview("2330", 20)
+    inst = o["institutional"]
+    assert inst["foreign_total_net_lots"] == pytest.approx(-98846.7)   # 股→張
+    assert inst["margin_change_sum_lots"] == -81                       # 不可÷1000
+    assert inst["short_balance_latest_lots"] == 1200
+
+
+def test_strip_code():
+    assert cd._strip_code("2330.TW") == "2330"
+    assert cd._strip_code(" 2330 ") == "2330"
+    assert cd._strip_code("00981a.tw") == "00981A"
+
+
 def test_fetch_index_close(monkeypatch):
     import pandas as pd
     import yfinance

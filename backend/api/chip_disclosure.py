@@ -15,3 +15,14 @@ async def get_market_chip(days: int = 20):
     from chip_disclosure import market_overview
     days = max(5, min(int(days), 120))
     return market_overview(days)
+
+
+@router.get("/api/chip-disclosure/stock")
+async def get_stock_chip(code: str, days: int = 20):
+    """個股層級籌碼揭露：三大法人連買 / 借券 / 當沖 / 大戶（純資料、不判斷）。"""
+    from chip_disclosure import stock_overview
+    code = (code or "").strip()
+    if not code:
+        return {"error": "empty_code"}
+    days = max(5, min(int(days), 120))
+    return stock_overview(code, days)

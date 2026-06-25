@@ -189,6 +189,107 @@ def fetch_index_close(days: int = 20, symbol: str = "^TWII") -> list[dict]:
     return _store(key, out)
 
 
+def _strip_code(symbol: str) -> str:
+    return symbol.split(".")[0].strip().upper()
+
+
+def fetch_securities_lending(code: str, days: int = 20) -> list[dict]:
+    """個股借券成交量（按日彙總；張）。借券量大 = 潛在空方壓力。"""
+    key = f"sl:{code}:{days}"
+    c = _cached(key)
+    if c is not None:
+        return c
+    rows = _finmind("TaiwanStockSecuritiesLending", days, data_id=_strip_code(code))
+    by_date: dict[str, float] = {}
+    for r in rows:
+        d = r.get("date")
+        if not d:
+            continue
+        by_date[d] = by_date.get(d, 0.0) + (r.get("volume") or 0)
+    # 注意：此 dataset 的 volume 已是「張」（2330 單日 ~13000 張），不可再 ÷1000
+    out = [{"date": d, "lending_lots": int(round(by_date[d]))} for d in sorted(by_date)][-days:]
+    return _store(key, out)
+
+
+def fetch_day_trading(code: str, days: int = 20) -> list[dict]:
+    """個股當沖（每日當沖量[張] + 當沖買賣超[億元]）。"""
+    key = f"dt:{code}:{days}"
+    c = _cached(key)
+    if c is not None:
+        return c
+    rows = _finmind("TaiwanStockDayTrading", days, data_id=_strip_code(code))
+    out = []
+    for r in rows:
+        d = r.get("date")
+        if not d:
+            continue
+        out.append({
+            "date": d,
+            "dt_lots": round((r.get("Volume") or 0) / 1000, 1),
+            "dt_net_yi": round(((r.get("BuyAmount") or 0) - (r.get("SellAmount") or 0)) / 1e8, 2),
+        })
+    out.sort(key=lambda x: x["date"])
+    out = out[-days:]
+    return _store(key, out)
+
+
+def stock_overview(symbol: str, days: int = 20) -> dict:
+    """個股層級籌碼揭露彙整。純資料、不含任何買賣建議。
+
+    重用 chipflow.fetch_chip_summary（三大法人連買天數 + 融資融券）、
+    large_holder.get_large_holder_info（大戶 %），新增借券 + 當沖。
+    """
+    code = _strip_code(symbol)
+    result: dict = {"code": code, "days": days}
+
+    # 三大法人連買 + 融資融券（重用 chipflow）
+    try:
+        from layers.chipflow import fetch_chip_summary
+        cs = fetch_chip_summary(symbol if "." in symbol else f"{code}.TW", days) or {}
+        result["institutional"] = {
+            "foreign_consec_buy": cs.get("foreign_consec_buy"),
+            "trust_consec_buy": cs.get("trust_consec_buy"),
+            # 三大法人買賣超是「股」→ ÷1000 換張；TWSE 融資/融券「已是張」→ 不可再除
+            "foreign_total_net_lots": _lots(cs.get("foreign_total_net")),
+            "trust_total_net_lots": _lots(cs.get("trust_total_net")),
+            "dealer_total_net_lots": _lots(cs.get("dealer_total_net")),
+            "margin_change_sum_lots": cs.get("margin_change_sum"),
+            "short_balance_latest_lots": cs.get("short_balance_latest"),
+            "daily": cs.get("daily_data") or [],
+        }
+    except Exception as e:
+        logger.warning("個股法人彙總失敗 %s: %s", code, e)
+        result["institutional"] = None
+
+    # 大戶 %（重用 large_holder）
+    try:
+        from layers.large_holder import get_large_holder_info
+        result["large_holder"] = get_large_holder_info(code)
+    except Exception as e:
+        logger.warning("大戶資訊失敗 %s: %s", code, e)
+        result["large_holder"] = None
+
+    result["securities_lending"] = fetch_securities_lending(code, days)
+    result["day_trading"] = fetch_day_trading(code, days)
+    result["notes"] = {
+        "institutional": "三大法人連買天數（正=連買、負=連賣）+ 近N日累計（張）",
+        "securities_lending": "借券成交量（張）；量大=潛在空方壓力",
+        "day_trading": "當沖量（張）+ 當沖買賣超（億）",
+        "large_holder": "集保大戶持股 %（>1000張）；籌碼集中度",
+    }
+    return result
+
+
+def _lots(v):
+    """股 → 張（÷1000）；None 原樣回。"""
+    if v is None:
+        return None
+    try:
+        return round(float(v) / 1000, 1)
+    except (TypeError, ValueError):
+        return None
+
+
 def market_overview(days: int = 20) -> dict:
     """彙整三項市場層級籌碼揭露 + 大盤收盤。純資料、不含任何買賣建議。"""
     return {
