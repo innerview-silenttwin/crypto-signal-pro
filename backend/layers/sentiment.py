@@ -7,7 +7,7 @@
 3. 根據正負面關鍵字計算情緒分數
 4. 情緒偏多加分、偏空減分
 
-資料來源：鉅亨網、Yahoo 股市、MoneyDJ 等公開 RSS
+資料來源：Yahoo 股市公開 RSS（鉅亨網 RSS 於 2026-06-25 已停用、移除）
 """
 
 import re
@@ -29,20 +29,17 @@ logger = logging.getLogger(__name__)
 # ── RSS 來源設定 ──
 
 RSS_FEEDS = [
+    # 2026-06-25：鉅亨網 cnyes RSS 全數 404（已停用、無公開替代），移除避免每日刷 404 noise；
+    # 改用 Yahoo 兩個分類（tw-market + news）維持來源廣度。
     {
-        "name": "鉅亨網-台股",
-        "url": "https://news.cnyes.com/news/cat/tw_stock/rss",
-        "category": "tw_stock",
-    },
-    {
-        "name": "鉅亨網-產業",
-        "url": "https://news.cnyes.com/news/cat/industry/rss",
-        "category": "industry",
-    },
-    {
-        "name": "Yahoo股市新聞",
+        "name": "Yahoo股市-大盤",
         "url": "https://tw.stock.yahoo.com/rss?category=tw-market",
         "category": "tw_market",
+    },
+    {
+        "name": "Yahoo股市-最新新聞",
+        "url": "https://tw.stock.yahoo.com/rss?category=news",
+        "category": "news",
     },
 ]
 
@@ -149,6 +146,7 @@ def fetch_rss_articles() -> List[NewsArticle]:
         return _news_cache["articles"]
 
     articles = []
+    seen_keys = set()  # 跨 feed 去重：同一篇新聞（同 link/標題）不重複計，避免消息面灌水
 
     for feed in RSS_FEEDS:
         try:
@@ -214,6 +212,10 @@ def fetch_rss_articles() -> List[NewsArticle]:
                         link = link_el.get('href', '')
 
                 if title:
+                    key = link or title  # 有 link 用 link、否則用標題去重
+                    if key in seen_keys:
+                        continue
+                    seen_keys.add(key)
                     articles.append(NewsArticle(
                         title=title,
                         description=description[:300],  # 限制長度
