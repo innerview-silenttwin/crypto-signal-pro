@@ -149,7 +149,19 @@ class LargeHolderCache:
             return False
 
         try:
-            r = requests.get(TDCC_URL, timeout=60, headers={"User-Agent": "Mozilla/5.0"})
+            try:
+                # 主路徑：正常驗證憑證
+                r = requests.get(TDCC_URL, timeout=60, headers={"User-Agent": "Mozilla/5.0"})
+            except requests.exceptions.SSLError as ssl_e:
+                # TDCC 憑證缺 Subject Key Identifier，OpenSSL 3.x 嚴格驗證會拒（2026-06-25 起）。
+                # 僅此來源降級重試一次：TDCC OpenData 是公開、唯讀、非機密資料（大戶 % 揭露用、
+                # 不進評分/交易、不送任何帳密），最壞情況只是被餵假揭露數字，風險可接受。
+                logger.warning(
+                    "[large_holder] TDCC SSL 驗證失敗(%s)，以 verify=False 降級重試一次（公開唯讀資料）",
+                    ssl_e.__class__.__name__,
+                )
+                r = requests.get(TDCC_URL, timeout=60, verify=False,
+                                  headers={"User-Agent": "Mozilla/5.0"})
             if r.status_code != 200:
                 logger.error("[large_holder] TDCC HTTP %d", r.status_code)
                 return False
