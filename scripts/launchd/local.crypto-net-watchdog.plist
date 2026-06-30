@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-網路 watchdog：每 30 分鐘主動 ping 外網，連 3 次失敗就自動重連 Wi-Fi(en1)、復原後發 Telegram。
+網路 watchdog：08:20~13:20 每 30 分主動 ping 外網，連 3 次失敗就自動重連 Wi-Fi(en1)、復原後發 Telegram。
 解決「mini wifi 卡住、顯示已連線但封包出不去」整天斷網（2026-06-30 incident）。
+只守交易相關時段（08:20 重啟 / 08:30 盤前 / 09:00~13:30 盤中）；睡眠與盤後不跑。
 
 部署：
   cp scripts/launchd/local.crypto-net-watchdog.plist ~/Library/LaunchAgents/
@@ -26,8 +27,23 @@ log：logs/net-watchdog.log
         <string>/Users/kentsai/Documents/plate/crypto-signal-pro/scripts/net_watchdog.sh</string>
     </array>
 
-    <key>StartInterval</key>
-    <integer>1800</integer>
+    <!-- 只在 08:20~13:20 每 30 分跑（盤前重啟/盤前檢查/開盤~收盤）。
+         睡眠時段(01:30~08:00)及盤後不跑——那時無交易、不需守網路。
+         18:00/21:00 報告的發送改靠 notifier 內建 send 重試。 -->
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>20</integer></dict>
+        <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>50</integer></dict>
+        <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>20</integer></dict>
+        <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>50</integer></dict>
+        <dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>20</integer></dict>
+        <dict><key>Hour</key><integer>10</integer><key>Minute</key><integer>50</integer></dict>
+        <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>20</integer></dict>
+        <dict><key>Hour</key><integer>11</integer><key>Minute</key><integer>50</integer></dict>
+        <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>20</integer></dict>
+        <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>50</integer></dict>
+        <dict><key>Hour</key><integer>13</integer><key>Minute</key><integer>20</integer></dict>
+    </array>
 
     <key>RunAtLoad</key>
     <false/>
