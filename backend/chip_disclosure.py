@@ -166,25 +166,24 @@ def fetch_pc_ratio(days: int = 20) -> list[dict]:
     return _store(key, out)
 
 
-def fetch_index_close(days: int = 20, symbol: str = "^TWII") -> list[dict]:
-    """大盤收盤序列（給趨勢圖疊圖用）。回 [{date, close}]（依日期遞增）。"""
-    key = f"idx:{symbol}:{days}"
+def fetch_index_close(days: int = 20, data_id: str = "TAIEX") -> list[dict]:
+    """大盤(加權指數)收盤序列（給趨勢圖疊圖用）。回 [{date, close}]（依日期遞增）。
+
+    用 FinMind TaiwanStockPrice/TAIEX（與籌碼資料同源、同時效）——之前用 yfinance ^TWII
+    指數 EOD 常延遲一天（籌碼已到 T，大盤線卻停在 T-1，趨勢圖對不齊；2026-06-30 發現）。
+    """
+    key = f"idx:{data_id}:{days}"
     c = _cached(key)
     if c is not None:
         return c
-    out: list[dict] = []
-    try:
-        import yfinance as yf
-        df = yf.download(symbol, start=_start_date(days), progress=False, auto_adjust=True)
-        if df is not None and len(df) and "Close" in df:
-            close = df["Close"]
-            if hasattr(close, "ndim") and close.ndim > 1:
-                close = close.iloc[:, 0]
-            for idx, val in close.dropna().items():
-                out.append({"date": str(idx.date()), "close": round(float(val), 2)})
-    except Exception as e:
-        logger.warning("大盤指數 %s 抓取失敗: %s", symbol, e)
-        return []
+    rows = _finmind("TaiwanStockPrice", days, data_id=data_id)
+    out = []
+    for r in rows:
+        d = r.get("date")
+        close = r.get("close")
+        if d and close is not None:
+            out.append({"date": d, "close": round(float(close), 2)})
+    out.sort(key=lambda x: x["date"])
     out = out[-days:]
     return _store(key, out)
 

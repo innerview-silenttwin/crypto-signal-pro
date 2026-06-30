@@ -151,14 +151,15 @@ def test_strip_code():
 
 
 def test_fetch_index_close(monkeypatch):
-    import pandas as pd
-    import yfinance
-    df = pd.DataFrame({"Close": [45809.19, 47100.65]},
-                      index=pd.to_datetime(["2026-06-16", "2026-06-23"]))
-    monkeypatch.setattr(yfinance, "download", lambda *a, **k: df)
+    # 改用 FinMind TaiwanStockPrice/TAIEX（與籌碼同源、同時效），取 close 欄
+    rows = [
+        {"date": "2026-06-29", "stock_id": "TAIEX", "close": 44999.9},
+        {"date": "2026-06-30", "stock_id": "TAIEX", "close": 46125.91},
+    ]
+    monkeypatch.setattr(cd, "_finmind", lambda *a, **k: rows)
     out = cd.fetch_index_close(10)
-    assert out == [{"date": "2026-06-16", "close": 45809.19},
-                   {"date": "2026-06-23", "close": 47100.65}]
+    assert out == [{"date": "2026-06-29", "close": 44999.9},
+                   {"date": "2026-06-30", "close": 46125.91}]
 
 
 def test_market_overview_shape(monkeypatch):
