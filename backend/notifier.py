@@ -39,6 +39,20 @@ def _get_config() -> tuple:
     return token, chat_id
 
 
+def _redact(text, token: str) -> str:
+    """遮蔽 log 字串中的 bot token——requests 例外會帶含 token 的 URL，避免 secret 寫進 log。"""
+    s = str(text)
+    if token:
+        s = s.replace(token, "<bot-token>")
+    return s
+
+
+def _mask_chat(c_id) -> str:
+    """chat_id 部分遮蔽（識別碼、不全寫）。"""
+    c = str(c_id)
+    return ("***" + c[-4:]) if len(c) > 4 else "***"
+
+
 def send_telegram(message: str) -> bool:
     """發送 Telegram 訊息
 
@@ -68,12 +82,13 @@ def send_telegram(message: str) -> bool:
                 timeout=10,
             )
             if resp.status_code == 200:
-                logger.debug(f"Telegram 通知已送出至 {c_id}: {message[:50]}")
+                logger.debug(f"Telegram 通知已送出至 {_mask_chat(c_id)}: {message[:50]}")
                 success = True
             else:
-                logger.warning(f"Telegram 通知失敗至 {c_id}: {resp.status_code} {resp.text}")
+                logger.warning(f"Telegram 通知失敗至 {_mask_chat(c_id)}: "
+                               f"{resp.status_code} {_redact(resp.text, token)}")
         except Exception as e:
-            logger.warning(f"Telegram 通知例外至 {c_id}: {e}")
+            logger.warning(f"Telegram 通知例外至 {_mask_chat(c_id)}: {_redact(e, token)}")
             
     return success
 
