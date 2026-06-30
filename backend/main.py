@@ -1741,6 +1741,28 @@ async def trigger_evening_summary():
         return {"status": "error", "error": str(e)}
 
 
+@app.post("/api/internal/net-recovered", dependencies=[Depends(require_internal_key)])
+async def net_recovered(down_minutes: int = 0):
+    """網路 watchdog 偵測到斷網、自動重連 wifi 成功後，由它呼叫本端點發 Telegram。
+
+    Telegram token 留在 app 的 .env、watchdog 腳本完全不碰密鑰（只帶內部 key 打 localhost）。
+    訊息為固定字串、不含任何 PII。
+    """
+    import pytz
+    tw_tz = pytz.timezone("Asia/Taipei")
+    now = datetime.now(tw_tz)
+    try:
+        from notifier import send_telegram
+        gap = f"（中斷約 {down_minutes} 分）" if down_minutes else ""
+        msg = (f"🔌 <b>網路自動復原</b>\n"
+               f"偵測到對外網路中斷{gap}，已自動重連 Wi-Fi 並恢復連線。\n"
+               f"時間：{now.strftime('%Y-%m-%d %H:%M')}")
+        ok = await asyncio.to_thread(send_telegram, msg)
+        return {"status": "ok" if ok else "telegram_failed", "now": now.isoformat()}
+    except Exception as e:
+        return {"status": "error", "error": str(e)}
+
+
 @app.post("/api/internal/trigger-daily-inst-refresh", dependencies=[Depends(require_internal_key)])
 async def trigger_daily_inst_refresh():
     """供 launchd 在 18:00 (台北) 觸發。每交易日 TWSE 公佈當日法人後抓資料 + 發 Telegram 報告。

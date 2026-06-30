@@ -22,7 +22,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${CSP_ENV_FILE:-$SCRIPT_DIR/../.env}"
 
 TRIGGERS=(trigger-premarket-check trigger-evening-summary trigger-daily-inst-refresh)
-LABELS=(local.crypto-premarket-trigger local.crypto-evening-trigger local.crypto-daily-inst-trigger)
+LABELS=(local.crypto-premarket-trigger local.crypto-evening-trigger local.crypto-daily-inst-trigger local.crypto-net-watchdog)
 
 fail=0
 pass() { printf "  ✅ %s\n" "$1"; }

@@ -78,3 +78,6 @@ backend/data/scheduler.lock
 
 # 架構文件（本地維護，不入 git）
 docs/architecture.md
+
+# 執行期日誌（不入版控；mini 本地 + GDrive 已排除）
+logs/

@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+網路 watchdog：每 30 分鐘主動 ping 外網，連 3 次失敗就自動重連 Wi-Fi(en1)、復原後發 Telegram。
+解決「mini wifi 卡住、顯示已連線但封包出不去」整天斷網（2026-06-30 incident）。
+
+部署：
+  cp scripts/launchd/local.crypto-net-watchdog.plist ~/Library/LaunchAgents/
+  launchctl unload ~/Library/LaunchAgents/local.crypto-net-watchdog.plist 2>/dev/null
+  launchctl load ~/Library/LaunchAgents/local.crypto-net-watchdog.plist
+
+驗證：launchctl list | grep net-watchdog
+手動觸發：launchctl start local.crypto-net-watchdog
+log：logs/net-watchdog.log
+
+安全：腳本不含密鑰；只動 en1(wifi)、不碰 en0(SSH 管理線)；Telegram token 留 app 端。
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>local.crypto-net-watchdog</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/kentsai/Documents/plate/crypto-signal-pro/scripts/net_watchdog.sh</string>
+    </array>
+
+    <key>StartInterval</key>
+    <integer>1800</integer>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/kentsai/Documents/plate/crypto-signal-pro/logs/launchd-net-watchdog.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/kentsai/Documents/plate/crypto-signal-pro/logs/launchd-net-watchdog-error.log</string>
+</dict>
+</plist>
