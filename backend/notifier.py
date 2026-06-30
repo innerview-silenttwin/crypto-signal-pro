@@ -14,9 +14,15 @@ Telegram Bot 推播模組
 
 import os
 import logging
+import time
+
 import requests
 
 logger = logging.getLogger(__name__)
+
+# 發送失敗時的內聯重試（被動：只在發失敗當下多試幾次、非背景輪詢）。
+# 退避短、有上限——避免斷網時拖慢交易迴圈內的通知呼叫。
+_SEND_BACKOFF = [2, 4]   # 重試前等待秒數；attempts = len+1 = 3 次，最壞多等 6 秒
 
 TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
 
@@ -70,26 +76,38 @@ def send_telegram(message: str) -> bool:
     chat_ids_list = [c.strip() for c in chat_id.split(",") if c.strip()]
     success = False
     
+    attempts = len(_SEND_BACKOFF) + 1
     for c_id in chat_ids_list:
-        try:
-            resp = requests.post(
-                TELEGRAM_API.format(token=token),
-                json={
-                    "chat_id": c_id,
-                    "text": message,
-                    "parse_mode": "HTML",
-                },
-                timeout=10,
-            )
-            if resp.status_code == 200:
-                logger.debug(f"Telegram 通知已送出至 {_mask_chat(c_id)}: {message[:50]}")
-                success = True
-            else:
-                logger.warning(f"Telegram 通知失敗至 {_mask_chat(c_id)}: "
-                               f"{resp.status_code} {_redact(resp.text, token)}")
-        except Exception as e:
-            logger.warning(f"Telegram 通知例外至 {_mask_chat(c_id)}: {_redact(e, token)}")
-            
+        sent = False
+        last_err = ""
+        for i in range(attempts):
+            try:
+                resp = requests.post(
+                    TELEGRAM_API.format(token=token),
+                    json={
+                        "chat_id": c_id,
+                        "text": message,
+                        "parse_mode": "HTML",
+                    },
+                    timeout=10,
+                )
+                if resp.status_code == 200:
+                    # #2 成功記 INFO（token 已遮蔽）—留送達紀錄、可稽核
+                    logger.info(f"Telegram 已送出至 {_mask_chat(c_id)}"
+                                + (f"（第 {i+1} 次）" if i else ""))
+                    success = True
+                    sent = True
+                    break
+                last_err = f"HTTP {resp.status_code} {_redact(resp.text, token)}"
+            except Exception as e:
+                last_err = _redact(e, token)
+            # 還沒成功且還有下一次 → 退避後重試（被動內聯、非背景）
+            if i < attempts - 1:
+                time.sleep(_SEND_BACKOFF[i])
+        if not sent:
+            logger.warning(f"Telegram 發送失敗（重試 {attempts} 次）至 "
+                           f"{_mask_chat(c_id)}: {last_err}")
+
     return success
 
 

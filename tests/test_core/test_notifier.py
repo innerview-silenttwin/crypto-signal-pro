@@ -7,10 +7,17 @@
 4. notify_trade 的訊息含關鍵欄位
 """
 
+import logging
 import os
 import pytest
 
 import notifier
+
+
+@pytest.fixture(autouse=True)
+def _no_sleep(monkeypatch):
+    """重試會 time.sleep，測試中設為 no-op，避免真的等待拖慢測試。"""
+    monkeypatch.setattr(notifier.time, "sleep", lambda *_a, **_k: None)
 
 
 class _FakeResp:
@@ -111,6 +118,69 @@ def test_send_telegram_swallows_network_exception(monkeypatch):
     monkeypatch.setattr(notifier.requests, "post", boom)
     # 不應該 raise
     assert notifier.send_telegram("boom") is False
+
+
+def test_send_telegram_retries_until_success(monkeypatch):
+    """前 2 次失敗、第 3 次成功 → 回 True，共試 3 次。"""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "TESTTOKEN")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "12345")
+    _patch_settings_no_override(monkeypatch)
+
+    calls = {"n": 0}
+
+    def flaky(*a, **kw):
+        calls["n"] += 1
+        return _FakeResp(200) if calls["n"] >= 3 else _FakeResp(500, "err")
+
+    monkeypatch.setattr(notifier.requests, "post", flaky)
+    assert notifier.send_telegram("x") is True
+    assert calls["n"] == 3
+
+
+def test_send_telegram_retries_then_gives_up(monkeypatch):
+    """全失敗 → 試 attempts 次（len(_SEND_BACKOFF)+1）後放棄、回 False。"""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "TESTTOKEN")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "12345")
+    _patch_settings_no_override(monkeypatch)
+
+    calls = {"n": 0}
+
+    def always_fail(*a, **kw):
+        calls["n"] += 1
+        raise RuntimeError("net down")
+
+    monkeypatch.setattr(notifier.requests, "post", always_fail)
+    assert notifier.send_telegram("x") is False
+    assert calls["n"] == len(notifier._SEND_BACKOFF) + 1
+
+
+def test_send_telegram_first_try_no_retry(monkeypatch):
+    """首次成功 → 只 post 一次（不重試、不 sleep）。"""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "TESTTOKEN")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "12345")
+    _patch_settings_no_override(monkeypatch)
+    calls = {"n": 0}
+    monkeypatch.setattr(notifier.requests, "post",
+                        lambda *a, **kw: calls.__setitem__("n", calls["n"] + 1) or _FakeResp(200))
+    assert notifier.send_telegram("x") is True
+    assert calls["n"] == 1
+
+
+def test_failure_log_redacts_token(monkeypatch, caplog):
+    """失敗 log 不可含 bot token（含 token 的例外 URL 要被遮蔽）。"""
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "SECRETTOKEN123")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "12345")
+    _patch_settings_no_override(monkeypatch)
+
+    def boom(*a, **kw):
+        raise RuntimeError("HTTPSConnectionPool url /botSECRETTOKEN123/sendMessage failed")
+
+    monkeypatch.setattr(notifier.requests, "post", boom)
+    with caplog.at_level(logging.WARNING):
+        notifier.send_telegram("x")
+    blob = " ".join(r.getMessage() for r in caplog.records)
+    assert "SECRETTOKEN123" not in blob       # token 不可外漏到 log
+    assert "<bot-token>" in blob               # 已遮蔽
 
 
 def test_notify_trade_buy_payload_includes_key_fields(monkeypatch):
