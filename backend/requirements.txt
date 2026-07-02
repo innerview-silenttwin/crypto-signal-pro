@@ -15,10 +15,11 @@ pyyaml>=6.0
 # 永豐證券 Shioaji（僅 prod 機需要；dev 機可不裝，broker factory 會 fallback 為 VirtualBroker）
 # ⚠️ 必須裝官方 shioaji（PyPI 名稱: shioaji），不要裝 rshioaji（社群 Rust fork、非永豐官方、客服不支援）
 # 2026-06-24 mini 上發現誤裝 rshioaji 1.5.13、已移除並改回官方 shioaji
-# 2026-06-26 升級官方 shioaji 1.5.4（官方修「登入重試穩定性」+ 行情串流日期解析 crash）
+# 2026-07-02 升級官方 shioaji 1.5.5（官方要求：被停權客戶更新到 1.5.5 並回報才安排解封；
+#   另修 update_status 帳號資訊 — 正是重建後對帳要用的 API）
 # 詳見 memory/project_rshioaji_cleanup_2026_06_24
-# pip install shioaji==1.5.4
-# shioaji==1.5.4
+# pip install shioaji==1.5.5
+# shioaji==1.5.5
 
 # ── Dev / Test ──
 pytest>=8.0.0
