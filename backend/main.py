@@ -1763,6 +1763,22 @@ async def net_recovered(down_minutes: int = 0):
         return {"status": "error", "error": str(e)}
 
 
+@app.post("/api/internal/trigger-ai-news", dependencies=[Depends(require_internal_key)])
+async def trigger_ai_news():
+    """供 launchd 觸發 AI 新聞摘要（抓公開源 → 去重 → Gemini 摘要(可缺席) → Telegram）。
+
+    無新項目時不發送（避免空訊息）。只處理公開新聞、不接觸交易資料。
+    """
+    import pytz
+    tw_tz = pytz.timezone("Asia/Taipei")
+    try:
+        from ai_news import run_digest
+        stats = await asyncio.to_thread(run_digest)
+        return {"status": "ok", **stats, "now": datetime.now(tw_tz).isoformat()}
+    except Exception as e:
+        return {"status": "error", "error": str(e)[:200]}
+
+
 @app.post("/api/internal/trigger-daily-inst-refresh", dependencies=[Depends(require_internal_key)])
 async def trigger_daily_inst_refresh():
     """供 launchd 在 18:00 (台北) 觸發。每交易日 TWSE 公佈當日法人後抓資料 + 發 Telegram 報告。

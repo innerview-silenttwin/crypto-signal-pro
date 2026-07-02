@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+AI 新聞摘要：每日 08:40 / 14:00 / 21:30 觸發（避開 08:30 premarket、18:00 inst、21:00 evening 前後 5 分禁區）。
+抓公開 AI 新聞源 → 去重 → Gemini 摘要（無 key 降級純標題）→ Telegram。
+
+部署：
+  cp scripts/launchd/local.crypto-ai-news.plist ~/Library/LaunchAgents/
+  launchctl unload ~/Library/LaunchAgents/local.crypto-ai-news.plist 2>/dev/null
+  launchctl load ~/Library/LaunchAgents/local.crypto-ai-news.plist
+手動觸發：launchctl start local.crypto-ai-news
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>local.crypto-ai-news</string>
+
+    <key>ProgramArguments</key>
+    <!-- 從 .env 讀 CSP_INTERNAL_KEY 帶 header 打 localhost（同既有 trigger pattern、不內嵌密鑰） -->
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>KEY="$(grep -E '^CSP_INTERNAL_KEY=' "$HOME/Documents/plate/crypto-signal-pro/.env" 2>/dev/null | head -1 | cut -d= -f2-)"; exec /usr/bin/curl -s -m 120 -X POST -H "X-Internal-Key: $KEY" http://localhost:8000/api/internal/trigger-ai-news</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <array>
+        <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>40</integer></dict>
+        <dict><key>Hour</key><integer>14</integer><key>Minute</key><integer>0</integer></dict>
+        <dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>30</integer></dict>
+    </array>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/kentsai/Documents/plate/crypto-signal-pro/logs/launchd-ai-news.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/kentsai/Documents/plate/crypto-signal-pro/logs/launchd-ai-news-error.log</string>
+</dict>
+</plist>

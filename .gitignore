@@ -81,3 +81,4 @@ docs/architecture.md
 
 # 執行期日誌（不入版控；mini 本地 + GDrive 已排除）
 logs/
+backend/data/ai_news_seen.json
