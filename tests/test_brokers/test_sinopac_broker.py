@@ -109,10 +109,21 @@ class _FakeShioajiAPI:
     def Order(self, **kwargs):
         return _FakeOrder(**kwargs)
 
+    def logout(self):
+        if getattr(self, "_logout_should_fail", False):
+            raise RuntimeError("dead session logout hang")
+        self._logged_out = True
+        return True
+
     def place_order(self, contract, order):
         # 把訂單參數記到 trade，方便 assertion
+        self._place_order_calls = getattr(self, "_place_order_calls", 0) + 1
         self._last_order_params = order.params
         self._last_contract = contract
+        # 503 限流（ban）錯誤：模擬永豐 SystemMaintenance
+        if getattr(self, "_place_order_ban_error", False):
+            exc = type("SystemMaintenance", (Exception,), {})
+            raise exc("StatusCode: 503, Detail: 操作異常，請1分鐘後再重新登入")
         # 支援測試「前 N 次 timeout、第 N+1 次成功」
         if hasattr(self, "_place_order_timeouts_left") and self._place_order_timeouts_left > 0:
             self._place_order_timeouts_left -= 1
@@ -158,9 +169,16 @@ class _FakeShioajiModule(types.ModuleType):
             for attr in ("_place_order_timeouts_left",
                          "_place_order_always_timeout",
                          "_place_order_value_error",
-                         "_place_order_conn_errs_left"):
+                         "_place_order_conn_errs_left",
+                         "_place_order_ban_error",
+                         "_logout_should_fail"):
                 if hasattr(cfg, attr):
                     setattr(api, attr, getattr(cfg, attr))
+            # 只 pre-configure「第一個」instance：rebuild 建的新 instance 應是乾淨的
+            # （模擬真實：新連線不會繼承舊 session 的故障狀態）
+            self._next_api = None
+        self._created_apis = getattr(self, "_created_apis", [])
+        self._created_apis.append(api)
         return api
 
 
@@ -512,3 +530,95 @@ def test_sector_cooldown_reset_on_success(fake_shioaji, monkeypatch):
 
     in_cd, _ = b.is_sector_in_cooldown("semiconductor")
     assert in_cd is False
+
+
+# ── 503 限流（ban）分流 + clean instance rebuild（2026-07 解封後防護）──
+
+def _mk_order():
+    """給 _place_order_with_retry 直接用的假 contract/order。"""
+    return "contract_2330", _FakeOrder(price=100, quantity=1)
+
+
+def test_ban_error_stops_immediately_no_retry(fake_shioaji):
+    """503 限流錯誤：不重試（打一次就停）、進 ≥90s 長退避——1-2-4s 撞下去會續命。"""
+    b = _new_broker(fake_shioaji)
+    b.api._place_order_ban_error = True
+    c, o = _mk_order()
+    with pytest.raises(Exception) as ei:
+        b._place_order_with_retry(c, o)
+    assert "SystemMaintenance" in ei.value.__class__.__name__
+    assert b.api._place_order_calls == 1          # 絕無第二次
+    active, remaining = b._ban_active()
+    assert active and remaining > 60              # 長退避非 1-2-4s
+
+
+def test_ban_active_fail_fast_without_touching_api(fake_shioaji):
+    """退避中：fail-fast，完全不打永豐。"""
+    import time as _t
+    b = _new_broker(fake_shioaji)
+    b._ban_until = _t.time() + 90
+    c, o = _mk_order()
+    with pytest.raises(RuntimeError, match="限流退避"):
+        b._place_order_with_retry(c, o)
+    assert getattr(b.api, "_place_order_calls", 0) == 0
+
+
+def test_ban_three_strikes_halts_and_alerts_once(fake_shioaji, monkeypatch):
+    """連 3 次 503 → 停手 1 小時 + Telegram 告警只發一次。"""
+    import notifier
+    sent = []
+    monkeypatch.setattr(notifier, "send_telegram", lambda m: sent.append(m) or True)
+    b = _new_broker(fake_shioaji)
+    b._note_ban(); b._note_ban(); b._note_ban(); b._note_ban()
+    active, remaining = b._ban_active()
+    assert active and remaining > 1800            # 已進停手（1 小時級）
+    assert len(sent) == 1                         # 告警不洗版
+    assert "503" in sent[0]
+
+
+def test_success_clears_ban_state(fake_shioaji):
+    b = _new_broker(fake_shioaji)
+    b._note_ban()
+    assert b._ban_strikes == 1
+    b._ban_until = 0.0                            # 模擬退避期滿
+    c, o = _mk_order()
+    trade, retry_used = b._place_order_with_retry(c, o)
+    assert trade is not None and retry_used is False
+    assert b._ban_strikes == 0 and b._ban_active()[0] is False
+
+
+def test_rebuild_creates_new_instance_and_swaps(fake_shioaji):
+    """clean rebuild：舊 logout → 新 instance → login 後設 callback → 換掉 self.api。"""
+    b = _new_broker(fake_shioaji)
+    old_api = b.api
+    assert b._attempt_relogin() is True
+    assert b.api is not old_api                   # 真的是新 instance、非原地 re-login
+    assert getattr(old_api, "_logged_out", False) is True   # 舊的有 best-effort logout
+
+
+def test_rebuild_proceeds_even_if_old_logout_fails(fake_shioaji):
+    """死 session 的 logout 卡住/失敗 → 不擋 rebuild（客服：best-effort 即可）。"""
+    b = _new_broker(fake_shioaji)
+    old_api = b.api
+    old_api._logout_should_fail = True
+    assert b._attempt_relogin() is True
+    assert b.api is not old_api
+
+
+def test_rebuild_skipped_while_banned(fake_shioaji):
+    import time as _t
+    b = _new_broker(fake_shioaji)
+    old_api = b.api
+    b._ban_until = _t.time() + 90
+    assert b._attempt_relogin() is False
+    assert b.api is old_api                       # 沒動、沒打永豐
+
+
+def test_ban_keyword_no_price_false_positive(fake_shioaji):
+    """裸 '503' 誤判回歸：價格 503.x 的一般錯誤不可被當成限流（review 抓到）。"""
+    b = _new_broker(fake_shioaji)
+    assert b._is_ban_error(ValueError("Price 503.5 not a valid tick")) is False
+    assert b._is_ban_error(
+        type("SystemMaintenance", (Exception,), {})(
+            "StatusCode: 503, Detail: 操作異常，請1分鐘後再重新登入")) is True
+    assert b._is_ban_error(RuntimeError("StatusCode: 503")) is True

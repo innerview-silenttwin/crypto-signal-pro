@@ -64,8 +64,13 @@ class SinopacBroker:
             import shioaji as sj
         except ImportError as e:
             raise RuntimeError(
-                "shioaji 未安裝；prod 機請執行 pip install \"shioaji==1.5.3\"（官方版本，不是 rshioaji）"
+                "shioaji 未安裝；prod 機請執行 pip install \"shioaji==1.5.5\"（官方版本，不是 rshioaji）"
             ) from e
+
+        # 永豐客服 2026-06-26 要求：login 前印版本，確認實跑 process 載到的是新版官方套件
+        logger.info("shioaji version=%s (official=%s)",
+                    getattr(sj, "__version__", "?"),
+                    "rshioaji" not in getattr(sj, "__file__", "").lower())
 
         self._sj = sj
         self._lock = threading.RLock()
@@ -88,6 +93,14 @@ class SinopacBroker:
         # re-login rate limit：避免狂登入觸發 broker ban
         self._last_relogin_at = 0.0
         self._relogin_lock = threading.Lock()
+
+        # ── 503 限流（ban）分流狀態 ──（永豐客服 2026-06-24：503「請1分鐘後再登入」
+        # 是 server 端限流，走 1-2-4s 短退避會一直撞、把 ban 續命；要 ≥60~90s 長退避、
+        # 連 3 次就停手告警人工介入。與一般瞬斷（Timeout/Connection）分開處理。）
+        self._ban_lock = threading.Lock()
+        self._ban_until = 0.0        # 此時間前不得再打永豐（login/place_order 都 fail-fast）
+        self._ban_strikes = 0        # 連續偵測到 ban 次數
+        self._ban_alerted = False    # 停手告警只發一次（成功後 reset）
 
         self.api = sj.Shioaji(simulation=self._simulation)
         try:
@@ -142,6 +155,59 @@ class SinopacBroker:
             self._simulation, self._fill_timeout_s,
         )
 
+    # ── 503 限流（ban）分流 ─────────────────────────────
+    # 一般瞬斷：Timeout/Connection → 1-2-4s 短退避（RETRYABLE_KEYWORDS 路徑）
+    # 503 限流：SystemMaintenance/503/操作異常 → ≥90s 長退避、連 3 次停手告警
+    # 「StatusCode: 503」非裸 "503"：避免錯誤訊息 echo 到價格 503.x 被誤判為限流
+    BAN_KEYWORDS = ("SystemMaintenance", "StatusCode: 503", "操作異常")
+    BAN_BACKOFF_S = 90          # 客服：≥60~90 秒，絕不可 1-2-4-8 撞續命
+    BAN_MAX_STRIKES = 3         # 連 3 次 → 停手 + 告警人工介入
+    BAN_HALT_S = 3600           # 停手時長（1 小時內不再嘗試）
+
+    def _is_ban_error(self, e: Exception) -> bool:
+        blob = f"{e.__class__.__name__} {e}"
+        return any(kw in blob for kw in self.BAN_KEYWORDS)
+
+    def _ban_active(self) -> tuple[bool, float]:
+        """回傳 (是否在限流退避中, 剩餘秒數)。"""
+        with self._ban_lock:
+            remaining = self._ban_until - time.time()
+            return (remaining > 0, max(0.0, remaining))
+
+    def _note_ban(self) -> None:
+        """偵測到 503 限流：進長退避；連 3 次 → 停手 1 小時 + Telegram 告警（一次）。"""
+        with self._ban_lock:
+            self._ban_strikes += 1
+            strikes = self._ban_strikes
+            if strikes >= self.BAN_MAX_STRIKES:
+                self._ban_until = time.time() + self.BAN_HALT_S
+                should_alert = not self._ban_alerted
+                self._ban_alerted = True
+            else:
+                self._ban_until = time.time() + self.BAN_BACKOFF_S
+                should_alert = False
+        logger.warning("偵測到永豐 503 限流（第 %d 次）→ 退避 %ds",
+                       strikes,
+                       self.BAN_HALT_S if strikes >= self.BAN_MAX_STRIKES else self.BAN_BACKOFF_S)
+        if should_alert:
+            try:
+                from notifier import send_telegram
+                send_telegram(
+                    "🚨 <b>永豐 503 限流連續觸發</b>\n"
+                    f"連續 {strikes} 次偵測到「操作異常請稍後登入」，已停止嘗試 1 小時。\n"
+                    "可能 person_id 又被標記，請人工檢查（參考 6/23-24 事件處理流程）。"
+                )
+            except Exception:
+                pass
+
+    def _clear_ban(self) -> None:
+        with self._ban_lock:
+            if self._ban_strikes:
+                logger.info("永豐操作成功、清除 503 限流狀態（先前 %d 次）", self._ban_strikes)
+            self._ban_strikes = 0
+            self._ban_until = 0.0
+            self._ban_alerted = False
+
     # ── 統計 (給 health_check / 外部觀察) ──
     def get_stats(self) -> dict:
         with self._stats_lock:
@@ -179,15 +245,25 @@ class SinopacBroker:
         # 永豐客服 5/21 建議 exponential backoff：1s, 2s, 4s
         BACKOFF_SCHEDULE = [1.0, 2.0, 4.0]
 
+        # 503 限流退避中 → fail-fast，完全不打永豐（避免續命 ban）
+        banned, remaining = self._ban_active()
+        if banned:
+            raise RuntimeError(f"sinopac 503 限流退避中（剩 {remaining:.0f}s）、跳過此單")
+
         last_err = None
         last_err_name = ""
         for attempt in range(max_retries + 1):
             try:
                 trade = self.api.place_order(contract, order)
+                self._clear_ban()
                 return trade, (attempt > 0)
             except Exception as e:
                 last_err = e
                 last_err_name = e.__class__.__name__
+                # 503 限流 ≠ 一般瞬斷：立即停、進長退避（1-2-4s 撞下去只會續命）
+                if self._is_ban_error(e):
+                    self._note_ban()
+                    raise
                 # 只有「短暫連線類」錯誤才重試
                 is_retryable = any(kw in last_err_name for kw in RETRYABLE_KEYWORDS)
                 if not is_retryable:
@@ -315,14 +391,27 @@ class SinopacBroker:
     RELOGIN_COOLDOWN_S = 5 * 60   # 兩次 re-login 至少間隔 5 分鐘（避免狂登入觸發 ban）
 
     def _attempt_relogin(self) -> bool:
-        """嘗試重新 login。永豐客服 5/21 建議：連續 ConnectionError 失敗應 re-login。
+        """連線死掉時的正解：**重建整個 Shioaji instance**（非對死 session 呼叫 login）。
 
-        Rate limit：兩次 re-login 至少間隔 5 分鐘，避免被 broker 視為異常。
-        成功後立即跑 reconcile 補對帳。
+        永豐客服 2026-06-09/23/24 確認的 clean-rebuild 序列：
+          1. 舊 instance `logout()` **best-effort**（死 session 的 logout 可能卡住，
+             try/except 包住、失敗照樣往下——否則每次 rebuild 漏一條連線槽，
+             5 槽耗盡就是 6/23 死亡螺旋）
+          2. 建**新** `Shioaji()` → login →（prod 才 activate_ca）
+          3. callback **一定在 login 之後**設（login 前設會 AuthError）
+          4. 換掉 self.api → update_status/reconcile 對帳孤兒單
+
+        Rate limit：兩次 rebuild 至少間隔 5 分鐘；503 限流退避中直接跳過。
 
         Returns:
-            True = re-login 成功；False = 跳過（冷卻中）或失敗
+            True = rebuild 成功；False = 跳過（冷卻/限流中）或失敗
         """
+        # 503 限流中 → 不打（撞一次續命一次）
+        banned, remaining = self._ban_active()
+        if banned:
+            logger.info("rebuild skipped: 503 限流退避中（剩 %.0fs）", remaining)
+            return False
+
         now = time.time()
         with self._relogin_lock:
             if now - self._last_relogin_at < self.RELOGIN_COOLDOWN_S:
@@ -333,20 +422,40 @@ class SinopacBroker:
                 return False
             self._last_relogin_at = now
 
-        logger.warning("Attempting re-login due to persistent connection errors")
+        logger.warning("Rebuilding Shioaji instance due to persistent connection errors")
         try:
             with self._lock:
-                self.api.login(
+                # 1) 舊 instance best-effort logout（釋放連線槽；失敗不擋）
+                try:
+                    self.api.logout()
+                    logger.info("old instance logout ok")
+                except Exception as e:
+                    logger.warning("old instance logout failed (continuing): %s",
+                                   e.__class__.__name__)
+
+                # 2) 全新 instance（客服：api.login() 不會復活死掉的 Solace session）
+                logger.info("rebuild with shioaji version=%s",
+                            getattr(self._sj, "__version__", "?"))
+                new_api = self._sj.Shioaji(simulation=self._simulation)
+                new_api.login(
                     api_key=self._creds["api_key"],
                     secret_key=self._creds["secret_key"],
                 )
                 if not self._simulation and self._creds.get("ca_path"):
-                    self.api.activate_ca(
+                    new_api.activate_ca(
                         ca_path=self._creds["ca_path"],
                         ca_passwd=self._creds["ca_password"],
                         person_id=self._creds["person_id"],
                     )
-            logger.info("Re-login successful")
+                # 3) callback 在 login 之後設（客服 2026-06-24）
+                try:
+                    new_api.set_order_callback(self._on_order_event)
+                except Exception:
+                    logger.debug("set_order_callback unavailable on new instance")
+                # 4) 換掉 instance
+                self.api = new_api
+            self._clear_ban()
+            logger.info("Instance rebuild successful")
             # 重新對帳 in-flight 狀態
             try:
                 self.reconcile()
@@ -355,18 +464,24 @@ class SinopacBroker:
             try:
                 from notifier import send_telegram
                 send_telegram(
-                    "🔄 <b>Sinopac 自動 re-login 成功</b>\n"
-                    "因連續 ConnectionError 觸發；已執行 reconcile 補對帳"
+                    "🔄 <b>Sinopac instance 已自動重建</b>\n"
+                    "因連續 ConnectionError 觸發；舊 instance 已 logout、"
+                    "新 instance 登入成功、已執行 reconcile 補對帳"
                 )
             except Exception:
                 pass
             return True
         except Exception as e:
-            logger.error("Re-login failed: %s", e.__class__.__name__)
+            # 503 限流 → 進長退避（下次 rebuild/下單都會先 fail-fast、不續命）
+            if self._is_ban_error(e):
+                self._note_ban()
+                logger.error("Rebuild hit 503 限流：%s", e.__class__.__name__)
+                return False
+            logger.error("Rebuild failed: %s", e.__class__.__name__)
             try:
                 from notifier import send_telegram
                 send_telegram(
-                    f"❌ <b>Sinopac 自動 re-login 失敗</b>\n"
+                    f"❌ <b>Sinopac instance 重建失敗</b>\n"
                     f"錯誤類型：{e.__class__.__name__}\n"
                     f"請手動 csp restart 重啟服務"
                 )
