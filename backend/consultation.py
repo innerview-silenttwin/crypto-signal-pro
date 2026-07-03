@@ -86,6 +86,27 @@ def _get_current_conditions(symbol: str) -> Optional[dict]:
     return None
 
 
+def _compute_live_conditions(sym_tw: str, name: str) -> Optional[dict]:
+    """快取 miss 時即時計算該股五維（修「查什麼都 50 分」根因）。
+
+    screener_cache 只存 top-50，持倉常不在裡面 → 原本 fallback 全 50/盤整。
+    改用 scan_single_stock 對任意個股現算（多花 2~5 秒、換真實分數）。
+    """
+    try:
+        from screener import scan_single_stock
+        from layers.fundamental import fetch_twse_pe_all
+        from layers.sentiment import fetch_rss_articles
+        all_pe = fetch_twse_pe_all()          # 有模組快取
+        try:
+            articles = fetch_rss_articles()   # 有模組快取
+        except Exception:
+            articles = []
+        return scan_single_stock(sym_tw, name or sym_tw, all_pe, articles)
+    except Exception as e:
+        logger.warning(f"即時計分失敗 {sym_tw}: {e}")
+        return None
+
+
 def _get_current_price_from_cache(symbol: str) -> Optional[float]:
     """從績效快取中取得最新收盤價"""
     sym_tw = symbol if symbol.endswith(".TW") else f"{symbol}.TW"
@@ -376,6 +397,102 @@ def _generate_recommendation(
     }
 
 
+# ── AI 分析（Gemini + Google 搜尋 grounding）──────────────────────
+
+_GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
+
+def _gemini_call(prompt: str, use_search: bool) -> Optional[dict]:
+    """單次 Gemini 呼叫。回 {text, sources} 或 None。key 走 header 不進 URL/log。"""
+    import requests
+    key = os.environ.get("GEMINI_API_KEY", "").strip()
+    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip()
+    if not key:
+        return None
+    body = {"contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 0.3}}
+    if use_search:
+        body["tools"] = [{"google_search": {}}]
+    try:
+        r = requests.post(_GEMINI_URL.format(model=model),
+                          headers={"x-goog-api-key": key, "Content-Type": "application/json"},
+                          json=body, timeout=60)
+        if r.status_code != 200:
+            logger.warning(f"[consult-ai] Gemini HTTP {r.status_code} (search={use_search}): {r.text[:150]}")
+            return None
+        cand = r.json()["candidates"][0]
+        text = "".join(p.get("text", "") for p in cand["content"]["parts"])
+        # grounding 來源（best-effort、可能沒有）
+        sources = []
+        for ch in (cand.get("groundingMetadata", {}).get("groundingChunks") or [])[:5]:
+            web = ch.get("web") or {}
+            uri = (web.get("uri") or "").strip()
+            # scheme 白名單：前端會渲染成 <a href>，擋 javascript: 等注入
+            if uri.startswith(("https://", "http://")):
+                sources.append({"title": web.get("title", ""), "uri": uri})
+        return {"text": text, "sources": sources}
+    except Exception as e:
+        logger.warning(f"[consult-ai] Gemini 呼叫失敗 (search={use_search}): {str(e)[:150]}")
+        return None
+
+
+def _ai_position_analysis(symbol: str, name: str, current_price: float,
+                          buy_price: float, quantity: int, unrealized_pnl: float,
+                          unrealized_pnl_pct: float, conditions: dict,
+                          rec: dict, horizon_stats: dict) -> Optional[dict]:
+    """Gemini 綜合分析：搜尋該股最新公告/新聞/市場訊息 + 持倉脈絡 → 局勢判讀與具體操作。
+
+    降級鏈：grounding(google_search) 失敗 → 純資料版（僅用系統數據）→ 無 key 回 None。
+    隱私：送出的是「該股公開資訊 + 成本/張數/損益數字」，不含任何帳號識別（用戶明示
+    要求 AI 考慮成本與張數）。
+    """
+    code = symbol.replace(".TW", "").replace(".TWO", "")
+    mid = (horizon_stats or {}).get("mid") or {}
+    prompt = (
+        f"你是台股投資顧問。請先搜尋台股 {code} {name} 近兩週的重大訊息（公司公告、月營收、"
+        f"法說、產業/市場新聞、分析師觀點），再結合下列系統數據與我的持倉，給出繁體中文分析。\n\n"
+        f"【我的持倉】成本均價 {buy_price} 元、持有 {quantity} 張、現價 {current_price} 元、"
+        f"未實現損益 {unrealized_pnl_pct:+.1f}%（約 {unrealized_pnl:+,.0f} 元）\n"
+        f"【系統五維】技術 {conditions.get('tech_score')} / 籌碼 {conditions.get('chip_score')} / "
+        f"盤勢「{conditions.get('regime_state')}」/ PE {conditions.get('pe')} / PEG {conditions.get('peg')} / "
+        f"營收YoY {conditions.get('yoy')}% / 外資連買 {conditions.get('foreign_consec_buy')} 天 / "
+        f"投信連買 {conditions.get('trust_consec_buy')} 天\n"
+        f"【系統量化建議(參考)】{rec.get('recommendation')}（歷史類似情況 {rec.get('n_matches')} 筆、"
+        f"15日均報酬 {mid.get('avg_return')}%、勝率 {mid.get('win_rate')}%）\n\n"
+        "只回 JSON 物件（不要 markdown 包裹）：\n"
+        "{\"situation\": \"2-3句當前局勢判讀（融合搜尋到的最新訊息）\", "
+        "\"news\": [\"重要訊息點列、盡量附日期\", ...最多4條], "
+        "\"action\": \"加碼|持有|減碼|出清|分批停利 擇一\", "
+        "\"action_plan\": \"考慮我的成本與張數的具體操作（例如分幾批、什麼價位、留多少）\", "
+        "\"risks\": [\"主要風險\", ...最多3條]}"
+    )
+    resp = _gemini_call(prompt, use_search=True)
+    grounded = resp is not None
+    if resp is None:
+        resp = _gemini_call(prompt + "\n（註：無法搜尋時請僅依上述系統數據分析，news 可為空陣列）",
+                            use_search=False)
+    if resp is None:
+        return None
+    try:
+        import re as _re
+        m = _re.search(r"\{.*\}", resp["text"], _re.DOTALL)
+        parsed = json.loads(m.group(0)) if m else {}
+        if not parsed.get("situation"):
+            return None
+        return {
+            "situation": str(parsed.get("situation", ""))[:600],
+            "news": [str(x)[:200] for x in (parsed.get("news") or [])[:4]],
+            "action": str(parsed.get("action", ""))[:20],
+            "action_plan": str(parsed.get("action_plan", ""))[:600],
+            "risks": [str(x)[:200] for x in (parsed.get("risks") or [])[:3]],
+            "sources": resp.get("sources", []),
+            "grounded": grounded,
+        }
+    except Exception as e:
+        logger.warning(f"[consult-ai] 回應解析失敗: {str(e)[:100]}")
+        return None
+
+
 # ── 主要諮詢函數 ──────────────────────────────────────────────────
 
 def consult_position(symbol: str, buy_price: float, quantity: int) -> dict:
@@ -431,6 +548,11 @@ def consult_position(symbol: str, buy_price: float, quantity: int) -> dict:
 
     # ── 4. 取得當前五維條件 ──
     current_cond = _get_current_conditions(sym_tw)
+    if current_cond is None:
+        # 快取 miss（screener 只存 top-50）→ 即時計算，不再默默 fallback 50 分
+        current_cond = _compute_live_conditions(sym_tw, name)
+        if current_cond is not None:
+            data_source += " + 五維即時計算"
     current_tech = 50.0
     current_chip = 50.0
     current_regime = "盤整"
@@ -548,7 +670,17 @@ def consult_position(symbol: str, buy_price: float, quantity: int) -> dict:
 
     horizon_labels = {"short": "短期(5日)", "mid": "中期(15日)", "long": "長期(30日)"}
 
+    # ── 6b. AI 分析（Gemini + Google 搜尋 grounding；無 key / 失敗 → None、其餘照舊）──
+    ai_analysis = _ai_position_analysis(
+        symbol=sym_tw, name=name or symbol,
+        current_price=current_price, buy_price=buy_price, quantity=quantity,
+        unrealized_pnl=unrealized_pnl, unrealized_pnl_pct=unrealized_pnl_pct,
+        conditions=conditions_summary,
+        rec=result, horizon_stats=all_horizon_stats,
+    )
+
     return {
+        "ai_analysis": ai_analysis,
         "symbol": sym_tw,
         "name": name or symbol,
         "current_price": round(current_price, 2),

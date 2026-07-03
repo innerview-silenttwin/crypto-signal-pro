@@ -22,12 +22,15 @@ class ConsultationRequest(BaseModel):
 @router.post("/api/consultation")
 async def get_consultation(req: ConsultationRequest):
     """
-    投資諮詢：根據持倉條件比對歷史類似盤勢/技術/籌碼情況，
+    投資諮詢：根據持倉條件比對歷史類似盤勢/技術/籌碼情況 + 即時五維 + AI 分析，
     推算加碼 / 持有 / 減碼 / 出清建議
     """
+    import asyncio
     from consultation import consult_position
     try:
-        result = consult_position(
+        # to_thread：即時計分 + Gemini 可達數十秒，不可卡 event loop
+        result = await asyncio.to_thread(
+            consult_position,
             symbol=req.symbol,
             buy_price=req.buy_price,
             quantity=req.quantity,

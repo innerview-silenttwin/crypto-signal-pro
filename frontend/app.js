@@ -1888,7 +1888,7 @@ async function runConsultation() {
 
     const btn = document.getElementById('consult-submit-btn');
     btn.disabled = true;
-    btn.textContent = '分析中...';
+    btn.textContent = '分析中（含 AI 搜尋、約 20~60 秒）...';
     resultEl.style.display = 'none';
 
     try {
@@ -2003,6 +2003,31 @@ function renderConsultationResult(d) {
         `<li class="risk-item">${r}</li>`
     ).join('');
 
+    // ── AI 綜合分析區塊（Gemini；文字來自 LLM/搜尋結果，innerHTML 前必 escape）──
+    const escC = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+        ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    let aiHtml = '';
+    const ai = d.ai_analysis;
+    if (ai && ai.situation) {
+        const aiRecClass = {'加碼':'rec-buy','持有':'rec-hold','減碼':'rec-sell','出清':'rec-clear','分批停利':'rec-sell'}[ai.action] || 'rec-hold';
+        const newsHtml = (ai.news || []).map(n => `<li>${escC(n)}</li>`).join('');
+        const aiRiskHtml = (ai.risks || []).map(r => `<li class="risk-item">${escC(r)}</li>`).join('');
+        const srcHtml = (ai.sources || []).slice(0, 5).map(s =>
+            `<a href="${escC(s.uri)}" target="_blank" rel="noopener">${escC(s.title || '來源')}</a>`).join('　');
+        aiHtml = `
+        <div class="consult-reasoning glass-panel">
+            <div class="consult-section-title">🤖 AI 綜合分析${ai.grounded ? '（含即時新聞搜尋）' : '（僅系統數據）'}
+                <span class="consult-rec-block ${aiRecClass}" style="margin-left:8px;padding:2px 10px;font-size:13px">${escC(ai.action)}</span>
+            </div>
+            <div style="margin:6px 0;line-height:1.7">${escC(ai.situation)}</div>
+            ${newsHtml ? `<div class="consult-section-title" style="margin-top:10px">近期訊息</div><ul class="reasoning-list">${newsHtml}</ul>` : ''}
+            ${ai.action_plan ? `<div class="consult-section-title" style="margin-top:10px">建議操作（依你的成本與張數）</div><div style="line-height:1.7">${escC(ai.action_plan)}</div>` : ''}
+            ${aiRiskHtml ? `<div class="consult-section-title risk-title" style="margin-top:10px">AI 風險提示</div><ul class="risk-list">${aiRiskHtml}</ul>` : ''}
+            ${srcHtml ? `<div style="margin-top:8px;font-size:12px;opacity:.75">資料來源：${srcHtml}</div>` : ''}
+            <div style="margin-top:6px;font-size:11px;opacity:.55">AI 生成內容僅供參考、非投資建議；請自行判斷。</div>
+        </div>`;
+    }
+
     resultEl.innerHTML = `
     <div class="consultation-result-wrap">
         <!-- 頭部：股票 + 建議 -->
@@ -2028,6 +2053,8 @@ function renderConsultationResult(d) {
                 <span class="rec-conf">信心 ${d.confidence}%</span>
             </div>
         </div>
+
+        ${aiHtml}
 
         <!-- 技術柱面 + 籌碼 -->
         <div class="consult-conditions glass-panel">
