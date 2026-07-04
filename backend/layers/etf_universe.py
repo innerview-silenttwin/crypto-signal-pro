@@ -80,9 +80,8 @@ def _fm_get(dataset: str, **params) -> list:
         return []
 
 
-def _six_month_return(stock_id: str, start: str) -> float | None:
-    """近半年報酬 %。上市不足（首筆晚於門檻）回 None。"""
-    rows = _fm_get("TaiwanStockPrice", data_id=stock_id, start_date=start)
+def _return_from_rows(rows: list) -> float | None:
+    """由價格 rows 算近半年報酬 %。資料不足/上市不足半年回 None。"""
     closes = [(r["date"], r["close"]) for r in rows
               if r.get("close") not in (None, 0)]
     if len(closes) < 2:
@@ -96,6 +95,11 @@ def _six_month_return(stock_id: str, start: str) -> float | None:
     if not base:
         return None
     return (last / base - 1.0) * 100.0
+
+
+def _six_month_return(stock_id: str, start: str) -> float | None:
+    """近半年報酬 %。上市不足（首筆晚於門檻）回 None。"""
+    return _return_from_rows(_fm_get("TaiwanStockPrice", data_id=stock_id, start_date=start))
 
 
 def _compute_beat_taiex_top10() -> dict:
@@ -118,13 +122,27 @@ def _compute_beat_taiex_top10() -> dict:
                 len(cands), taiex_ret)
 
     scored = []
+    fetched_ok = 0
     for sid, nm in cands:
-        ret = _six_month_return(sid, start)
+        rows = _fm_get("TaiwanStockPrice", data_id=sid, start_date=start)
+        if rows:
+            fetched_ok += 1
+        ret = _return_from_rows(rows)
         if ret is not None and ret > taiex_ret:
             scored.append({"code": sid, "name": nm, "ret6m_pct": round(ret, 2)})
+
+    # 限流防護：抓取成功率過低（FinMind 配額被同時段 chipflow 掃描吃掉時會發生，
+    # 2026-07-04 mini 實跑 130 檔 28 秒跑完只算出 6 檔）→ 視為失敗、不產出殘缺榜
+    # （呼叫端會保留舊快取、下次再算）
+    if cands and fetched_ok < len(cands) * 0.5:
+        logger.warning("[etf_universe] 價格抓取成功率過低（%d/%d）、疑似限流，放棄本次計算",
+                       fetched_ok, len(cands))
+        return {"date": today, "taiex_ret": None, "top": []}
+
     scored.sort(key=lambda x: -x["ret6m_pct"])
     top = scored[:10]
-    logger.info("[etf_universe] 贏大盤 %d 檔、取前 10", len(scored))
+    logger.info("[etf_universe] 贏大盤 %d 檔、取前 10（fetch %d/%d）",
+                len(scored), fetched_ok, len(cands))
     return {"date": today, "taiex_ret": round(taiex_ret, 2), "top": top}
 
 

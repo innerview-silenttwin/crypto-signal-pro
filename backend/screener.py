@@ -1152,6 +1152,7 @@ def _format_picks(picks: List[dict]) -> List[dict]:
             "etf_holders": p.get("etf_holders", []),
             "etf_added_today": p.get("etf_added_today", []),
             "etf_removed_today": p.get("etf_removed_today", []),
+            "etf_tags": p.get("etf_tags", []),   # ETF 榜標籤（規模/贏大盤/嚴選）
         })
     return formatted
 
@@ -1312,6 +1313,7 @@ def run_screener_scan() -> dict:
             "etf_holders": r.get("etf_holders", []),
             "etf_added_today": r.get("etf_added_today", []),
             "etf_removed_today": r.get("etf_removed_today", []),
+            "etf_tags": r.get("etf_tags", []),   # ETF 榜標籤（規模/贏大盤/嚴選）
         })
 
     # 主動 ETF 名稱對應表（給前端 tooltip 用）

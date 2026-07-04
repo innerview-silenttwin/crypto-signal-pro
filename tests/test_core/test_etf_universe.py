@@ -138,3 +138,18 @@ def test_filter_excludes_taiwan_korea_and_us_heavy_actives():
     assert eu._is_tw_equity_etf("00990A", "主動元大AI新經濟") is False   # 美股為主(memory)
     assert eu._is_tw_equity_etf("00988A", "主動統一全球創新") is False
     assert eu._is_tw_equity_etf("00991A", "主動復華未來50") is True      # 台股主動、應保留
+
+
+def test_compute_aborts_on_low_fetch_success(monkeypatch):
+    """限流防護回歸：抓取成功率 <50%（配額被吃掉）→ 回空榜、不產出殘缺結果。"""
+    def fake_fm(dataset, **kw):
+        if dataset == "TaiwanStockInfo":
+            return [{"stock_id": f"009{i:02d}", "stock_name": f"台灣ETF{i}",
+                     "type": "twse", "industry_category": "ETF"} for i in range(10)]
+        if kw.get("data_id") == "TAIEX":
+            return [{"date": "2026-01-05", "close": 100.0},
+                    {"date": "2026-07-03", "close": 110.0}]
+        return []   # 全部個股抓取失敗（模擬限流）
+    monkeypatch.setattr(eu, "_fm_get", fake_fm)
+    out = eu._compute_beat_taiex_top10()
+    assert out["top"] == [] and out["taiex_ret"] is None
