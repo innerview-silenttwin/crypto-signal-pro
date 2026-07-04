@@ -2562,6 +2562,22 @@ a.event-item:hover {
     background: rgba(251,191,36,0.13);
     border-color: rgba(251,191,36,0.5);
 }
+/* ETF 榜標籤：區分屬於哪種前10（規模/贏大盤/主動嚴選） */
+.etf-top-badge.etf-top-aum {
+    color: #fbbf24;
+    background: rgba(251,191,36,0.12);
+    border-color: rgba(251,191,36,0.45);
+}
+.etf-top-badge.etf-top-beat {
+    color: #34d399;
+    background: rgba(52,211,153,0.12);
+    border-color: rgba(52,211,153,0.45);
+}
+.etf-top-badge.etf-top-alpha {
+    color: #a78bfa;
+    background: rgba(167,139,250,0.12);
+    border-color: rgba(167,139,250,0.45);
+}
 .screener-days-badge {
     font-size: 10px;
     font-weight: 700;

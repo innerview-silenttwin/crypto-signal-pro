@@ -1630,6 +1630,22 @@ function renderScreenerCards(categories, activeEtfs = [], etfDiffPrevDate = null
         return `<span class="${cls}" title="${tip}">ETF ${label}</span>`;
     }
 
+    // ETF 榜標籤（規模Top10 / 贏大盤Top10 / 主動嚴選）— 區分該 ETF 屬於哪種前10
+    function buildEtfTopBadges(tags) {
+        if (!tags || !tags.length) return '';
+        const escT = (x) => String(x == null ? '' : x).replace(/[&<>"']/g, c =>
+            ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+        const meta = {
+            '規模Top10':   { icon: '💰', label: '規模10',   cls: 'etf-top-aum' },
+            '贏大盤Top10': { icon: '🚀', label: '贏大盤10', cls: 'etf-top-beat' },
+            '主動嚴選':    { icon: '⭐', label: '嚴選',     cls: 'etf-top-alpha' },
+        };
+        return tags.map(t => {
+            const m = meta[t.tag] || { icon: '🏷', label: t.tag, cls: '' };
+            return `<span class="screener-etf-chip etf-top-badge ${m.cls}" title="${escT(t.tag)}：${escT(t.detail)}">${m.icon}${m.label}</span>`;
+        }).join('');
+    }
+
     // 從 dot-path 取值，例如 "scores.regime" → s.scores.regime
     function _getScore(stock, field) {
         if (!field || field === 'composite') return stock.composite_score;
@@ -1677,11 +1693,13 @@ function renderScreenerCards(categories, activeEtfs = [], etfDiffPrevDate = null
 
                 const etfChip = buildEtfChip(s.etf_holders);
                 const etfEvents = buildEtfEventBadges(s.etf_added_today, s.etf_removed_today, etfNameMap, prevDateLabel);
+                const etfTopBadges = buildEtfTopBadges(s.etf_tags);
                 return `<div class="screener-stock-row${hiddenCls}" data-symbol="${s.symbol}" data-market="stock">
                     ${rankBadge}
                     ${scoreHtml}
                     <span class="screener-stock-sym">${s.symbol.replace('.TW','')}</span>
                     <span class="screener-stock-name">${s.name}</span>
+                    ${etfTopBadges}
                     ${daysBadge}
                     ${etfChip}
                     ${etfEvents}

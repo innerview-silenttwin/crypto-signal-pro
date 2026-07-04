@@ -635,6 +635,16 @@ def scan_all_stocks() -> List[dict]:
 
     使用 ThreadPoolExecutor 並行取得 yfinance 資料
     """
+    # ETF 兩榜（規模Top10 + 近半年贏大盤Top10）擴充進超選 universe。
+    # 只影響「被掃描/顯示」、不進 SECTOR_STOCKS 交易池、不進 BEAT_ETFS 評分權重。
+    # setdefault：不覆蓋既有（含自選股）名稱。
+    try:
+        from layers.etf_universe import get_universe_extension
+        for _sym, _nm in get_universe_extension().items():
+            SCREENER_UNIVERSE.setdefault(_sym, _nm)
+    except Exception as _e:
+        logger.warning(f"ETF 榜 universe 擴充失敗（不影響掃描）: {_e}")
+
     logger.info(f"開始掃描選股宇宙: {len(SCREENER_UNIVERSE)} 檔")
     start_time = time.time()
 
@@ -667,6 +677,16 @@ def scan_all_stocks() -> List[dict]:
                     results.append(result)
             except Exception as e:
                 logger.warning(f"掃描 {symbol} timeout/error: {e}")
+
+    # ETF 榜標籤（規模Top10 / 贏大盤Top10 / 主動嚴選）— 顯示用、不影響評分
+    try:
+        from layers.etf_universe import get_etf_tags
+        for r in results:
+            tags = get_etf_tags(r.get("symbol", ""))
+            if tags:
+                r["etf_tags"] = tags
+    except Exception as _e:
+        logger.warning(f"ETF 榜標籤附掛失敗（不影響結果）: {_e}")
 
     # ── 百分位正規化：讓五個面向有相同的分佈基準 ──
     # 避免某些面向天然偏高/偏低而在加權時不公平
