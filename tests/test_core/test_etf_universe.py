@@ -153,3 +153,29 @@ def test_compute_aborts_on_low_fetch_success(monkeypatch):
     monkeypatch.setattr(eu, "_fm_get", fake_fm)
     out = eu._compute_beat_taiex_top10()
     assert out["top"] == [] and out["taiex_ret"] is None
+
+
+def test_categorize_picks_includes_etf_lists_card(monkeypatch):
+    """有標籤的 ETF 必須全數出現在「ETF 兩榜精選」分類卡（不必擠進綜合名次）。"""
+    import screener as sc
+    fake_results = []
+    for i, (sym, tags) in enumerate([
+        ("0050.TW", [{"tag": "規模Top10", "detail": "22,473億"}]),
+        ("2330.TW", []),
+        ("00913.TW", [{"tag": "贏大盤Top10", "detail": "+114.5%"}]),
+    ]):
+        fake_results.append({
+            "symbol": sym, "name": f"n{i}", "composite": 90 - i,
+            "scores": {"technical": 50}, "raw_scores": {}, "highlights": [],
+            "details": {}, "etf_tags": tags,
+        })
+    monkeypatch.setattr(sc, "_load_rank_history", lambda: {})
+    monkeypatch.setattr(sc, "_update_rank_history_for_category",
+                        lambda h, c, s, t: {x: 1 for x in s})
+    monkeypatch.setattr(sc, "_save_rank_history", lambda h: None)
+    cats = sc.categorize_picks(fake_results)
+    etf_cat = next((c for c in cats if c["id"] == "etf_lists"), None)
+    assert etf_cat is not None
+    syms = [s["symbol"] for s in etf_cat["stocks"]]
+    assert syms == ["0050.TW", "00913.TW"]          # 兩檔都在、2330 不在
+    assert etf_cat["stocks"][0]["etf_tags"][0]["tag"] == "規模Top10"

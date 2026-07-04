@@ -776,6 +776,24 @@ def categorize_picks(results: List[dict]) -> List[dict]:
         "stocks": _format_picks(top_ranked),
     })
 
+    # ── 0b. ETF 兩榜精選：規模Top10 / 近半年贏大盤Top10 / 主動嚴選 全數列出 ──
+    # 保證榜上 ETF 都看得到（不必擠進綜合 top 名次）；純展示、不影響評分與自動交易
+    etf_tagged = [r for r in results if r.get("etf_tags")]
+    if etf_tagged:
+        for r in etf_tagged:
+            tag_names = "、".join(t["tag"] for t in r.get("etf_tags", []))
+            r["_highlight"] = f"{tag_names}｜綜合{round(r['composite'])}分"
+        _annotate_days(etf_tagged, "etf_lists")
+        categories.append({
+            "id": "etf_lists",
+            "name": "ETF 兩榜精選",
+            "icon": "🏆",
+            "description": "台股 ETF 規模前10（人工建檔、變動慢）＋ 近半年漲幅贏大盤前10（每日自動計算）＋ 主動嚴選（alpha 清單）成員全數列出。標籤區分所屬榜單、滑過可看規模/報酬數值。僅展示用，不影響評分與自動交易。",
+            "score_field": "composite",
+            "score_label": "綜合",
+            "stocks": _format_picks(etf_tagged),
+        })
+
     # ── 1a. 外資狂買股（依籌碼分數排序，連買 >= 3 天）──
     foreign_chip_picks = []
     for r in results:
