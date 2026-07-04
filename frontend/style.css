@@ -150,6 +150,10 @@
 }
 
 body {
+    /* 全域 UI 放大（2026-07-04 用戶反映字級偏小：主力 11-12px 長時間看盤吃力）。
+       整體等比縮放（含排版）；要調大小改這一個值即可：1 = 原始、1.15 = +15%。
+       媒體查詢斷點不受 zoom 影響；已確認無 100vw 用法。 */
+    zoom: 1.15;
     font-family: 'Nunito', 'Inter', sans-serif;
     background-color: var(--bg-dark);
     color: var(--text-main);
