@@ -66,10 +66,12 @@ DIGEST_TOP_N = 10        # 摘要最多幾則
 
 # ── ① 抓取 ──────────────────────────────────────────────
 
-def _parse_rss(text: str, source: str) -> list[dict]:
+def _parse_rss(raw: bytes | str, source: str) -> list[dict]:
     out = []
     try:
-        root = ET.fromstring(text)
+        # 必須餵 bytes：Fed feed 是 text/xml 無 charset，requests.text 會用 ISO-8859-1
+        # 把 UTF-8 BOM/非 ASCII 解成亂碼讓解析炸掉（mini 實跑抓到）；bytes 讓 expat 自行判編碼
+        root = ET.fromstring(raw)
     except ET.ParseError as e:
         logger.warning("[ai_news] %s RSS 解析失敗: %s", source, e)
         return out
@@ -100,7 +102,7 @@ def fetch_all_items() -> list[dict]:
             if r.status_code != 200:
                 logger.warning("[ai_news] %s HTTP %d", src["name"], r.status_code)
                 continue
-            got = _parse_rss(r.text, src["name"])
+            got = _parse_rss(r.content, src["name"])
             items.extend(got)
             logger.info("[ai_news] %s 取得 %d 則", src["name"], len(got))
         except Exception as e:

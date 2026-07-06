@@ -40,6 +40,15 @@ def test_parse_rss_bad_xml_returns_empty():
     assert an._parse_rss("not xml <<", "SRC") == []
 
 
+def test_parse_rss_utf8_bom_bytes():
+    """Fed 官方 feed：text/xml 無 charset + UTF-8 BOM → 必須以 bytes 解析。
+    用 r.text 會被 requests 的 ISO-8859-1 預設解碼成亂碼（mini 實跑抓到的 bug 回歸）。"""
+    xml = ("\ufeff<rss><channel><item><title>FOMC 聲明</title>"
+           "<link>https://fed/1</link></item></channel></rss>").encode("utf-8")
+    out = an._parse_rss(xml, "Fed 新聞稿")
+    assert out == [{"title": "FOMC 聲明", "link": "https://fed/1", "source": "Fed 新聞稿"}]
+
+
 def test_keyword_filter_matches():
     assert an._KW_RE.search("New LLM benchmark")
     assert an._KW_RE.search("Anthropic ships something")
