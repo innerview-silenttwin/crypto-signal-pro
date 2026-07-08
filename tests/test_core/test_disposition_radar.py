@@ -117,9 +117,10 @@ def test_reasons_carry_reliability():
     assert d is not None and d["reliable"] is False
 
 
-def _radar_stubs(monkeypatch, byd, name, market, periods, att_ok=True, disp_ok=True, cal=None):
+def _radar_stubs(monkeypatch, byd, name, market, periods, att_ok=True, disp_ok=True,
+                 cal_ok=True, cal=None):
     cal = cal or _cal([f"2026-07-{d:02d}" for d in (1, 2, 3, 6, 7)])
-    monkeypatch.setattr(dr, "_trading_calendar", lambda n=40: (cal, True))
+    monkeypatch.setattr(dr, "_trading_calendar", lambda n=40: (cal, cal_ok))
     monkeypatch.setattr(dr, "_fetch_attention_history", lambda bdays: (byd, name, market, att_ok))
     monkeypatch.setattr(dr, "_fetch_disposition_periods", lambda bdays: (periods, disp_ok))
     dr._cache.clear()
@@ -172,6 +173,26 @@ def test_compute_radar_degraded_when_fetch_fails(monkeypatch):
     assert out["degraded"] is True
     assert out["sources"]["attention"] is False
     assert dr._cache == {}                                          # 沒被快取
+
+
+def test_compute_radar_degraded_when_calendar_fails(monkeypatch):
+    """TAIEX 日曆抓取失敗 → degraded=True（否則只剩注意日期的稀疏日曆會虛構連續天數）。"""
+    _radar_stubs(monkeypatch,
+                 {"1111": {"2026-07-06": {1}, "2026-07-07": {1}}},
+                 {"1111": "甲股"}, {"1111": "TWSE"}, {}, cal_ok=False)
+    out = dr.compute_radar(today="2026-07-07")
+    assert out["degraded"] is True
+    assert out["sources"]["calendar"] is False
+    assert dr._cache == {}
+
+
+def test_schema_ok_detects_missing_code_column():
+    """有資料卻定位不到證券代號欄（表頭改版）→ _schema_ok False（供標 degraded）。"""
+    good = ["編號", "證券代號", "證券名稱", "日期"]
+    bad = ["編號", "代碼X", "名字X", "時間X"]      # 找不到「證券代號/代號」
+    assert dr._schema_ok([[1, "2330", "台積電", "115/07/07"]], good) is True
+    assert dr._schema_ok([[1, "2330", "台積電", "115/07/07"]], bad) is False
+    assert dr._schema_ok([], bad) is True          # 真的沒資料不算異常
 
 
 def test_parse_notice_rows_by_field_header():

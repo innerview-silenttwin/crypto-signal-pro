@@ -119,6 +119,14 @@ def _cell(row, idx):
     return row[idx]
 
 
+def _schema_ok(data: list, fields: list) -> bool:
+    """schema 健檢：有資料卻定位不到「證券代號」欄 → 視為格式改版/抓取異常。
+    （避免欄位表頭改版時每列靜默略過、卻不標 degraded 的假『全清』。）"""
+    if not data:
+        return True                       # 真的沒資料（假日/無公告）不算異常
+    return _col(fields, "證券代號", "代號") is not None
+
+
 def parse_notice_rows(data: list, fields: list, market: str) -> list[tuple]:
     """注意公告 rows → [(code, name, date_greg, clause_set, market)]（普通股 4 碼）。
     以 fields 表頭定位欄位、短列/怪列略過，不硬編索引。"""
@@ -281,7 +289,8 @@ def _fetch_attention_history(bdays: int) -> tuple:
         byd[code][dt] |= clauses
         name[code] = nm
         market[code] = mkt
-    return byd, name, market, (tw_ok and tp_ok)
+    ok = tw_ok and tp_ok and _schema_ok(tw_data, tw_fields) and _schema_ok(tp_data, tp_fields)
+    return byd, name, market, ok
 
 
 def _fetch_disposition_periods(bdays: int) -> tuple:
@@ -294,7 +303,8 @@ def _fetch_disposition_periods(bdays: int) -> tuple:
     tp_data, tp_fields, tp_ok = _get_json(_TPEX_DISPOSAL, {"startDate": rsd, "endDate": red, "response": "json"})
     for code, period in parse_disposal_rows(tw_data, tw_fields) + parse_disposal_rows(tp_data, tp_fields):
         out[code].append(period)
-    return out, (tw_ok and tp_ok)
+    ok = tw_ok and tp_ok and _schema_ok(tw_data, tw_fields) and _schema_ok(tp_data, tp_fields)
+    return out, ok
 
 
 def compute_radar(bdays: int = 30, today: str | None = None) -> dict:
@@ -322,8 +332,9 @@ def compute_radar(bdays: int = 30, today: str | None = None) -> dict:
         extra |= set(byd)
     calendar = sorted(d for d in (set(cal) | extra) if d and d <= today)
 
-    # 抓取健康度：注意或處置抓取失敗 → 無法可靠評估，標 degraded、不快取
-    degraded = not (att_ok and disp_ok)
+    # 抓取健康度：日曆/注意/處置任一失敗 → 無法可靠評估，標 degraded、不快取。
+    # 日曆(TAIEX)也要納入：全失敗時只剩注意日期的稀疏日曆會虛構連續天數 → 假紅燈。
+    degraded = not (cal_ok and att_ok and disp_ok)
 
     # 只用「已結束（end < today）」的處置重置計數；end≥today（進行中或已公告未生效）
     # 的股票不能列為候選（避免未來生效處置把計數清空使其憑空消失）
