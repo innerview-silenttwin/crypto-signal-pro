@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="zh-TW" data-theme="kawaii">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>處置雷達 | CryptoSignal Pro</title>
+    <link rel="stylesheet" href="style.css">
+    <script>
+        (function () {
+            var t = localStorage.getItem('csp-theme') || 'kawaii';
+            document.documentElement.setAttribute('data-theme', t);
+        })();
+    </script>
+    <style>
+        .dr-wrap { max-width: 1100px; margin: 0 auto; padding: 20px; }
+        .dr-title { font-size: 22px; font-weight: 700; color: var(--text-main); margin: 8px 0 4px; }
+        .dr-sub { color: var(--text-muted); font-size: 13px; margin-bottom: 14px; }
+        .dr-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+        .dr-btn {
+            border: 1px solid var(--border-color); background: transparent; color: var(--text-main);
+            border-radius: 10px; padding: 6px 12px; font-size: 13px; cursor: pointer; text-decoration: none;
+        }
+        .dr-btn:hover { border-color: var(--primary); }
+        .dr-disclaimer {
+            font-size: 12px; color: var(--text-muted); background: rgba(167,139,250,0.06);
+            border-radius: 12px; padding: 10px 14px; margin: 12px 0 16px;
+        }
+        .dr-stats { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+        .dr-chip {
+            border-radius: 12px; padding: 8px 14px; font-size: 13px; font-weight: 600;
+            border: 1px solid var(--border-color); background: var(--bg-card);
+        }
+        .dr-chip .n { font-size: 18px; }
+        .dr-card {
+            background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px;
+            box-shadow: var(--glass-shadow); padding: 8px 4px; margin-bottom: 16px;
+        }
+        .dr-scroll { overflow-x: auto; }
+        table.dr-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+        table.dr-tbl th, table.dr-tbl td { padding: 8px 10px; text-align: left; white-space: nowrap; }
+        table.dr-tbl th { color: var(--text-muted); font-weight: 600; border-bottom: 1px solid var(--border-color); }
+        table.dr-tbl td { border-bottom: 1px solid var(--border-color); color: var(--text-main); }
+        table.dr-tbl tbody tr.main { cursor: pointer; }
+        table.dr-tbl tbody tr.main:hover { background: rgba(167,139,250,0.06); }
+        .tier-red { border-left: 4px solid #ef4444; }
+        .tier-orange { border-left: 4px solid #f59e0b; }
+        .tier-yellow { border-left: 4px solid #eab308; }
+        .badge { border-radius: 8px; padding: 2px 8px; font-size: 12px; font-weight: 700; }
+        .badge.red { background: rgba(239,68,68,.15); color: #ef4444; }
+        .badge.orange { background: rgba(245,158,11,.15); color: #f59e0b; }
+        .badge.yellow { background: rgba(234,179,8,.15); color: #a16207; }
+        .dr-reason { font-size: 12px; color: var(--text-muted); white-space: normal; }
+        .dr-reliable { font-size: 11px; padding: 1px 6px; border-radius: 6px; background: rgba(16,185,129,.15); color: #059669; }
+        .dr-fuzzy { font-size: 11px; padding: 1px 6px; border-radius: 6px; background: rgba(148,163,184,.2); color: var(--text-muted); }
+        .dr-detail td { background: rgba(167,139,250,0.04); }
+        .dr-chipgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 8px; }
+        .dr-chipbox { border: 1px solid var(--border-color); border-radius: 10px; padding: 8px 10px; }
+        .dr-chipbox .k { font-size: 11px; color: var(--text-muted); }
+        .dr-chipbox .v { font-size: 15px; font-weight: 700; color: var(--text-main); }
+        .pos { color: var(--buy-color); font-weight: 700; }
+        .neg { color: var(--sell-color); font-weight: 700; }
+        .dr-muted { color: var(--text-muted); }
+        .dr-inproc { font-size: 13px; color: var(--text-main); margin-top: 6px; line-height: 1.9; }
+        .dr-inproc summary { cursor: pointer; color: var(--text-muted); }
+        @media (max-width: 640px) { .dr-wrap { padding: 12px; } }
+    </style>
+</head>
+
+<body>
+    <div class="dr-wrap">
+        <div class="dr-row" style="margin-bottom:10px">
+            <a href="sector_trading.html" class="dr-btn">← 台股交易中心</a>
+            <a href="index.html" class="dr-btn">分析儀表板</a>
+            <a href="chip_disclosure.html" class="dr-btn">🧭 籌碼揭露</a>
+        </div>
+        <div class="dr-title">🚨 處置雷達</div>
+        <div class="dr-sub">預判「再被注意幾次就達處置條件」的股票，供觀察追蹤、準備短進短出。</div>
+        <div class="dr-disclaimer">
+            ⚠️ 純觀察情報、<b>不做任何買賣判斷、系統不會下單</b>。處置升級規則確定性高（連續 3 天第一款／連續 5 天／10 日內 6 次／30 日內 12 次，第一～八款），
+            但「即將處置」≠「一定處置」——回測命中率約 6 成、涵蓋率約 97%。其中<span class="dr-reliable">連續第一款</span>與<span class="dr-reliable">10 日內次數</span>最可靠，
+            <span class="dr-fuzzy">30 日內次數</span>因 TPEx 實際計數有除外/裁量，誤報較多，僅供參考。
+        </div>
+
+        <div id="stats" class="dr-stats"></div>
+        <div class="dr-card">
+            <div class="dr-scroll">
+                <table class="dr-tbl">
+                    <thead>
+                        <tr>
+                            <th>級別</th><th>代號</th><th>名稱</th><th>市場</th><th>距處置</th><th>觸發規則（再幾次）</th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody"><tr><td colspan="7" class="dr-muted">載入中…</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+        <div id="inproc"></div>
+        <div class="dr-sub" id="asof"></div>
+    </div>
+
+    <script>
+        const TIER = { red: { cls: 'red', label: '🔴 再1次' }, orange: { cls: 'orange', label: '🟠 接近' }, yellow: { cls: 'yellow', label: '🟡 觀察' } };
+        const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+        const RELIABLE = { A: 1, C: 1 };  // 連續第一款 / 10日內次數 = 可靠
+
+        function reasonHtml(reasons) {
+            return (reasons || []).map(r => {
+                const tag = RELIABLE[r.rule] ? '<span class="dr-reliable">準</span>' : '<span class="dr-fuzzy">參考</span>';
+                return `${esc(r.text)}（再${r.left}）${tag}`;
+            }).join('　');
+        }
+
+        function num(v, suffix = '') { return (v == null || isNaN(v)) ? '<span class="dr-muted">—</span>' : (v + suffix); }
+        function signed(v, suffix = '') {
+            if (v == null || isNaN(v)) return '<span class="dr-muted">—</span>';
+            const cls = v > 0 ? 'pos' : (v < 0 ? 'neg' : '');
+            return `<span class="${cls}">${v > 0 ? '+' : ''}${v}${suffix}</span>`;
+        }
+
+        async function loadChip(code, cell) {
+            cell.innerHTML = '<span class="dr-muted">載入籌碼中…</span>';
+            try {
+                const r = await fetch(`/api/chip-disclosure/stock?code=${encodeURIComponent(code)}&days=10`);
+                const d = await r.json();
+                const inst = d.institutional || {};
+                const sl = (d.securities_lending || []).slice(-1)[0];
+                const dt = (d.day_trading || []).slice(-1)[0];
+                const lh = d.large_holder || {};
+                cell.innerHTML = `<div class="dr-chipgrid">
+                    <div class="dr-chipbox"><div class="k">外資連買(天)</div><div class="v">${signed(inst.foreign_consec_buy)}</div></div>
+                    <div class="dr-chipbox"><div class="k">投信連買(天)</div><div class="v">${signed(inst.trust_consec_buy)}</div></div>
+                    <div class="dr-chipbox"><div class="k">外資近10日(張)</div><div class="v">${signed(inst.foreign_total_net_lots)}</div></div>
+                    <div class="dr-chipbox"><div class="k">借券賣出(張,最新)</div><div class="v">${num(sl ? sl.lending_lots : null)}</div></div>
+                    <div class="dr-chipbox"><div class="k">當沖量(張,最新)</div><div class="v">${num(dt ? dt.dt_lots : null)}</div></div>
+                    <div class="dr-chipbox"><div class="k">當沖買賣超(億)</div><div class="v">${signed(dt ? dt.dt_net_yi : null)}</div></div>
+                    <div class="dr-chipbox"><div class="k">融券餘額(張)</div><div class="v">${num(inst.short_balance_latest_lots)}</div></div>
+                    <div class="dr-chipbox"><div class="k">大戶持股%(>1000張)</div><div class="v">${lh && lh.large_pct != null ? esc(lh.large_pct) + '%' : '<span class="dr-muted">—</span>'}</div></div>
+                </div>
+                <div class="dr-sub" style="margin-top:8px">借券量大＝潛在空方壓力；當沖比高／融券增＝主力與散戶交戰。純揭露、不進評分。</div>`;
+            } catch (e) {
+                cell.innerHTML = '<span class="dr-muted">籌碼載入失敗</span>';
+            }
+        }
+
+        function render(data) {
+            const s = data.stats || {};
+            document.getElementById('stats').innerHTML = `
+                <div class="dr-chip">候選 <span class="n">${s.candidates || 0}</span></div>
+                <div class="dr-chip" style="border-color:#ef4444">🔴 <span class="n">${s.red || 0}</span></div>
+                <div class="dr-chip" style="border-color:#f59e0b">🟠 <span class="n">${s.orange || 0}</span></div>
+                <div class="dr-chip" style="border-color:#eab308">🟡 <span class="n">${s.yellow || 0}</span></div>
+                <div class="dr-chip dr-muted">在處置中 ${s.in_disposition || 0}</div>`;
+
+            const tb = document.getElementById('tbody');
+            const rows = data.candidates || [];
+            if (!rows.length) { tb.innerHTML = '<tr><td colspan="7" class="dr-muted">今日無接近處置的股票</td></tr>'; }
+            else {
+                tb.innerHTML = '';
+                rows.forEach((c, i) => {
+                    const t = TIER[c.tier] || TIER.yellow;
+                    const tr = document.createElement('tr');
+                    tr.className = 'main tier-' + c.tier;
+                    tr.innerHTML = `<td><span class="badge ${t.cls}">${t.label}</span></td>
+                        <td><b>${esc(c.code)}</b></td><td>${esc(c.name)}</td><td class="dr-muted">${esc(c.market)}</td>
+                        <td><b>${c.distance}</b></td>
+                        <td class="dr-reason">${reasonHtml(c.reasons)}</td>
+                        <td class="dr-muted">▾ 籌碼</td>`;
+                    const det = document.createElement('tr');
+                    det.className = 'dr-detail';
+                    det.style.display = 'none';
+                    det.innerHTML = `<td colspan="7"></td>`;
+                    let loaded = false;
+                    tr.onclick = () => {
+                        const open = det.style.display === 'none';
+                        det.style.display = open ? '' : 'none';
+                        if (open && !loaded) { loaded = true; loadChip(c.code, det.querySelector('td')); }
+                    };
+                    tb.appendChild(tr); tb.appendChild(det);
+                });
+            }
+
+            const ip = data.in_disposition || [];
+            document.getElementById('inproc').innerHTML = ip.length
+                ? `<details class="dr-inproc"><summary>目前已在處置中（${ip.length} 檔，已排除於上表）</summary>${ip.map(esc).join('、')}</details>`
+                : '';
+            document.getElementById('asof').textContent = `資料日 ${data.as_of || '?'}（交易日 ${data.calendar_last || '?'}）· 資料源 TWSE/TPEx 公告 + FinMind`;
+        }
+
+        fetch('/api/disposition/radar')
+            .then(r => r.json())
+            .then(render)
+            .catch(e => { document.getElementById('tbody').innerHTML = '<tr><td colspan="7" class="neg">載入失敗：' + esc(e.message) + '</td></tr>'; });
+    </script>
+</body>
+
+</html>
