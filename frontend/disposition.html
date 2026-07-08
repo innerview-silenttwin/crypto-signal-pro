@@ -102,20 +102,20 @@
     <script>
         const TIER = { red: { cls: 'red', label: '🔴 再1次' }, orange: { cls: 'orange', label: '🟠 接近' }, yellow: { cls: 'yellow', label: '🟡 觀察' } };
         const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-        const RELIABLE = { A: 1, C: 1 };  // 連續第一款 / 10日內次數 = 可靠
 
         function reasonHtml(reasons) {
+            // reliable 由後端判定（規則本身的性質，不在前端硬編），避免規則調整後前後端不同步
             return (reasons || []).map(r => {
-                const tag = RELIABLE[r.rule] ? '<span class="dr-reliable">準</span>' : '<span class="dr-fuzzy">參考</span>';
-                return `${esc(r.text)}（再${r.left}）${tag}`;
+                const tag = r.reliable ? '<span class="dr-reliable">準</span>' : '<span class="dr-fuzzy">參考</span>';
+                return `${esc(r.text)}（再${esc(r.left)}）${tag}`;
             }).join('　');
         }
 
-        function num(v, suffix = '') { return (v == null || isNaN(v)) ? '<span class="dr-muted">—</span>' : (v + suffix); }
+        function num(v, suffix = '') { return (v == null || isNaN(v)) ? '<span class="dr-muted">—</span>' : esc(v + suffix); }
         function signed(v, suffix = '') {
             if (v == null || isNaN(v)) return '<span class="dr-muted">—</span>';
             const cls = v > 0 ? 'pos' : (v < 0 ? 'neg' : '');
-            return `<span class="${cls}">${v > 0 ? '+' : ''}${v}${suffix}</span>`;
+            return `<span class="${cls}">${esc((v > 0 ? '+' : '') + v + suffix)}</span>`;
         }
 
         async function loadChip(code, cell) {
@@ -144,6 +144,10 @@
         }
 
         function render(data) {
+            if (data.degraded) {
+                document.getElementById('stats').insertAdjacentHTML('beforebegin',
+                    '<div class="dr-disclaimer" style="background:rgba(239,68,68,.1);color:#ef4444">⚠️ 資料來源異常（TWSE/TPEx 或 FinMind 抓取失敗），本次名單可能不完整，請稍後重整。</div>');
+            }
             const s = data.stats || {};
             document.getElementById('stats').innerHTML = `
                 <div class="dr-chip">候選 <span class="n">${s.candidates || 0}</span></div>

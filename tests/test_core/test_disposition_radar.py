@@ -25,6 +25,7 @@ def test_norm_date_roc_and_greg():
     assert dr.norm_date("115/07/07") == "2026-07-07"
     assert dr.norm_date("115.07.07") == "2026-07-07"
     assert dr.norm_date("2026/7/7") == "2026-07-07"
+    assert dr.norm_date("2026-07-07") == "2026-07-07"   # ISO '-' 分隔也要吃
     assert dr.norm_date("") is None
     assert dr.norm_date("garbage") is None
 
@@ -101,21 +102,101 @@ def test_distance_clamped_at_zero():
     assert r["tier"] == "red"
 
 
+def test_reasons_carry_reliability():
+    """A/B/C 標 reliable=True、D（30日）標 False，供前端顯示準/參考。"""
+    cal = _cal([f"2026-06-{d:02d}" for d in range(1, 28)])
+    # 連 2 天第一款（A，準）
+    byd = {cal[-2]: {1}, cal[-1]: {1}}
+    r = dr.distance_to_disposition(byd, cal)
+    a = next(x for x in r["reasons"] if x["rule"] == "A")
+    assert a["reliable"] is True
+    # 純 30 日內次數（D，參考）：非連續、只沾 in30
+    byd = {cal[i]: {4} for i in (0, 3, 6, 9, 12, 15, 18, 21, 24)}  # 9 次、間隔
+    r = dr.distance_to_disposition(byd, cal)
+    d = next((x for x in r["reasons"] if x["rule"] == "D"), None)
+    assert d is not None and d["reliable"] is False
+
+
+def _radar_stubs(monkeypatch, byd, name, market, periods, att_ok=True, disp_ok=True, cal=None):
+    cal = cal or _cal([f"2026-07-{d:02d}" for d in (1, 2, 3, 6, 7)])
+    monkeypatch.setattr(dr, "_trading_calendar", lambda n=40: (cal, True))
+    monkeypatch.setattr(dr, "_fetch_attention_history", lambda bdays: (byd, name, market, att_ok))
+    monkeypatch.setattr(dr, "_fetch_disposition_periods", lambda bdays: (periods, disp_ok))
+    dr._cache.clear()
+
+
 def test_compute_radar_excludes_active_disposition(monkeypatch):
     """已在處置中的股票不列入 candidates、放 in_disposition。"""
-    cal = _cal([f"2026-07-{d:02d}" for d in (1, 2, 3, 6, 7)])
-    monkeypatch.setattr(dr, "_trading_calendar", lambda n=40: cal)
-    monkeypatch.setattr(dr, "_fetch_attention_history", lambda bdays: (
-        {"1111": {"2026-07-06": {1}, "2026-07-07": {1}},   # 連 2 天第一款 → 候選
-         "2222": {"2026-07-06": {1}, "2026-07-07": {1}}},  # 但在處置中 → 排除
-        {"1111": "甲股", "2222": "乙股"},
-        {"1111": "TWSE", "2222": "TPEx"}))
-    monkeypatch.setattr(dr, "_fetch_disposition_periods", lambda bdays: {
-        "2222": [("2026-07-01", "2026-07-14")]})            # 涵蓋 today
-    dr._cache.clear()
+    _radar_stubs(monkeypatch,
+                 {"1111": {"2026-07-06": {1}, "2026-07-07": {1}},   # 連 2 天第一款 → 候選
+                  "2222": {"2026-07-06": {1}, "2026-07-07": {1}}},  # 在處置中 → 排除
+                 {"1111": "甲股", "2222": "乙股"},
+                 {"1111": "TWSE", "2222": "TPEx"},
+                 {"2222": [("2026-07-01", "2026-07-14")]})          # 涵蓋 today
     out = dr.compute_radar(today="2026-07-07")
-    codes = [c["code"] for c in out["candidates"]]
-    assert codes == ["1111"]
+    assert [c["code"] for c in out["candidates"]] == ["1111"]
     assert out["in_disposition"] == ["2222"]
     assert out["candidates"][0]["distance"] == 1
     assert out["stats"]["red"] == 1
+    assert out["degraded"] is False
+
+
+def test_compute_radar_future_disposition_not_vanish(monkeypatch):
+    """盤後剛公告、明日才生效（start>today）的處置：該股要進 in_disposition、
+    不可因未來 end 把計數清空而從候選『憑空消失』（review 抓到的 bug 回歸）。"""
+    _radar_stubs(monkeypatch,
+                 {"3333": {"2026-07-06": {1}, "2026-07-07": {1}}},
+                 {"3333": "丙股"}, {"3333": "TWSE"},
+                 {"3333": [("2026-07-08", "2026-07-21")]})          # start>today(07-07)
+    out = dr.compute_radar(today="2026-07-07")
+    assert out["in_disposition"] == ["3333"]                        # 有被surface
+    assert [c["code"] for c in out["candidates"]] == []             # 不在候選、但沒消失
+
+
+def test_compute_radar_past_disposition_resets_but_keeps_fresh(monkeypatch):
+    """已結束的處置（end<today）重置計數，但處置後新累積的注意仍算。"""
+    cal = _cal([f"2026-07-{d:02d}" for d in (1, 2, 3, 6, 7)])
+    _radar_stubs(monkeypatch,
+                 {"4444": {"2026-07-06": {1}, "2026-07-07": {1}}},  # 處置(6/30結束)後連2天
+                 {"4444": "丁股"}, {"4444": "TWSE"},
+                 {"4444": [("2026-06-16", "2026-06-30")]}, cal=cal)  # end<today
+    out = dr.compute_radar(today="2026-07-07")
+    assert [c["code"] for c in out["candidates"]] == ["4444"]
+    assert out["candidates"][0]["distance"] == 1                    # 連2天第一款
+
+
+def test_compute_radar_degraded_when_fetch_fails(monkeypatch):
+    """注意抓取失敗 → degraded=True 且不快取（下次重試，不 silent stale）。"""
+    _radar_stubs(monkeypatch, {}, {}, {}, {}, att_ok=False)
+    out = dr.compute_radar(today="2026-07-07")
+    assert out["degraded"] is True
+    assert out["sources"]["attention"] is False
+    assert dr._cache == {}                                          # 沒被快取
+
+
+def test_parse_notice_rows_by_field_header():
+    """欄位用 fields 表頭定位，欄序改變也不錯位；短列/非普通股略過。"""
+    fields = ["編號", "證券代號", "證券名稱", "累計次數", "注意交易資訊", "日期", "收盤價"]
+    data = [
+        [1, "2330", "台積電", 1, "最近六個營業日累積漲幅達40%（第一款）", "115/07/07", "1000"],
+        [2, "050328", "某購01", 1, "（第一款）", "115/07/07", "20"],     # 6碼權證→略過
+        [3, "1234"],                                                     # 短列→略過
+    ]
+    out = dr.parse_notice_rows(data, fields, "TWSE")
+    assert out == [("2330", "台積電", "2026-07-07", {1}, "TWSE")]
+
+    # 欄序被打亂（代號移到後面）仍正確
+    fields2 = ["日期", "證券名稱", "證券代號", "注意交易資訊"]
+    data2 = [["115/07/07", "聯電", "2303", "累積漲幅（第一款）且週轉率（第四款）"]]
+    out2 = dr.parse_notice_rows(data2, fields2, "TWSE")
+    assert out2 == [("2303", "聯電", "2026-07-07", {1, 4}, "TWSE")]
+
+
+def test_parse_disposal_rows_by_field_header():
+    """處置期間欄位『起迄』vs『起訖』用字不同也要抓到。"""
+    fields_tw = ["編號", "公布日期", "證券代號", "證券名稱", "累計", "處置條件", "處置起迄時間"]
+    data_tw = [[1, "115/07/06", "6488", "環球晶", 2, "連續", "115/07/07～115/07/20"]]
+    assert dr.parse_disposal_rows(data_tw, fields_tw) == [("6488", ("2026-07-07", "2026-07-20"))]
+    fields_tp = ["編號", "公布日期", "證券代號", "證券名稱", "累計", "處置起訖時間"]  # 訖
+    data_tp = [[1, "115/07/06", "6182", "合晶", 2, "115/07/07~115/07/20"]]
+    assert dr.parse_disposal_rows(data_tp, fields_tp) == [("6182", ("2026-07-07", "2026-07-20"))]

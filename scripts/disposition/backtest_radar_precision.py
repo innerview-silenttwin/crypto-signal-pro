@@ -11,18 +11,14 @@
 from __future__ import annotations
 
 import os
-import re
 import sys
 import warnings
 from collections import defaultdict
-
-import requests
 
 warnings.filterwarnings("ignore")
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "backend"))
 import disposition_radar as dr  # noqa: E402
 
-UA = {"User-Agent": "Mozilla/5.0"}
 FM = "https://api.finmindtrade.com/api/v4/data"
 # 逐季抓，避免單次 range 過大；(西元, 民國) 各一組
 QUARTERS_GREG = [("20250101", "20250630"), ("20250701", "20251231"), ("20260101", "20260707")]
@@ -30,57 +26,37 @@ QUARTERS_ROC = [("114/01/01", "114/06/30"), ("114/07/01", "114/12/31"), ("115/01
 CAL_START = "2024-10-01"
 
 
-def _twse(url, sd, ed):
-    return requests.get(f"{url}?startDate={sd}&endDate={ed}&response=json",
-                        headers=UA, timeout=30).json().get("data") or []
-
-
-def _tpex(url, sd, ed):
-    return (requests.get(f"{url}?startDate={sd}&endDate={ed}&response=json", headers=UA,
-                         timeout=30, verify=False).json().get("tables") or [{}])[0].get("data") or []
+def _fetch(url, sd, ed):
+    """借用模組的 _get_json（legacy_get + 表頭解析 + 錯誤吞掉），回 (data, fields)。"""
+    data, fields, _ = dr._get_json(url, {"startDate": sd, "endDate": ed, "response": "json"})
+    return data, fields
 
 
 def load_calendar():
-    tx = requests.get(FM, params={"dataset": "TaiwanStockPrice", "data_id": "TAIEX",
-                                  "start_date": CAL_START}, timeout=25).json().get("data", [])
-    return sorted(x["date"] for x in tx)
+    data, _, _ = dr._get_json(FM, {"dataset": "TaiwanStockPrice", "data_id": "TAIEX",
+                                   "start_date": CAL_START})
+    return sorted(x["date"] for x in data if x.get("date"))
 
 
 def load_attention():
+    """複用模組的 parse_notice_rows（欄位表頭定位），避免與模組解析邏輯漂移。"""
     att = defaultdict(lambda: defaultdict(set))
-    for sd, ed in QUARTERS_GREG:
-        for row in _twse(dr._TWSE_NOTICE, sd, ed):
-            c = str(row[1]).strip()
-            if re.fullmatch(r"\d{4}", c):
-                d = dr.norm_date(str(row[5]))
-                if d:
-                    att[c][d] |= dr.clause_nums(str(row[4]))
-    for sd, ed in QUARTERS_ROC:
-        for row in _tpex(dr._TPEX_ATTENTION, sd, ed):
-            c = str(row[1]).split("(")[0].strip()
-            if re.fullmatch(r"\d{4}", c):
-                d = dr.norm_date(str(row[5]))
-                if d:
-                    att[c][d] |= dr.clause_nums(str(row[4]))
+    ranges = [(dr._TWSE_NOTICE, QUARTERS_GREG, "TWSE"), (dr._TPEX_ATTENTION, QUARTERS_ROC, "TPEx")]
+    for url, quarters, market in ranges:
+        for sd, ed in quarters:
+            data, fields = _fetch(url, sd, ed)
+            for code, _nm, dt, clauses, _mkt in dr.parse_notice_rows(data, fields, market):
+                att[code][dt] |= clauses
     return att
 
 
 def load_dispositions():
     disp = defaultdict(list)
-    for sd, ed in QUARTERS_GREG:
-        for row in _twse(dr._TWSE_PUNISH, sd, ed):
-            c = str(row[2]).strip()
-            if re.fullmatch(r"\d{4}", c):
-                p = dr.parse_period(str(row[6]))
-                if p:
-                    disp[c].append(p)
-    for sd, ed in QUARTERS_ROC:
-        for row in _tpex(dr._TPEX_DISPOSAL, sd, ed):
-            c = str(row[2]).split("(")[0].strip()
-            if re.fullmatch(r"\d{4}", c):
-                p = dr.parse_period(str(row[5]))
-                if p:
-                    disp[c].append(p)
+    for url, quarters in [(dr._TWSE_PUNISH, QUARTERS_GREG), (dr._TPEX_DISPOSAL, QUARTERS_ROC)]:
+        for sd, ed in quarters:
+            data, fields = _fetch(url, sd, ed)
+            for code, period in dr.parse_disposal_rows(data, fields):
+                disp[code].append(period)
     return disp
 
 
@@ -128,7 +104,7 @@ def main():
     flagged = evaluable = 0
     for code, s in disp_events:
         i = cal_idx.get(s)
-        if not i:
+        if i is None or i == 0:          # index 0 不可當 falsy 跳過（會漏首日事件 + CAL[-1] 迴繞）
             continue
         prev = CAL[i - 1]
         byd = att.get(code)

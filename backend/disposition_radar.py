@@ -10,11 +10,13 @@
   C. 最近 10 個營業日內 6 日 依「第一～八款」
   D. 最近 30 個營業日內 12 日 依「第一～八款」
 ⚠️ 計數在「每次處置結束後歸零」——只計最近一次處置期結束後發生的注意（reset_after）。
+   A/B/C 為確定性、可信度高；D（30 日 12 次）因 TPEx 實際計數有除外/裁量，誤報較多。
 
-資料源（皆免費、本地快取 + TTL）：
-  TWSE  注意 rwd/announcement/notice、處置 rwd/announcement/punish（西元年）
-  TPEx  注意 bulletin/attention、處置 bulletin/disposal（民國年，需 verify=False 繞 OpenSSL 3.x）
-  交易日曆 FinMind TAIEX。
+資料源（皆免費）：TWSE 注意/處置 rwd/announcement/*（西元年）、TPEx 注意/處置
+bulletin/*（民國年）、交易日曆 FinMind TAIEX。全走 http_legacy_ssl.legacy_get（保留
+TLS 驗證、只關 OpenSSL 3.x 的 X509_STRICT，台灣政府憑證缺 SKI 會踩雷）。欄位一律用
+回應的 `fields` 表頭以名稱定位（政府 JSON 偶爾增改欄位，硬編索引會靜默錯位）。
+抓取失敗時回 degraded=True 且不快取（遵 cache 原則：失敗要重試而非 silent stale）。
 """
 
 from __future__ import annotations
@@ -24,7 +26,7 @@ import re
 import time
 from datetime import datetime, timedelta
 
-import requests
+from http_legacy_ssl import legacy_get
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +46,7 @@ _R_CONSEC_18 = 5        # B：連續 N 天 1-8 款
 _R_IN10 = 6             # C：最近 10 交易日 N 次
 _R_IN30 = 12            # D：最近 30 交易日 N 次
 _CLAUSE_18 = frozenset(range(1, 9))
+_RELIABLE_RULES = frozenset({"A", "B", "C"})   # D（30日12次）誤報多，標「參考」
 
 _CN = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7,
        "八": 8, "九": 9, "十": 10, "十一": 11, "十二": 12, "十三": 13, "十四": 14}
@@ -61,7 +64,7 @@ def _store(key: str, data):
     return data
 
 
-# ── 解析工具（純函式）───────────────────────────────────────
+# ── 解析工具（純函式、可測）─────────────────────────────────
 
 def clause_nums(text: str) -> set[int]:
     """從注意資訊文字抓所有「第X款」的款次數字。"""
@@ -69,11 +72,10 @@ def clause_nums(text: str) -> set[int]:
 
 
 def norm_date(s: str) -> str | None:
-    """民國/西元、以 / 或 . 分隔 → YYYY-MM-DD。無法解析回 None。"""
+    """民國/西元、以 / . - 分隔 → YYYY-MM-DD。無法解析回 None。"""
     if not s:
         return None
-    s = str(s).strip().replace(".", "/")
-    m = re.match(r"(\d{2,4})/(\d{1,2})/(\d{1,2})", s)
+    m = re.search(r"(\d{2,4})[/.\-](\d{1,2})[/.\-](\d{1,2})", str(s))
     if not m:
         return None
     y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
@@ -84,7 +86,7 @@ def norm_date(s: str) -> str | None:
 
 def parse_period(s: str) -> tuple[str, str] | None:
     """處置起迄字串（含兩個日期）→ (start, end) 西元。抓不到兩個日期回 None。"""
-    m = re.findall(r"(\d{2,4})[/\.](\d{1,2})[/\.](\d{1,2})", str(s or ""))
+    m = re.findall(r"(\d{2,4})[/.\-](\d{1,2})[/.\-](\d{1,2})", str(s or ""))
     if len(m) < 2:
         return None
     def g(t):
@@ -93,6 +95,69 @@ def parse_period(s: str) -> tuple[str, str] | None:
             y += 1911
         return f"{y:04d}-{mo:02d}-{d:02d}"
     return g(m[0]), g(m[1])
+
+
+def _col(fields: list, *needles) -> int | None:
+    """在 fields 表頭找欄位索引：先精確、再包含子字串。找不到回 None。"""
+    if not fields:
+        return None
+    for n in needles:
+        for i, f in enumerate(fields):
+            if str(f).strip() == n:
+                return i
+    for n in needles:
+        for i, f in enumerate(fields):
+            if n in str(f):
+                return i
+    return None
+
+
+def _cell(row, idx):
+    """安全取欄位；idx 為 None 或越界回 ''。"""
+    if idx is None or idx >= len(row):
+        return ""
+    return row[idx]
+
+
+def parse_notice_rows(data: list, fields: list, market: str) -> list[tuple]:
+    """注意公告 rows → [(code, name, date_greg, clause_set, market)]（普通股 4 碼）。
+    以 fields 表頭定位欄位、短列/怪列略過，不硬編索引。"""
+    ci = _col(fields, "證券代號", "代號")
+    ni = _col(fields, "證券名稱", "名稱")
+    di = _col(fields, "日期", "公告日期")
+    ti = _col(fields, "注意交易資訊", "注意交易", "交易資訊")
+    out = []
+    for row in data:
+        try:
+            code = str(_cell(row, ci)).split("(")[0].strip()
+            if not re.fullmatch(r"\d{4}", code):
+                continue
+            dt = norm_date(str(_cell(row, di)))
+            if not dt:
+                continue
+            out.append((code, str(_cell(row, ni)).split("(")[0].strip(), dt,
+                        clause_nums(str(_cell(row, ti))), market))
+        except Exception:
+            continue
+    return out
+
+
+def parse_disposal_rows(data: list, fields: list) -> list[tuple]:
+    """處置公告 rows → [(code, (start,end))]（普通股 4 碼）。以 fields 表頭定位。"""
+    ci = _col(fields, "證券代號", "代號")
+    pi = _col(fields, "處置起迄時間", "處置起訖時間", "起迄", "起訖")
+    out = []
+    for row in data:
+        try:
+            code = str(_cell(row, ci)).split("(")[0].strip()
+            if not re.fullmatch(r"\d{4}", code):
+                continue
+            p = parse_period(str(_cell(row, pi)))
+            if p:
+                out.append((code, p))
+        except Exception:
+            continue
+    return out
 
 
 def _streak_from_end(hit_dates: set[str], calendar: list[str]) -> int:
@@ -112,7 +177,8 @@ def distance_to_disposition(byd: dict[str, set[int]], calendar: list[str],
 
     byd: {注意日期: 該日款次集合}；calendar: 升冪交易日；reset_after: 最近一次處置結束日
     （只計晚於此日的注意，含歸零修正）。回 {distance, tier, counts, reasons}。
-    distance 夾在 0 以上（負值代表門檻已達、理應已被處置，夾為 0）。
+    distance 夾在 0 以上（負值代表門檻已達、理應已被處置，夾為 0）。每條 reason 附
+    reliable（A/B/C 確定性高=True、D=False）。
     """
     if reset_after:
         byd = {d: cs for d, cs in byd.items() if d > reset_after}
@@ -134,72 +200,53 @@ def distance_to_disposition(byd: dict[str, set[int]], calendar: list[str],
 
     # 每條規則的「還差幾次」；未沾到該規則（0）視為不適用
     cand = []
-    reasons = []
+    raw = []
     if consec_first >= 1:
-        dA = _R_CONSEC_FIRST - consec_first
-        cand.append(dA); reasons.append(("A", f"連{consec_first}天第一款", dA))
+        d = _R_CONSEC_FIRST - consec_first
+        cand.append(d); raw.append(("A", f"連{consec_first}天第一款", d))
     if consec_18 >= 1:
-        dB = _R_CONSEC_18 - consec_18
-        cand.append(dB); reasons.append(("B", f"連{consec_18}天1-8款", dB))
+        d = _R_CONSEC_18 - consec_18
+        cand.append(d); raw.append(("B", f"連{consec_18}天1-8款", d))
     if in10 >= 1:
-        dC = _R_IN10 - in10
-        cand.append(dC); reasons.append(("C", f"10日內{in10}次", dC))
+        d = _R_IN10 - in10
+        cand.append(d); raw.append(("C", f"10日內{in10}次", d))
     if in30 >= 1:
-        dD = _R_IN30 - in30
-        cand.append(dD); reasons.append(("D", f"30日內{in30}次", dD))
+        d = _R_IN30 - in30
+        cand.append(d); raw.append(("D", f"30日內{in30}次", d))
     if not cand:
         return {"distance": None, "tier": None, "counts": counts, "reasons": []}
 
     distance = max(0, min(cand))
     tier = "red" if distance <= 1 else ("orange" if distance == 2 else
                                         ("yellow" if distance == 3 else None))
-    # 只留下逼近的規則說明（該規則本身 ≤3 才顯示）
-    reasons = [{"rule": r, "text": t, "left": max(0, left)}
-               for r, t, left in sorted(reasons, key=lambda x: x[2]) if left <= 3]
+    reasons = [{"rule": r, "text": t, "left": max(0, left),
+                "reliable": r in _RELIABLE_RULES}
+               for r, t, left in sorted(raw, key=lambda x: x[2]) if left <= 3]
     return {"distance": distance, "tier": tier, "counts": counts, "reasons": reasons}
 
 
 # ── 網路抓取 ────────────────────────────────────────────────
 
-def _trading_calendar(bdays: int = 40) -> list[str]:
-    """近 bdays 個交易日（升冪）；用 TAIEX 日期。抓失敗回空。"""
-    start = (datetime.now() - timedelta(days=bdays * 2 + 10)).strftime("%Y-%m-%d")
+def _get_json(url: str, params: dict) -> tuple:
+    """回 (data_list, fields_list, ok)。任何失敗 ok=False（供上層判 degraded）。"""
     try:
-        r = requests.get(_FINMIND, params={"dataset": "TaiwanStockPrice",
-                                           "data_id": "TAIEX", "start_date": start}, timeout=20)
-        data = r.json().get("data") or []
-        cal = sorted(x["date"] for x in data)
-        return cal[-bdays:]
+        r = legacy_get(url, params=params, headers=_UA, timeout=30)
+        if r.status_code != 200:
+            logger.warning("[disposition_radar] %s HTTP %d", url, r.status_code)
+            return [], [], False
+        j = r.json()
+        if isinstance(j, dict) and "tables" in j:      # TPEx bulletin
+            t = (j.get("tables") or [{}])[0]
+            return t.get("data") or [], t.get("fields") or [], True
+        return j.get("data") or [], j.get("fields") or [], True   # TWSE rwd / FinMind
     except Exception as e:
-        logger.warning("[disposition_radar] 交易日曆抓取失敗: %s", e)
-        return []
-
-
-def _twse_json(url: str, sd: str, ed: str) -> list:
-    try:
-        r = requests.get(url, params={"startDate": sd, "endDate": ed, "response": "json"},
-                         headers=_UA, timeout=30)
-        return r.json().get("data") or []
-    except Exception as e:
-        logger.warning("[disposition_radar] TWSE %s 抓取失敗: %s", url, e)
-        return []
-
-
-def _tpex_json(url: str, sd: str, ed: str) -> list:
-    try:
-        # verify=False：TPEx 憑證缺 Subject Key Identifier，OpenSSL 3.x 會拒（公開資料）
-        r = requests.get(url, params={"startDate": sd, "endDate": ed, "response": "json"},
-                         headers=_UA, timeout=30, verify=False)
-        return (r.json().get("tables") or [{}])[0].get("data") or []
-    except Exception as e:
-        logger.warning("[disposition_radar] TPEx %s 抓取失敗: %s", url, e)
-        return []
+        logger.warning("[disposition_radar] %s 抓取失敗: %s", url, e)
+        return [], [], False
 
 
 def _greg_range(bdays: int) -> tuple[str, str]:
     sd = (datetime.now() - timedelta(days=bdays * 2 + 10)).strftime("%Y%m%d")
-    ed = datetime.now().strftime("%Y%m%d")
-    return sd, ed
+    return sd, datetime.now().strftime("%Y%m%d")
 
 
 def _roc_range(bdays: int) -> tuple[str, str]:
@@ -209,66 +256,53 @@ def _roc_range(bdays: int) -> tuple[str, str]:
     return to_roc(now - timedelta(days=bdays * 2 + 10)), to_roc(now)
 
 
-def _fetch_attention_history(bdays: int) -> tuple[dict, dict, dict]:
-    """回 (byd_by_code, name_by_code, market_by_code)。byd = {code: {date: clause set}}。"""
+def _trading_calendar(bdays: int) -> tuple[list, bool]:
+    """近 bdays 個交易日（升冪）；用 TAIEX 日期。回 (list, ok)。"""
+    start = (datetime.now() - timedelta(days=bdays * 2 + 10)).strftime("%Y-%m-%d")
+    data, _, ok = _get_json(_FINMIND, {"dataset": "TaiwanStockPrice",
+                                       "data_id": "TAIEX", "start_date": start})
+    cal = sorted(x["date"] for x in data if x.get("date"))
+    return cal, ok
+
+
+def _fetch_attention_history(bdays: int) -> tuple:
+    """回 (byd_by_code, name, market, ok)。byd = {code: {date: clause set}}。
+    ok 為兩市場「皆成功」；任一市場失敗即 False（上層判 degraded）。"""
     from collections import defaultdict
     byd: dict = defaultdict(lambda: defaultdict(set))
     name: dict = {}
     market: dict = {}
     gsd, ged = _greg_range(bdays)
-    for row in _twse_json(_TWSE_NOTICE, gsd, ged):
-        code = str(row[1]).strip()
-        if not re.fullmatch(r"\d{4}", code):
-            continue
-        dt = norm_date(str(row[5]))
-        if not dt:
-            continue
-        byd[code][dt] |= clause_nums(str(row[4]))
-        name[code] = str(row[2]).strip()
-        market[code] = "TWSE"
+    tw_data, tw_fields, tw_ok = _get_json(_TWSE_NOTICE, {"startDate": gsd, "endDate": ged, "response": "json"})
     rsd, red = _roc_range(bdays)
-    for row in _tpex_json(_TPEX_ATTENTION, rsd, red):
-        code = str(row[1]).split("(")[0].strip()
-        if not re.fullmatch(r"\d{4}", code):
-            continue
-        dt = norm_date(str(row[5]))
-        if not dt:
-            continue
-        byd[code][dt] |= clause_nums(str(row[4]))
-        name[code] = str(row[2]).split("(")[0].strip()
-        market[code] = "TPEx"
-    return byd, name, market
+    tp_data, tp_fields, tp_ok = _get_json(_TPEX_ATTENTION, {"startDate": rsd, "endDate": red, "response": "json"})
+    for code, nm, dt, clauses, mkt in (parse_notice_rows(tw_data, tw_fields, "TWSE")
+                                       + parse_notice_rows(tp_data, tp_fields, "TPEx")):
+        byd[code][dt] |= clauses
+        name[code] = nm
+        market[code] = mkt
+    return byd, name, market, (tw_ok and tp_ok)
 
 
-def _fetch_disposition_periods(bdays: int) -> dict:
-    """回 {code: [(start,end), ...]}（近期處置期間，含上市＋上櫃）。"""
+def _fetch_disposition_periods(bdays: int) -> tuple:
+    """回 ({code: [(start,end)...]}, ok)。含上市＋上櫃。"""
     from collections import defaultdict
     out: dict = defaultdict(list)
     gsd, ged = _greg_range(bdays)
-    for row in _twse_json(_TWSE_PUNISH, gsd, ged):
-        code = str(row[2]).strip()
-        if not re.fullmatch(r"\d{4}", code):
-            continue
-        p = parse_period(str(row[6]))
-        if p:
-            out[code].append(p)
+    tw_data, tw_fields, tw_ok = _get_json(_TWSE_PUNISH, {"startDate": gsd, "endDate": ged, "response": "json"})
     rsd, red = _roc_range(bdays)
-    for row in _tpex_json(_TPEX_DISPOSAL, rsd, red):
-        code = str(row[2]).split("(")[0].strip()
-        if not re.fullmatch(r"\d{4}", code):
-            continue
-        p = parse_period(str(row[5]))
-        if p:
-            out[code].append(p)
-    return out
+    tp_data, tp_fields, tp_ok = _get_json(_TPEX_DISPOSAL, {"startDate": rsd, "endDate": red, "response": "json"})
+    for code, period in parse_disposal_rows(tw_data, tw_fields) + parse_disposal_rows(tp_data, tp_fields):
+        out[code].append(period)
+    return out, (tw_ok and tp_ok)
 
 
 def compute_radar(bdays: int = 30, today: str | None = None) -> dict:
-    """主入口：算今日「距處置」觀察名單。
+    """主入口：算今日「距處置」觀察名單。（資料一律取當前最新；today 僅供期間比對/快取鍵）
 
-    回 {as_of, calendar_last, candidates:[...], in_disposition:[codes], stats}。
-    candidates 依 distance 升冪：{code,name,market,distance,tier,reasons,counts,last_disp_end}。
-    已在處置中的股票放 in_disposition、不列 candidates。
+    回 {as_of, calendar_last, candidates:[...], in_disposition:[codes], stats, degraded}。
+    candidates 依 distance 升冪。已在處置中或已公告即將生效（end≥today）的股票放
+    in_disposition、不列 candidates。任一資料源抓取失敗 → degraded=True 且不快取。
     """
     today = today or datetime.now().strftime("%Y-%m-%d")
     cache_key = f"radar:{bdays}:{today}"
@@ -276,34 +310,45 @@ def compute_radar(bdays: int = 30, today: str | None = None) -> dict:
     if hit is not None:
         return hit
 
-    calendar = _trading_calendar(max(35, bdays + 5))
-    byd_by_code, name, market = _fetch_attention_history(bdays)
-    periods = _fetch_disposition_periods(bdays)
+    cal, cal_ok = _trading_calendar(max(35, bdays + 5))
+    byd_by_code, name, market, att_ok = _fetch_attention_history(bdays)
+    periods, disp_ok = _fetch_disposition_periods(bdays)
 
-    active = set()
+    # 交易日曆用聯集：TAIEX 常延遲一天，直接用 TAIEX 會漏掉「當天」注意（正是要預警那天）。
+    # 只併注意日期（皆 ≤ today 的觀測日）；不可併處置未來 end 日，否則日曆尾端跑到未來、
+    # _streak_from_end 從未來日往回立即中斷。最後夾在 ≤ today 保險。
+    extra = set()
+    for byd in byd_by_code.values():
+        extra |= set(byd)
+    calendar = sorted(d for d in (set(cal) | extra) if d and d <= today)
+
+    # 抓取健康度：注意或處置抓取失敗 → 無法可靠評估，標 degraded、不快取
+    degraded = not (att_ok and disp_ok)
+
+    # 只用「已結束（end < today）」的處置重置計數；end≥today（進行中或已公告未生效）
+    # 的股票不能列為候選（避免未來生效處置把計數清空使其憑空消失）
     last_end = {}
+    disposed_or_pending = set()
     for code, plist in periods.items():
         for start, end in plist:
-            if start <= today <= end:
-                active.add(code)
-            if code not in last_end or end > last_end[code]:
+            if end >= today:
+                disposed_or_pending.add(code)
+            elif code not in last_end or end > last_end[code]:
                 last_end[code] = end
 
     candidates = []
     for code, byd in byd_by_code.items():
-        if code in active:
+        if code in disposed_or_pending:
             continue
-        # 計數重置：只計最近一次處置結束後的注意（處置起迄的 end 當日仍在處置，故 > end）
-        reset = last_end.get(code)
         res = distance_to_disposition({d: set(cs) for d, cs in byd.items()},
-                                      calendar, reset_after=reset)
+                                      calendar, reset_after=last_end.get(code))
         if res["distance"] is None or res["distance"] > 3:
             continue
         candidates.append({
             "code": code, "name": name.get(code, ""), "market": market.get(code, ""),
             "distance": res["distance"], "tier": res["tier"],
             "reasons": res["reasons"], "counts": res["counts"],
-            "last_disp_end": reset,
+            "last_disp_end": last_end.get(code),
         })
     candidates.sort(key=lambda x: (x["distance"], x["code"]))
 
@@ -315,8 +360,12 @@ def compute_radar(bdays: int = 30, today: str | None = None) -> dict:
         "as_of": today,
         "calendar_last": calendar[-1] if calendar else None,
         "candidates": candidates,
-        "in_disposition": sorted(active),
+        "in_disposition": sorted(disposed_or_pending),
+        "degraded": degraded,
+        "sources": {"calendar": cal_ok, "attention": att_ok, "disposition": disp_ok},
         "stats": {"candidates": len(candidates), **tier_n,
-                  "in_disposition": len(active)},
+                  "in_disposition": len(disposed_or_pending)},
     }
+    if degraded:                 # 失敗不快取，下次重試（遵 cache 原則）
+        return result
     return _store(cache_key, result)
