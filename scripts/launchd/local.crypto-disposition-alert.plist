@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+處置雷達推播：每日 19:30（台北）盤後觸發（TWSE/TPEx 注意/處置公告傍晚已定案；
+避開 18:00 法人、21:00 evening、21:30 ai-news）。
+推「今日新進『再1次就處置』」名單 → Telegram。純觀察、不下單；seen 去重 7 天內不重推。
+
+部署：
+  cp scripts/launchd/local.crypto-disposition-alert.plist ~/Library/LaunchAgents/
+  launchctl unload ~/Library/LaunchAgents/local.crypto-disposition-alert.plist 2>/dev/null
+  launchctl load ~/Library/LaunchAgents/local.crypto-disposition-alert.plist
+手動觸發：launchctl start local.crypto-disposition-alert
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>local.crypto-disposition-alert</string>
+
+    <key>ProgramArguments</key>
+    <!-- 從 .env 讀 CSP_INTERNAL_KEY 帶 header 打 localhost（同既有 trigger pattern、不內嵌密鑰） -->
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>KEY="$(grep -E '^CSP_INTERNAL_KEY=' "$HOME/Documents/plate/crypto-signal-pro/.env" 2>/dev/null | head -1 | cut -d= -f2-)"; exec /usr/bin/curl -s -m 180 -X POST -H "X-Internal-Key: $KEY" http://localhost:8000/api/internal/trigger-disposition-alert</string>
+    </array>
+
+    <key>StartCalendarInterval</key>
+    <dict><key>Hour</key><integer>19</integer><key>Minute</key><integer>30</integer></dict>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/kentsai/Documents/plate/crypto-signal-pro/logs/launchd-disposition-alert.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/kentsai/Documents/plate/crypto-signal-pro/logs/launchd-disposition-alert-error.log</string>
+</dict>
+</plist>

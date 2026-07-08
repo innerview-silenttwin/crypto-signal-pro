@@ -264,6 +264,38 @@ def test_stock_aftermath_unavailable(monkeypatch):
     assert dr.stock_aftermath("6182", "")["available"] is False
 
 
+def test_run_disposition_alert_dedup_and_degraded(monkeypatch, tmp_path):
+    """推播：新進紅色候選才發、7天內去重、degraded 不發。"""
+    import notifier
+    monkeypatch.setattr(dr, "_ALERT_SEEN_PATH", tmp_path / "alert_seen.json")
+    sent = []
+    monkeypatch.setattr(notifier, "send_telegram", lambda m: (sent.append(m), True)[1])
+
+    radar = {"degraded": False, "as_of": "2026-07-08", "stats": {"rising": 2},
+             "candidates": [
+                 {"code": "6525", "name": "捷敏-KY", "market": "TWSE", "distance": 1,
+                  "reasons": [{"text": "連2天第一款"}], "hovering": {"edge_hovering": False}},
+                 {"code": "2466", "name": "冠西電", "market": "TWSE", "distance": 0,
+                  "reasons": [{"text": "連3天第一款"}], "hovering": {"edge_hovering": True}},
+                 {"code": "9999", "name": "遠的", "market": "TWSE", "distance": 3,  # 非紅、不推
+                  "reasons": [{"text": "10日內3次"}], "hovering": {"edge_hovering": False}}]}
+    monkeypatch.setattr(dr, "compute_radar", lambda *a, **k: radar)
+
+    r1 = dr.run_disposition_alert(now=1000.0)
+    assert r1["sent"] is True and r1["fresh"] == 2          # 只推 2 檔紅色（distance≤1）
+    assert set(r1["codes"]) == {"6525", "2466"}
+    assert "🕵️邊緣徘徊" in sent[0] and "9999" not in sent[0]
+
+    # 同一批隔天再跑 → 已在 seen、不重推
+    r2 = dr.run_disposition_alert(now=1000.0 + 86400)
+    assert r2["sent"] is False and r2["fresh"] == 0
+    assert len(sent) == 1
+
+    # degraded → 不發
+    monkeypatch.setattr(dr, "compute_radar", lambda *a, **k: {"degraded": True})
+    assert dr.run_disposition_alert()["sent"] is False
+
+
 def test_schema_ok_detects_missing_code_column():
     """有資料卻定位不到證券代號欄（表頭改版）→ _schema_ok False（供標 degraded）。"""
     good = ["編號", "證券代號", "證券名稱", "日期"]

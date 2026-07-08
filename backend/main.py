@@ -1779,6 +1779,22 @@ async def trigger_ai_news():
         return {"status": "error", "error": str(e)[:200]}
 
 
+@app.post("/api/internal/trigger-disposition-alert", dependencies=[Depends(require_internal_key)])
+async def trigger_disposition_alert():
+    """供 launchd 盤後觸發：推播「今日新進『再1次就處置』」名單（純觀察、非投資建議）。
+
+    seen store 去重（7 天內不重推）；無新進 / 資料異常時不發送。不接觸交易、不下單。
+    """
+    import pytz
+    tw_tz = pytz.timezone("Asia/Taipei")
+    try:
+        from disposition_radar import run_disposition_alert
+        stats = await asyncio.to_thread(run_disposition_alert)
+        return {"status": "ok", **stats, "now": datetime.now(tw_tz).isoformat()}
+    except Exception as e:
+        return {"status": "error", "error": str(e)[:200]}
+
+
 @app.post("/api/internal/trigger-daily-inst-refresh", dependencies=[Depends(require_internal_key)])
 async def trigger_daily_inst_refresh():
     """供 launchd 在 18:00 (台北) 觸發。每交易日 TWSE 公佈當日法人後抓資料 + 發 Telegram 報告。

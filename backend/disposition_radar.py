@@ -21,14 +21,20 @@ TLS 驗證、只關 OpenSSL 3.x 的 X509_STRICT，台灣政府憑證缺 SKI 會�
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import time
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from http_legacy_ssl import legacy_get
 
 logger = logging.getLogger(__name__)
+
+_BASE_DIR = Path(__file__).resolve().parent
+_ALERT_SEEN_PATH = _BASE_DIR / "data" / "disposition_alert_seen.json"
+_ALERT_TTL_DAYS = 7          # 同一檔 7 天內不重推（避免每日洗版）
 
 _FINMIND = "https://api.finmindtrade.com/api/v4/data"
 _TWSE_NOTICE = "https://www.twse.com.tw/rwd/zh/announcement/notice"
@@ -539,3 +545,75 @@ def stock_aftermath(code: str, trigger_date: str, horizons=(1, 3, 5, 10)) -> dic
     out = {"code": code, "trigger": trigger_date, "available": True,
            "prev_date": closes[prev_i][0], "prev_close": base, "points": points}
     return _store(key, out)
+
+
+# ── 每日 Telegram 推播：新進「再1次就處置」 ─────────────────
+
+def _load_alert_seen() -> dict:
+    try:
+        if _ALERT_SEEN_PATH.exists():
+            return json.loads(_ALERT_SEEN_PATH.read_text())
+    except Exception:
+        pass
+    return {}
+
+
+def _save_alert_seen(seen: dict):
+    try:
+        _ALERT_SEEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _ALERT_SEEN_PATH.write_text(json.dumps(seen, ensure_ascii=False))
+    except Exception as e:
+        logger.warning("[disposition_radar] alert seen 寫入失敗: %s", e)
+
+
+def _esc(s) -> str:
+    import html
+    return html.escape(str(s if s is not None else ""), quote=True)
+
+
+def run_disposition_alert(now: float | None = None) -> dict:
+    """盤後推播「今日新進『再1次就處置』」名單（純觀察、非投資建議）。
+
+    只推 distance≤1 的紅色候選，且 7 天內未推過者（seen store 去重、免洗版）。
+    無新進 → 不發送。資料異常(degraded) → 不發送（避免推不完整名單）。
+    """
+    now = now or time.time()
+    radar = compute_radar()
+    if radar.get("degraded"):
+        logger.warning("[disposition_radar] 資料異常，跳過推播")
+        return {"sent": False, "reason": "degraded"}
+
+    reds = [c for c in radar.get("candidates", []) if c.get("distance", 9) <= 1]
+    seen = _load_alert_seen()
+    cutoff = now - _ALERT_TTL_DAYS * 86400
+    seen = {k: v for k, v in seen.items() if v >= cutoff}          # 清過期
+    fresh = [c for c in reds if c["code"] not in seen]
+    if not fresh:
+        for c in reds:                                            # 仍在榜的更新時間戳
+            seen[c["code"]] = now
+        _save_alert_seen(seen)
+        logger.info("[disposition_radar] 無新進紅色候選、不推播")
+        return {"sent": False, "reds": len(reds), "fresh": 0}
+
+    lines = ["🚨 <b>處置雷達｜今日新進「再1次就處置」</b>",
+             "<i>純觀察追蹤、非投資建議</i>", ""]
+    for c in fresh:
+        why = "／".join(r["text"] for r in c.get("reasons", [])[:2]) or "接近門檻"
+        spy = " 🕵️邊緣徘徊" if c.get("hovering", {}).get("edge_hovering") else ""
+        lines.append(f"• <b>{_esc(c['code'])}</b> {_esc(c['name'])}"
+                     f"（{_esc(c['market'])}）[{_esc(why)}]{spy}")
+    rising_n = radar.get("stats", {}).get("rising", 0)
+    if rising_n:
+        lines += ["", f"🚀 另有 {rising_n} 檔漲多預警（未列注意、6日漲幅接近門檻）"]
+    lines += ["", f"資料日 {_esc(radar.get('as_of'))}｜完整清單見處置雷達頁"]
+    msg = "\n".join(lines)
+
+    from notifier import send_telegram
+    ok = send_telegram(msg)
+    if ok:
+        for c in reds:
+            seen[c["code"]] = now
+        _save_alert_seen(seen)
+    logger.info("[disposition_radar] 推播 fresh=%d reds=%d sent=%s", len(fresh), len(reds), ok)
+    return {"sent": bool(ok), "reds": len(reds), "fresh": len(fresh),
+            "codes": [c["code"] for c in fresh]}
