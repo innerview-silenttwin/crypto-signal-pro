@@ -35,7 +35,13 @@ _TWSE_NOTICE = "https://www.twse.com.tw/rwd/zh/announcement/notice"
 _TWSE_PUNISH = "https://www.twse.com.tw/rwd/zh/announcement/punish"
 _TPEX_ATTENTION = "https://www.tpex.org.tw/www/zh-tw/bulletin/attention"
 _TPEX_DISPOSAL = "https://www.tpex.org.tw/www/zh-tw/bulletin/disposal"
+_TWSE_MI_INDEX = "https://www.twse.com.tw/rwd/zh/afterTrading/MI_INDEX"      # 全市場單日
+_TPEX_DAILY = "https://www.tpex.org.tw/www/zh-tw/afterTrading/dailyQuotes"   # 全市場單日
 _UA = {"User-Agent": "Mozilla/5.0 (csp-disposition-radar)"}
+
+# 漲多預警：6 日累積漲幅進入警戒帶（未列注意但接近 TWSE 第一款 ~32% 門檻）
+_RISE_WARN_PCT = 25.0
+_RISE_THRESHOLD_PCT = 32.0
 
 _CACHE_TTL = 1800  # 30 分鐘
 _cache: dict = {}
@@ -392,19 +398,108 @@ def compute_radar(bdays: int = 30, today: str | None = None) -> dict:
     for c in candidates:
         if c["tier"] in tier_n:
             tier_n[c["tier"]] += 1
+
+    # 漲多預警（供更早觀察；補充性質、失敗不影響主雷達 degraded）
+    try:
+        rising = rising_radar(calendar, set(byd_by_code) | disposed_or_pending)
+    except Exception as e:
+        logger.warning("[disposition_radar] 漲多預警計算失敗: %s", e)
+        rising = []
+
     result = {
         "as_of": today,
         "calendar_last": calendar[-1] if calendar else None,
         "candidates": candidates,
+        "rising": rising,
         "in_disposition": sorted(disposed_or_pending),
         "degraded": degraded,
         "sources": {"calendar": cal_ok, "attention": att_ok, "disposition": disp_ok},
         "stats": {"candidates": len(candidates), **tier_n,
+                  "rising": len(rising),
                   "in_disposition": len(disposed_or_pending)},
     }
     if degraded:                 # 失敗不快取，下次重試（遵 cache 原則）
         return result
     return _store(cache_key, result)
+
+
+def _get_tables(url: str, params: dict) -> tuple:
+    """多表端點（MI_INDEX/dailyQuotes）→ (tables_list, ok)。單表 rwd 也包成一張表。"""
+    try:
+        r = legacy_get(url, params=params, headers=_UA, timeout=30)
+        if r.status_code != 200:
+            return [], False
+        j = r.json()
+        if isinstance(j, dict) and "tables" in j:
+            return j["tables"] or [], True
+        return [{"fields": j.get("fields") or [], "data": j.get("data") or []}], True
+    except Exception as e:
+        logger.warning("[disposition_radar] %s 抓取失敗: %s", url, e)
+        return [], False
+
+
+def _parse_close(v) -> float | None:
+    try:
+        return float(str(v).replace(",", "").strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _all_market_closes(date_greg: str) -> tuple:
+    """某日全市場普通股(4碼)收盤 → ({code: (name, close, market)}, ok)。TWSE+TPEx。"""
+    out = {}
+    any_ok = False
+    ymd = date_greg.replace("-", "")
+    slashed = date_greg.replace("-", "/")
+    for url, params, mkt in (
+        (_TWSE_MI_INDEX, {"date": ymd, "type": "ALLBUT0999", "response": "json"}, "TWSE"),
+        (_TPEX_DAILY, {"date": slashed, "response": "json"}, "TPEx"),
+    ):
+        tables, ok = _get_tables(url, params)
+        any_ok = any_ok or ok
+        for t in tables:
+            f = t.get("fields") or []
+            ci = _col(f, "證券代號", "代號")
+            pi = _col(f, "收盤價", "收盤")
+            if ci is None or pi is None:
+                continue
+            ni = _col(f, "證券名稱", "名稱")
+            for row in t.get("data") or []:
+                code = str(_cell(row, ci)).strip()
+                if not re.fullmatch(r"\d{4}", code):
+                    continue
+                close = _parse_close(_cell(row, pi))
+                if close:
+                    out[code] = (str(_cell(row, ni)).strip() if ni is not None else "", close, mkt)
+            break                              # 該市場找到價格表就好
+    return out, any_ok
+
+
+def rising_radar(calendar: list, exclude: set) -> list:
+    """漲多預警：近 6 個交易日累積漲幅 ≥ 警戒帶、且尚未列注意/處置的普通股。
+
+    ⚠️ 近似值：只算原始 6 日漲幅，未套 TWSE 第一款「與大盤/同類差幅」條件，僅供更早觀察。
+    """
+    if len(calendar) < 6:
+        return []
+    base, ok1 = _all_market_closes(calendar[-6])
+    latest, ok2 = _all_market_closes(calendar[-1])
+    if not (ok1 and ok2):
+        return []
+    rows = []
+    for code, (name, close, mkt) in latest.items():
+        if code in exclude:
+            continue
+        b = base.get(code)
+        if not b or not b[1]:
+            continue
+        ret = (close / b[1] - 1) * 100
+        if ret >= _RISE_WARN_PCT:
+            rows.append({"code": code, "name": name, "market": mkt,
+                         "ret6_pct": round(ret, 1),
+                         "over_threshold": ret >= _RISE_THRESHOLD_PCT})
+    rows.sort(key=lambda x: -x["ret6_pct"])
+    return rows[:40]
 
 
 def stock_aftermath(code: str, trigger_date: str, horizons=(1, 3, 5, 10)) -> dict:

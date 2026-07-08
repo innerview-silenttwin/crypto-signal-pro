@@ -217,6 +217,31 @@ def test_compute_radar_candidate_carries_hovering(monkeypatch):
     assert "near_miss_days" in out["candidates"][0]["hovering"]
 
 
+def test_rising_radar_flags_and_excludes(monkeypatch):
+    """漲多預警：≥25% 入榜、≥32% 標門檻、已在 exclude(已列注意/處置)者剔除。"""
+    cal = _cal([f"2026-07-{d:02d}" for d in range(1, 9)])   # ≥6 天
+    base = {"1111": ("甲", 100.0, "TWSE"), "2222": ("乙", 100.0, "TWSE"),
+            "3333": ("丙", 100.0, "TPEx"), "4444": ("丁", 100.0, "TWSE")}
+    latest = {"1111": ("甲", 140.0, "TWSE"),   # +40% → 入榜且過門檻
+              "2222": ("乙", 128.0, "TWSE"),   # +28% → 入榜未過門檻
+              "3333": ("丙", 110.0, "TPEx"),   # +10% → 不入榜
+              "4444": ("丁", 150.0, "TWSE")}   # +50% 但在 exclude → 剔除
+    calls = {"n": 0}
+    def fake(date):
+        calls["n"] += 1
+        return (base, True) if date == cal[-6] else (latest, True)
+    monkeypatch.setattr(dr, "_all_market_closes", fake)
+    out = dr.rising_radar(cal, exclude={"4444"})
+    codes = [r["code"] for r in out]
+    assert codes == ["1111", "2222"]            # 依漲幅排序、排除 4444、濾掉 3333
+    assert out[0]["over_threshold"] is True and out[1]["over_threshold"] is False
+
+
+def test_rising_radar_empty_on_fetch_fail(monkeypatch):
+    monkeypatch.setattr(dr, "_all_market_closes", lambda date: ({}, False))
+    assert dr.rising_radar(_cal([f"2026-07-{d:02d}" for d in range(1, 9)]), set()) == []
+
+
 def test_stock_aftermath_trajectory(monkeypatch):
     """觸發後走勢：以處置前最後一天收盤為基準算 +1/+3/+5/+10 漲跌%。"""
     pairs = [("2026-05-20", 100), ("2026-05-21", 100), ("2026-05-22", 90), ("2026-05-23", 100),

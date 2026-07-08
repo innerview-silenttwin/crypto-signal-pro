@@ -95,6 +95,7 @@
                 </table>
             </div>
         </div>
+        <div id="rising"></div>
         <div id="inproc"></div>
         <div class="dr-sub" id="asof"></div>
     </div>
@@ -210,6 +211,20 @@
                     tb.appendChild(tr); tb.appendChild(det);
                 });
             }
+
+            const rising = data.rising || [];
+            document.getElementById('rising').innerHTML = rising.length ? `
+                <div class="dr-card" style="padding:14px 16px">
+                    <div class="dr-title" style="font-size:16px">🚀 漲多預警（尚未列注意、6 日漲幅接近門檻）</div>
+                    <div class="dr-sub">近 6 交易日累積漲幅 ≥ 25% 且還沒被列注意的普通股——比處置更早的觀察點。
+                    <b>近似值</b>：只算原始漲幅、未套「與大盤/同類差幅」條件，⚠️ 標示已達 ~32% 門檻。</div>
+                    <div class="dr-scroll"><table class="dr-tbl">
+                        <thead><tr><th>代號</th><th>名稱</th><th>市場</th><th>6日漲幅</th><th></th></tr></thead>
+                        <tbody>${rising.map(x => `<tr><td><b>${esc(x.code)}</b></td><td>${esc(x.name)}</td>
+                            <td class="dr-muted">${esc(x.market)}</td><td class="pos">${esc('+' + x.ret6_pct)}%</td>
+                            <td>${x.over_threshold ? '<span class="badge" style="background:rgba(239,68,68,.12);color:#ef4444">⚠️ 已達漲幅門檻</span>' : ''}</td></tr>`).join('')}</tbody>
+                    </table></div>
+                </div>` : '';
 
             const ip = data.in_disposition || [];
             document.getElementById('inproc').innerHTML = ip.length
