@@ -360,14 +360,15 @@ def compute_radar(bdays: int = 30, today: str | None = None) -> dict:
 
     # 只用「已結束（end < today）」的處置重置計數；end≥today（進行中或已公告未生效）
     # 的股票不能列為候選（避免未來生效處置把計數清空使其憑空消失）
-    last_end = {}
+    last_period = {}          # code -> (start, end) 最近一次「已結束」的處置
     disposed_or_pending = set()
     for code, plist in periods.items():
         for start, end in plist:
             if end >= today:
                 disposed_or_pending.add(code)
-            elif code not in last_end or end > last_end[code]:
-                last_end[code] = end
+            elif code not in last_period or end > last_period[code][1]:
+                last_period[code] = (start, end)
+    last_end = {c: p[1] for c, p in last_period.items()}
 
     candidates = []
     for code, byd in byd_by_code.items():
@@ -383,6 +384,7 @@ def compute_radar(bdays: int = 30, today: str | None = None) -> dict:
             "distance": res["distance"], "tier": res["tier"],
             "reasons": res["reasons"], "counts": res["counts"],
             "last_disp_end": last_end.get(code), "hovering": hov,
+            "last_disp_start": last_period.get(code, (None, None))[0],
         })
     candidates.sort(key=lambda x: (x["distance"], x["code"]))
 
@@ -403,3 +405,42 @@ def compute_radar(bdays: int = 30, today: str | None = None) -> dict:
     if degraded:                 # 失敗不快取，下次重試（遵 cache 原則）
         return result
     return _store(cache_key, result)
+
+
+def stock_aftermath(code: str, trigger_date: str, horizons=(1, 3, 5, 10)) -> dict:
+    """某股「上次觸發處置」前後走勢（純揭露）。trigger_date=處置生效首日(分盤首日)。
+
+    以「處置前最後一天收盤」為基準，算處置後 +1/+3/+5/+10 交易日的漲跌%。
+    ret_pct 正=漲、負=跌；放空這段報酬 ≈ -ret_pct。無資料/日期不明回 available=False。
+    """
+    code = re.sub(r"\.TW[O]?$", "", str(code or "").strip().upper())
+    out = {"code": code, "trigger": trigger_date, "available": False, "points": []}
+    if not trigger_date:
+        return out
+    start = (datetime.strptime(trigger_date, "%Y-%m-%d") - timedelta(days=45)).strftime("%Y-%m-%d")
+    key = f"aftermath:{code}:{trigger_date}"
+    hit = _cached(key, ttl=86400)
+    if hit is not None:
+        return hit
+    data, _, ok = _get_json(_FINMIND, {"dataset": "TaiwanStockPrice", "data_id": code, "start_date": start})
+    closes = sorted((x["date"], x["close"]) for x in data
+                    if x.get("close") not in (None, 0) and x.get("date"))
+    if not ok or len(closes) < 2:
+        return out
+    dates = [d for d, _ in closes]
+    ti = next((i for i, d in enumerate(dates) if d >= trigger_date), None)
+    if ti is None or ti == 0:
+        return out
+    prev_i = ti - 1                                   # 處置前最後一天
+    base = closes[prev_i][1]
+    if not base:
+        return out
+    points = []
+    for h in horizons:
+        j = prev_i + h                                # 基準日之後第 h 個交易日
+        if j < len(closes):
+            points.append({"h": h, "date": closes[j][0],
+                           "ret_pct": round((closes[j][1] / base - 1) * 100, 2)})
+    out = {"code": code, "trigger": trigger_date, "available": True,
+           "prev_date": closes[prev_i][0], "prev_close": base, "points": points}
+    return _store(key, out)

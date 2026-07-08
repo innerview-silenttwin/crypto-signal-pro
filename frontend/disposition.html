@@ -143,6 +143,25 @@
             }
         }
 
+        async function loadAftermath(c, cell) {
+            if (!c.last_disp_start) {
+                cell.innerHTML = '<div class="dr-sub">📉 上次處置後走勢：此檔近期無前次處置紀錄可參考（首次接近）。</div>';
+                return;
+            }
+            cell.innerHTML = '<span class="dr-muted">載入上次處置後走勢…</span>';
+            try {
+                const r = await fetch(`/api/disposition/aftermath?code=${encodeURIComponent(c.code)}&trigger=${encodeURIComponent(c.last_disp_start)}`);
+                const d = await r.json();
+                if (!d.available) { cell.innerHTML = '<div class="dr-sub">📉 上次處置後走勢：取價失敗或資料不足。</div>'; return; }
+                const cells = (d.points || []).map(p =>
+                    `<div class="dr-chipbox"><div class="k">處置後 +${esc(p.h)} 日</div><div class="v">${signed(p.ret_pct, '%')}</div></div>`).join('');
+                cell.innerHTML = `<div class="dr-sub" style="margin:4px 0 6px"><b>📉 上次處置（${esc(d.trigger)} 生效）前後走勢</b>
+                    ——處置前最後一天(${esc(d.prev_date)})收盤 ${esc(d.prev_close)} 為基準，之後漲跌：</div>
+                    <div class="dr-chipgrid">${cells}</div>
+                    <div class="dr-sub" style="margin-top:6px">正=漲、負=跌；若當時放空這段報酬≈相反號。過去表現不代表未來、僅供觀察。</div>`;
+            } catch (e) { cell.innerHTML = '<div class="dr-sub">📉 上次處置後走勢：載入失敗。</div>'; }
+        }
+
         function render(data) {
             if (data.degraded) {
                 document.getElementById('stats').insertAdjacentHTML('beforebegin',
@@ -177,12 +196,16 @@
                     const det = document.createElement('tr');
                     det.className = 'dr-detail';
                     det.style.display = 'none';
-                    det.innerHTML = `<td colspan="7"></td>`;
+                    det.innerHTML = `<td colspan="7"><div class="dr-after-slot"></div><div class="dr-chip-slot"></div></td>`;
                     let loaded = false;
                     tr.onclick = () => {
                         const open = det.style.display === 'none';
                         det.style.display = open ? '' : 'none';
-                        if (open && !loaded) { loaded = true; loadChip(c.code, det.querySelector('td')); }
+                        if (open && !loaded) {
+                            loaded = true;
+                            loadChip(c.code, det.querySelector('.dr-chip-slot'));
+                            loadAftermath(c, det.querySelector('.dr-after-slot'));
+                        }
                     };
                     tb.appendChild(tr); tb.appendChild(det);
                 });

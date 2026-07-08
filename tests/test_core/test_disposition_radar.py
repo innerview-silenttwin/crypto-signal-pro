@@ -217,6 +217,28 @@ def test_compute_radar_candidate_carries_hovering(monkeypatch):
     assert "near_miss_days" in out["candidates"][0]["hovering"]
 
 
+def test_stock_aftermath_trajectory(monkeypatch):
+    """觸發後走勢：以處置前最後一天收盤為基準算 +1/+3/+5/+10 漲跌%。"""
+    pairs = [("2026-05-20", 100), ("2026-05-21", 100), ("2026-05-22", 90), ("2026-05-23", 100),
+             ("2026-05-24", 108), ("2026-05-25", 100), ("2026-05-26", 50), ("2026-05-27", 100),
+             ("2026-05-28", 100), ("2026-05-29", 100), ("2026-05-30", 100), ("2026-05-31", 121)]
+    monkeypatch.setattr(dr, "_get_json",
+                        lambda url, params: ([{"date": d, "close": c} for d, c in pairs], [], True))
+    dr._cache.clear()
+    a = dr.stock_aftermath("6182", "2026-05-22")
+    assert a["available"] is True
+    assert a["prev_date"] == "2026-05-21" and a["prev_close"] == 100
+    pts = {p["h"]: p["ret_pct"] for p in a["points"]}
+    assert pts == {1: -10.0, 3: 8.0, 5: -50.0, 10: 21.0}
+
+
+def test_stock_aftermath_unavailable(monkeypatch):
+    monkeypatch.setattr(dr, "_get_json", lambda url, params: ([], [], False))
+    dr._cache.clear()
+    assert dr.stock_aftermath("6182", "2026-05-22")["available"] is False
+    assert dr.stock_aftermath("6182", "")["available"] is False
+
+
 def test_schema_ok_detects_missing_code_column():
     """有資料卻定位不到證券代號欄（表頭改版）→ _schema_ok False（供標 degraded）。"""
     good = ["編號", "證券代號", "證券名稱", "日期"]

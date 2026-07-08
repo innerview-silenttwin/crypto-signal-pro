@@ -22,3 +22,13 @@ def get_disposition_radar(bdays: int = 30):
     from disposition_radar import compute_radar
     bdays = max(30, min(int(bdays), 60))
     return compute_radar(bdays=bdays)
+
+
+@router.get("/api/disposition/aftermath")
+def get_disposition_aftermath(code: str, trigger: str):
+    """某股上次觸發處置前後走勢（純揭露）。code=證券代號、trigger=處置生效首日 YYYY-MM-DD。"""
+    from disposition_radar import stock_aftermath
+    code = (code or "").strip()
+    if not code or not trigger:
+        return {"available": False, "error": "empty_code_or_trigger"}
+    return stock_aftermath(code, trigger.strip())
