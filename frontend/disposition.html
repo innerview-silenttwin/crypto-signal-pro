@@ -165,10 +165,14 @@
                     const t = TIER[c.tier] || TIER.yellow;
                     const tr = document.createElement('tr');
                     tr.className = 'main tier-' + c.tier;
-                    tr.innerHTML = `<td><span class="badge ${t.cls}">${t.label}</span></td>
+                    const h = c.hovering || {};
+                    const spy = h.edge_hovering ? ' <span class="badge" style="background:rgba(99,102,241,.15);color:#6366f1" title="反覆逼近處置線卻連續沒觸發，潛在人為壓價徘徊，請自行判斷">🕵️ 邊緣徘徊</span>' : '';
+                    const hov = h.near_miss_days != null
+                        ? `<span class="dr-muted">· 近${esc(h.window_days)}日站上再1次 ${esc(h.near_miss_days)} 天／實際觸發 ${esc(h.triggers)} 次</span>` : '';
+                    tr.innerHTML = `<td><span class="badge ${t.cls}">${t.label}</span>${spy}</td>
                         <td><b>${esc(c.code)}</b></td><td>${esc(c.name)}</td><td class="dr-muted">${esc(c.market)}</td>
-                        <td><b>${c.distance}</b></td>
-                        <td class="dr-reason">${reasonHtml(c.reasons)}</td>
+                        <td><b>${esc(c.distance)}</b></td>
+                        <td class="dr-reason">${reasonHtml(c.reasons)}　${hov}</td>
                         <td class="dr-muted">▾ 籌碼</td>`;
                     const det = document.createElement('tr');
                     det.className = 'dr-detail';

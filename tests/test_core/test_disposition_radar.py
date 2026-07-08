@@ -186,6 +186,37 @@ def test_compute_radar_degraded_when_calendar_fails(monkeypatch):
     assert dr._cache == {}
 
 
+def test_hovering_stats_edge_hoverer():
+    """反覆『連2天第一款→斷』無限逼近卻不觸發 → edge_hovering=True（貓膩型態）。"""
+    cal = _cal([f"2026-07-{d:02d}" for d in range(1, 9)])   # 8 交易日
+    # 第一款注意落在 index 0,1 / 3,4 / 6,7（每對的第二天 distance=1）
+    byd = {cal[i]: {1} for i in (0, 1, 3, 4, 6, 7)}
+    h = dr._hovering_stats(byd, [], cal, window_days=30)
+    # 連2天第一款的第二天(cal[1]/cal[4]) + 後段 10 日內次數累積也讓 cal[6]/cal[7] 站上再1次 → 4 天
+    assert h["near_miss_days"] == 4
+    assert h["triggers"] == 0
+    assert h["edge_hovering"] is True
+
+
+def test_hovering_stats_serial_offender_not_flagged():
+    """真的一直被處置（triggers 多）→ 不算邊緣徘徊。"""
+    cal = _cal([f"2026-07-{d:02d}" for d in range(1, 9)])
+    byd = {cal[i]: {1} for i in (0, 1, 3, 4, 6, 7)}
+    periods = [("2026-07-02", "2026-07-02"), ("2026-07-05", "2026-07-05")]  # 2 次觸發
+    h = dr._hovering_stats(byd, periods, cal, window_days=30)
+    assert h["triggers"] == 2
+    assert h["edge_hovering"] is False
+
+
+def test_compute_radar_candidate_carries_hovering(monkeypatch):
+    _radar_stubs(monkeypatch,
+                 {"1111": {"2026-07-06": {1}, "2026-07-07": {1}}},
+                 {"1111": "甲股"}, {"1111": "TWSE"}, {})
+    out = dr.compute_radar(today="2026-07-07")
+    assert "hovering" in out["candidates"][0]
+    assert "near_miss_days" in out["candidates"][0]["hovering"]
+
+
 def test_schema_ok_detects_missing_code_column():
     """有資料卻定位不到證券代號欄（表頭改版）→ _schema_ok False（供標 degraded）。"""
     good = ["編號", "證券代號", "證券名稱", "日期"]

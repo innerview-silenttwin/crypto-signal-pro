@@ -307,6 +307,28 @@ def _fetch_disposition_periods(bdays: int) -> tuple:
     return out, ok
 
 
+def _hovering_stats(byd: dict, dstarts_dends: list, calendar: list, window_days: int) -> dict:
+    """一檔的「邊緣徘徊」統計（近 window_days 交易日內）：
+      near_miss_days＝逐日重建後「距處置≤1（再1次）」的天數
+      triggers＝實際進處置次數
+      edge_hovering＝反覆逼近卻幾乎不跨線（≥3 天站上再1次、觸發≤1）——潛在貓膩，工具標型態、由人判斷。
+    """
+    window = set(calendar[-window_days:]) if calendar else set()
+    near = 0
+    for d in sorted(byd):
+        if d not in window:
+            continue
+        reset = max((e for s, e in dstarts_dends if e < d), default=None)
+        r = distance_to_disposition({k: set(v) for k, v in byd.items() if k <= d},
+                                    [x for x in calendar if x <= d], reset_after=reset)
+        if r["distance"] is not None and r["distance"] <= 1:
+            near += 1
+    triggers = len({s for s, _ in dstarts_dends if s in window})
+    return {"near_miss_days": near, "triggers": triggers,
+            "window_days": window_days,
+            "edge_hovering": near >= 3 and triggers <= 1}
+
+
 def compute_radar(bdays: int = 30, today: str | None = None) -> dict:
     """主入口：算今日「距處置」觀察名單。（資料一律取當前最新；today 僅供期間比對/快取鍵）
 
@@ -355,11 +377,12 @@ def compute_radar(bdays: int = 30, today: str | None = None) -> dict:
                                       calendar, reset_after=last_end.get(code))
         if res["distance"] is None or res["distance"] > 3:
             continue
+        hov = _hovering_stats(byd, periods.get(code, []), calendar, bdays)
         candidates.append({
             "code": code, "name": name.get(code, ""), "market": market.get(code, ""),
             "distance": res["distance"], "tier": res["tier"],
             "reasons": res["reasons"], "counts": res["counts"],
-            "last_disp_end": last_end.get(code),
+            "last_disp_end": last_end.get(code), "hovering": hov,
         })
     candidates.sort(key=lambda x: (x["distance"], x["code"]))
 
