@@ -516,9 +516,11 @@ def stock_aftermath(code: str, trigger_date: str, horizons=(1, 3, 5, 10)) -> dic
     """
     code = re.sub(r"\.TW[O]?$", "", str(code or "").strip().upper())
     out = {"code": code, "trigger": trigger_date, "available": False, "points": []}
-    if not trigger_date:
+    try:
+        dt0 = datetime.strptime(str(trigger_date), "%Y-%m-%d")   # 格式錯（含空）→ 回 available:False 不炸
+    except (ValueError, TypeError):
         return out
-    start = (datetime.strptime(trigger_date, "%Y-%m-%d") - timedelta(days=45)).strftime("%Y-%m-%d")
+    start = (dt0 - timedelta(days=45)).strftime("%Y-%m-%d")
     key = f"aftermath:{code}:{trigger_date}"
     hit = _cached(key, ttl=86400)
     if hit is not None:

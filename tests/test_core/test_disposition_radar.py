@@ -264,6 +264,12 @@ def test_stock_aftermath_unavailable(monkeypatch):
     assert dr.stock_aftermath("6182", "")["available"] is False
 
 
+def test_stock_aftermath_malformed_trigger_no_crash():
+    """格式錯的 trigger（斜線/亂碼/None）不可 strptime 崩潰 → 回 available:False。"""
+    for bad in ["2026/05/22", "20260522", "garbage", None]:
+        assert dr.stock_aftermath("6182", bad)["available"] is False
+
+
 def test_run_disposition_alert_dedup_and_degraded(monkeypatch, tmp_path):
     """推播：新進紅色候選才發、7天內去重、degraded 不發。"""
     import notifier
