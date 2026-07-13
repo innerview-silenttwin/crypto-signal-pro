@@ -139,8 +139,16 @@ def _schema_ok(data: list, fields: list) -> bool:
     return _col(fields, "證券代號", "代號") is not None
 
 
+def _clean_text(s: str) -> str:
+    """注意/處置原文清理：<br> → 換行、去其他 HTML tag、壓空白。"""
+    s = re.sub(r"<\s*br\s*/?\s*>", "\n", str(s or ""), flags=re.IGNORECASE)
+    s = re.sub(r"<[^>]+>", "", s)
+    return re.sub(r"[ \t]+", " ", s).strip()
+
+
 def parse_notice_rows(data: list, fields: list, market: str) -> list[tuple]:
-    """注意公告 rows → [(code, name, date_greg, clause_set, market)]（普通股 4 碼）。
+    """注意公告 rows → [(code, name, date_greg, clause_set, market, raw_text)]（普通股 4 碼）。
+    raw_text＝該筆注意原文（含實際漲幅/天數/價差/週轉率等數字，供 hover 顯示）。
     以 fields 表頭定位欄位、短列/怪列略過，不硬編索引。"""
     ci = _col(fields, "證券代號", "代號")
     ni = _col(fields, "證券名稱", "名稱")
@@ -155,17 +163,30 @@ def parse_notice_rows(data: list, fields: list, market: str) -> list[tuple]:
             dt = norm_date(str(_cell(row, di)))
             if not dt:
                 continue
+            raw = str(_cell(row, ti))
             out.append((code, str(_cell(row, ni)).split("(")[0].strip(), dt,
-                        clause_nums(str(_cell(row, ti))), market))
+                        clause_nums(raw), market, _clean_text(raw)))
         except Exception:
             continue
     return out
 
 
+def _disposal_level(measure: str) -> str:
+    """由處置內容文字判等級：加重(約20分盤) / 第一次(約5分盤) / 處置中。"""
+    t = str(measure or "")
+    if "第二次" in t or "第三次" in t or "加重" in t or "每二十分" in t or "每20分" in t or "二十分鐘" in t:
+        return "加重(約20分盤)"
+    if "第一次" in t or "每五分" in t or "每5分" in t or "五分鐘" in t:
+        return "第一次(約5分盤)"
+    return "處置中"
+
+
 def parse_disposal_rows(data: list, fields: list) -> list[tuple]:
-    """處置公告 rows → [(code, (start,end))]（普通股 4 碼）。以 fields 表頭定位。"""
+    """處置公告 rows → [(code, start, end, level, measure_text)]（普通股 4 碼）。
+    measure_text＝處置內容原文（含分盤間隔/預收條件）；level＝由文字判定的等級。"""
     ci = _col(fields, "證券代號", "代號")
     pi = _col(fields, "處置起迄時間", "處置起訖時間", "起迄", "起訖")
+    mi = _col(fields, "處置內容", "處置措施", "處置原因")
     out = []
     for row in data:
         try:
@@ -173,8 +194,10 @@ def parse_disposal_rows(data: list, fields: list) -> list[tuple]:
             if not re.fullmatch(r"\d{4}", code):
                 continue
             p = parse_period(str(_cell(row, pi)))
-            if p:
-                out.append((code, p))
+            if not p:
+                continue
+            measure = _clean_text(_cell(row, mi))
+            out.append((code, p[0], p[1], _disposal_level(measure), measure))
         except Exception:
             continue
     return out
@@ -286,37 +309,45 @@ def _trading_calendar(bdays: int) -> tuple[list, bool]:
 
 
 def _fetch_attention_history(bdays: int) -> tuple:
-    """回 (byd_by_code, name, market, ok)。byd = {code: {date: clause set}}。
+    """回 (byd_by_code, name, market, latest_notice, ok)。byd = {code: {date: clause set}}；
+    latest_notice = {code: {date, text}}（該股最新一筆注意原文，含實際數字，供 hover）。
     ok 為兩市場「皆成功」；任一市場失敗即 False（上層判 degraded）。"""
     from collections import defaultdict
     byd: dict = defaultdict(lambda: defaultdict(set))
     name: dict = {}
     market: dict = {}
+    latest: dict = {}
     gsd, ged = _greg_range(bdays)
     tw_data, tw_fields, tw_ok = _get_json(_TWSE_NOTICE, {"startDate": gsd, "endDate": ged, "response": "json"})
     rsd, red = _roc_range(bdays)
     tp_data, tp_fields, tp_ok = _get_json(_TPEX_ATTENTION, {"startDate": rsd, "endDate": red, "response": "json"})
-    for code, nm, dt, clauses, mkt in (parse_notice_rows(tw_data, tw_fields, "TWSE")
-                                       + parse_notice_rows(tp_data, tp_fields, "TPEx")):
+    for code, nm, dt, clauses, mkt, raw in (parse_notice_rows(tw_data, tw_fields, "TWSE")
+                                            + parse_notice_rows(tp_data, tp_fields, "TPEx")):
         byd[code][dt] |= clauses
         name[code] = nm
         market[code] = mkt
+        if raw and (code not in latest or dt >= latest[code]["date"]):
+            latest[code] = {"date": dt, "text": raw}
     ok = tw_ok and tp_ok and _schema_ok(tw_data, tw_fields) and _schema_ok(tp_data, tp_fields)
-    return byd, name, market, ok
+    return byd, name, market, latest, ok
 
 
 def _fetch_disposition_periods(bdays: int) -> tuple:
-    """回 ({code: [(start,end)...]}, ok)。含上市＋上櫃。"""
+    """回 (periods, detail, ok)。periods={code:[(start,end)...]}；
+    detail={code:[{start,end,level,measure}...]}（供處置中明細表）。含上市＋上櫃。"""
     from collections import defaultdict
-    out: dict = defaultdict(list)
+    periods: dict = defaultdict(list)
+    detail: dict = defaultdict(list)
     gsd, ged = _greg_range(bdays)
     tw_data, tw_fields, tw_ok = _get_json(_TWSE_PUNISH, {"startDate": gsd, "endDate": ged, "response": "json"})
     rsd, red = _roc_range(bdays)
     tp_data, tp_fields, tp_ok = _get_json(_TPEX_DISPOSAL, {"startDate": rsd, "endDate": red, "response": "json"})
-    for code, period in parse_disposal_rows(tw_data, tw_fields) + parse_disposal_rows(tp_data, tp_fields):
-        out[code].append(period)
+    for code, start, end, level, measure in (parse_disposal_rows(tw_data, tw_fields)
+                                             + parse_disposal_rows(tp_data, tp_fields)):
+        periods[code].append((start, end))
+        detail[code].append({"start": start, "end": end, "level": level, "measure": measure})
     ok = tw_ok and tp_ok and _schema_ok(tw_data, tw_fields) and _schema_ok(tp_data, tp_fields)
-    return out, ok
+    return periods, detail, ok
 
 
 def _hovering_stats(byd: dict, dstarts_dends: list, calendar: list, window_days: int) -> dict:
@@ -355,8 +386,8 @@ def compute_radar(bdays: int = 30, today: str | None = None) -> dict:
         return hit
 
     cal, cal_ok = _trading_calendar(max(35, bdays + 5))
-    byd_by_code, name, market, att_ok = _fetch_attention_history(bdays)
-    periods, disp_ok = _fetch_disposition_periods(bdays)
+    byd_by_code, name, market, latest_notice, att_ok = _fetch_attention_history(bdays)
+    periods, disp_detail, disp_ok = _fetch_disposition_periods(bdays)
 
     # 交易日曆用聯集：TAIEX 常延遲一天，直接用 TAIEX 會漏掉「當天」注意（正是要預警那天）。
     # 只併注意日期（皆 ≤ today 的觀測日）；不可併處置未來 end 日，否則日曆尾端跑到未來、
@@ -397,8 +428,31 @@ def compute_radar(bdays: int = 30, today: str | None = None) -> dict:
             "reasons": res["reasons"], "counts": res["counts"],
             "last_disp_end": last_end.get(code), "hovering": hov,
             "last_disp_start": last_period.get(code, (None, None))[0],
+            "latest_notice": latest_notice.get(code),
         })
     candidates.sort(key=lambda x: (x["distance"], x["code"]))
+
+    # 處置中明細：取每檔「涵蓋 today」的處置期（出關日、措施、等級），附觸發時注意數字與可能再處置
+    in_disposition = []
+    for code in sorted(disposed_or_pending):
+        recs = disp_detail.get(code, [])
+        active = None
+        for r in recs:
+            if r["start"] <= today <= r["end"] or r["start"] > today:   # 進行中 或 已公告未生效
+                if active is None or r["end"] > active["end"]:
+                    active = r
+        if active is None:
+            active = max(recs, key=lambda r: r["end"], default={"start": None, "end": None,
+                                                                "level": "處置中", "measure": ""})
+        past_cnt = sum(1 for r in recs if r["end"] < today)     # 近期已結束處置次數
+        re_risk = ("加重" in active["level"]) or past_cnt >= 1
+        in_disposition.append({
+            "code": code, "name": name.get(code, ""), "market": market.get(code, ""),
+            "start": active["start"], "end": active["end"], "level": active["level"],
+            "measure": active["measure"], "latest_notice": latest_notice.get(code),
+            "prior_disposals": past_cnt, "re_risk": bool(re_risk),
+            "pending": bool(active["start"] and active["start"] > today),
+        })
 
     tier_n = {"red": 0, "orange": 0, "yellow": 0}
     for c in candidates:
@@ -417,12 +471,12 @@ def compute_radar(bdays: int = 30, today: str | None = None) -> dict:
         "calendar_last": calendar[-1] if calendar else None,
         "candidates": candidates,
         "rising": rising,
-        "in_disposition": sorted(disposed_or_pending),
+        "in_disposition": in_disposition,
         "degraded": degraded,
         "sources": {"calendar": cal_ok, "attention": att_ok, "disposition": disp_ok},
         "stats": {"candidates": len(candidates), **tier_n,
                   "rising": len(rising),
-                  "in_disposition": len(disposed_or_pending)},
+                  "in_disposition": len(in_disposition)},
     }
     if degraded:                 # 失敗不快取，下次重試（遵 cache 原則）
         return result
@@ -547,6 +601,65 @@ def stock_aftermath(code: str, trigger_date: str, horizons=(1, 3, 5, 10)) -> dic
     out = {"code": code, "trigger": trigger_date, "available": True,
            "prev_date": closes[prev_i][0], "prev_close": base, "points": points}
     return _store(key, out)
+
+
+def _slope_pct_per_day(closes: list) -> tuple:
+    """近 N 日收盤線性回歸斜率 → (%/日, 文字標籤)。用最小平方、不依賴 numpy。"""
+    ys = [float(c) for c in closes if c]
+    n = len(ys)
+    if n < 5:
+        return None, "資料不足"
+    xs = list(range(n))
+    sx, sy = sum(xs), sum(ys)
+    sxx = sum(x * x for x in xs)
+    sxy = sum(x * y for x, y in zip(xs, ys))
+    denom = n * sxx - sx * sx
+    if denom == 0:
+        return None, "資料不足"
+    slope = (n * sxy - sx * sy) / denom
+    mean = sy / n
+    pct = round(slope / mean * 100, 2) if mean else 0.0
+    label = ("陡升" if pct >= 0.5 else "緩升" if pct >= 0.1 else
+             "走平" if pct > -0.1 else "緩跌" if pct > -0.5 else "陡跌")
+    return pct, label
+
+
+def stock_intraday(code: str, market: str = "") -> dict:
+    """個股當日 1 分 K 走勢 + 現價 + 漲跌幅（對昨收）+ 近20日月斜率（純揭露）。"""
+    code = re.sub(r"\.TW[O]?$", "", str(code or "").strip().upper())
+    suffix = ".TWO" if str(market).upper() == "TPEX" else ".TW"
+    symbol = f"{code}{suffix}"
+    out = {"code": code, "available": False, "series": []}
+    try:
+        from quote_provider import get_quote_provider
+        qp = get_quote_provider()
+        intr = qp.get_history(symbol, period_days=1, interval="1m")
+        daily = qp.get_history(symbol, period_days=40, interval="1d")
+    except Exception as e:
+        logger.debug("[disposition_radar] intraday 取價失敗 %s: %s", code, e)
+        return out
+    series, last = [], None
+    if intr is not None and not intr.empty:
+        idf = intr.dropna(subset=["close"])
+        for ts, row in idf.iterrows():
+            t = ts.strftime("%H:%M") if hasattr(ts, "strftime") else str(ts)[-8:-3]
+            series.append({"t": t, "c": round(float(row["close"]), 2)})
+        if series:
+            last = series[-1]["c"]
+    prev_close = slope_pct = slope_label = None
+    if daily is not None and not daily.empty:
+        dcloses = [float(x) for x in daily["close"].dropna().tolist()]
+        if len(dcloses) >= 2:
+            prev_close = dcloses[-2]
+            if last is None:
+                last = dcloses[-1]
+        slope_pct, slope_label = _slope_pct_per_day(dcloses[-20:])
+    if last is None:
+        return out
+    change_pct = round((last / prev_close - 1) * 100, 2) if prev_close else None
+    return {"code": code, "available": True, "last": last, "prev_close": prev_close,
+            "change_pct": change_pct, "slope_pct_per_day": slope_pct,
+            "slope_label": slope_label, "series": series}
 
 
 # ── 每日 Telegram 推播：新進「再1次就處置」 ─────────────────

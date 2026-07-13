@@ -32,3 +32,13 @@ def get_disposition_aftermath(code: str, trigger: str):
     if not code or not trigger:
         return {"available": False, "error": "empty_code_or_trigger"}
     return stock_aftermath(code, trigger.strip())
+
+
+@router.get("/api/disposition/intraday")
+def get_disposition_intraday(code: str, market: str = ""):
+    """個股當日 1 分 K 走勢 + 現價 + 漲跌幅 + 近20日月斜率（純揭露）。"""
+    from disposition_radar import stock_intraday
+    code = (code or "").strip()
+    if not code:
+        return {"available": False, "error": "empty_code"}
+    return stock_intraday(code, market.strip())

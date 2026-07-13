@@ -45,7 +45,7 @@ def load_attention():
     for url, quarters, market in ranges:
         for sd, ed in quarters:
             data, fields = _fetch(url, sd, ed)
-            for code, _nm, dt, clauses, _mkt in dr.parse_notice_rows(data, fields, market):
+            for code, _nm, dt, clauses, _mkt, _raw in dr.parse_notice_rows(data, fields, market):
                 att[code][dt] |= clauses
     return att
 
@@ -55,8 +55,8 @@ def load_dispositions():
     for url, quarters in [(dr._TWSE_PUNISH, QUARTERS_GREG), (dr._TPEX_DISPOSAL, QUARTERS_ROC)]:
         for sd, ed in quarters:
             data, fields = _fetch(url, sd, ed)
-            for code, period in dr.parse_disposal_rows(data, fields):
-                disp[code].append(period)
+            for code, start, end, _level, _measure in dr.parse_disposal_rows(data, fields):
+                disp[code].append((start, end))
     return disp
 
 

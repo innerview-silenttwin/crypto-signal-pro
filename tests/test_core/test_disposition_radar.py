@@ -121,8 +121,11 @@ def _radar_stubs(monkeypatch, byd, name, market, periods, att_ok=True, disp_ok=T
                  cal_ok=True, cal=None):
     cal = cal or _cal([f"2026-07-{d:02d}" for d in (1, 2, 3, 6, 7)])
     monkeypatch.setattr(dr, "_trading_calendar", lambda n=40: (cal, cal_ok))
-    monkeypatch.setattr(dr, "_fetch_attention_history", lambda bdays: (byd, name, market, att_ok))
-    monkeypatch.setattr(dr, "_fetch_disposition_periods", lambda bdays: (periods, disp_ok))
+    monkeypatch.setattr(dr, "_fetch_attention_history", lambda bdays: (byd, name, market, {}, att_ok))
+    # 由 periods 合成 detail（level/measure 空即可）供處置中明細
+    detail = {c: [{"start": s, "end": e, "level": "處置中", "measure": ""} for s, e in pl]
+              for c, pl in periods.items()}
+    monkeypatch.setattr(dr, "_fetch_disposition_periods", lambda bdays: (periods, detail, disp_ok))
     dr._cache.clear()
 
 
@@ -136,7 +139,7 @@ def test_compute_radar_excludes_active_disposition(monkeypatch):
                  {"2222": [("2026-07-01", "2026-07-14")]})          # 涵蓋 today
     out = dr.compute_radar(today="2026-07-07")
     assert [c["code"] for c in out["candidates"]] == ["1111"]
-    assert out["in_disposition"] == ["2222"]
+    assert [d["code"] for d in out["in_disposition"]] == ["2222"]
     assert out["candidates"][0]["distance"] == 1
     assert out["stats"]["red"] == 1
     assert out["degraded"] is False
@@ -150,8 +153,30 @@ def test_compute_radar_future_disposition_not_vanish(monkeypatch):
                  {"3333": "丙股"}, {"3333": "TWSE"},
                  {"3333": [("2026-07-08", "2026-07-21")]})          # start>today(07-07)
     out = dr.compute_radar(today="2026-07-07")
-    assert out["in_disposition"] == ["3333"]                        # 有被surface
+    assert [d["code"] for d in out["in_disposition"]] == ["3333"]   # 有被surface
+    assert out["in_disposition"][0]["pending"] is True              # 已公告未生效
     assert [c["code"] for c in out["candidates"]] == []             # 不在候選、但沒消失
+
+
+def test_compute_radar_in_disposition_detail(monkeypatch):
+    """處置中明細：帶等級/措施原文/出關日/可能再處置（加重 or 近期曾處置）。"""
+    cal = _cal([f"2026-07-{d:02d}" for d in (1, 2, 3, 6, 7)])
+    monkeypatch.setattr(dr, "_trading_calendar", lambda n=40: (cal, True))
+    monkeypatch.setattr(dr, "_fetch_attention_history", lambda bdays: (
+        {"2222": {"2026-07-06": {1}}}, {"2222": "乙股"}, {"2222": "TWSE"},
+        {"2222": {"date": "2026-07-06", "text": "累積漲幅達40%(第一款)"}}, True))
+    monkeypatch.setattr(dr, "_fetch_disposition_periods", lambda bdays: (
+        {"2222": [("2026-06-10", "2026-06-23"), ("2026-07-01", "2026-07-14")]},
+        {"2222": [{"start": "2026-06-10", "end": "2026-06-23", "level": "第一次(約5分盤)", "measure": "五分鐘"},
+                  {"start": "2026-07-01", "end": "2026-07-14", "level": "加重(約20分盤)", "measure": "二十分鐘全額預收"}]},
+        True))
+    dr._cache.clear()
+    out = dr.compute_radar(today="2026-07-07")
+    d = out["in_disposition"][0]
+    assert d["code"] == "2222" and d["end"] == "2026-07-14"     # 取涵蓋 today 的期
+    assert d["level"] == "加重(約20分盤)" and "全額預收" in d["measure"]
+    assert d["re_risk"] is True                                  # 加重 + 近期曾處置
+    assert d["latest_notice"]["text"].startswith("累積漲幅")
 
 
 def test_compute_radar_past_disposition_resets_but_keeps_fresh(monkeypatch):
@@ -320,20 +345,25 @@ def test_parse_notice_rows_by_field_header():
         [3, "1234"],                                                     # 短列→略過
     ]
     out = dr.parse_notice_rows(data, fields, "TWSE")
-    assert out == [("2330", "台積電", "2026-07-07", {1}, "TWSE")]
+    assert out == [("2330", "台積電", "2026-07-07", {1}, "TWSE",
+                    "最近六個營業日累積漲幅達40%（第一款）")]      # 第6元素=原文(含數字)
 
-    # 欄序被打亂（代號移到後面）仍正確
+    # 欄序被打亂（代號移到後面）仍正確；<br> 清成換行
     fields2 = ["日期", "證券名稱", "證券代號", "注意交易資訊"]
-    data2 = [["115/07/07", "聯電", "2303", "累積漲幅（第一款）且週轉率（第四款）"]]
+    data2 = [["115/07/07", "聯電", "2303", "累積漲幅（第一款）<br>週轉率（第四款）"]]
     out2 = dr.parse_notice_rows(data2, fields2, "TWSE")
-    assert out2 == [("2303", "聯電", "2026-07-07", {1, 4}, "TWSE")]
+    assert out2[0][:5] == ("2303", "聯電", "2026-07-07", {1, 4}, "TWSE")
+    assert out2[0][5] == "累積漲幅（第一款）\n週轉率（第四款）"
 
 
 def test_parse_disposal_rows_by_field_header():
     """處置期間欄位『起迄』vs『起訖』用字不同也要抓到。"""
-    fields_tw = ["編號", "公布日期", "證券代號", "證券名稱", "累計", "處置條件", "處置起迄時間"]
-    data_tw = [[1, "115/07/06", "6488", "環球晶", 2, "連續", "115/07/07～115/07/20"]]
-    assert dr.parse_disposal_rows(data_tw, fields_tw) == [("6488", ("2026-07-07", "2026-07-20"))]
-    fields_tp = ["編號", "公布日期", "證券代號", "證券名稱", "累計", "處置起訖時間"]  # 訖
-    data_tp = [[1, "115/07/06", "6182", "合晶", 2, "115/07/07~115/07/20"]]
-    assert dr.parse_disposal_rows(data_tp, fields_tp) == [("6182", ("2026-07-07", "2026-07-20"))]
+    fields_tw = ["編號", "公布日期", "證券代號", "證券名稱", "累計", "處置起迄時間", "處置內容"]
+    data_tw = [[1, "115/07/06", "6488", "環球晶", 2, "115/07/07～115/07/20", "約每二十分鐘撮合一次"]]
+    row = dr.parse_disposal_rows(data_tw, fields_tw)[0]
+    assert row[0] == "6488" and row[1] == "2026-07-07" and row[2] == "2026-07-20"
+    assert row[3] == "加重(約20分盤)"                       # 由「二十分鐘」判等級
+    fields_tp = ["編號", "公布日期", "證券代號", "證券名稱", "累計", "處置起訖時間", "處置內容"]  # 訖
+    data_tp = [[1, "115/07/06", "6182", "合晶", 1, "115/07/07~115/07/20", "約每五分鐘撮合一次"]]
+    row2 = dr.parse_disposal_rows(data_tp, fields_tp)[0]
+    assert row2[0] == "6182" and row2[3] == "第一次(約5分盤)"

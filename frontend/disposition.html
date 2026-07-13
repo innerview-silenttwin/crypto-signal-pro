@@ -6,6 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>處置雷達 | CryptoSignal Pro</title>
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script>
         (function () {
             var t = localStorage.getItem('csp-theme') || 'kawaii';
@@ -104,6 +105,27 @@
         const TIER = { red: { cls: 'red', label: '🔴 再1次' }, orange: { cls: 'orange', label: '🟠 接近' }, yellow: { cls: 'yellow', label: '🟡 觀察' } };
         const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
+        // 規則門檻（與後端 disposition_radar 常數一致；達任一即處置）
+        const RULE_ROWS = [
+            ['連續第一款(漲跌幅)', 'consec_first', 3, '天'],
+            ['連續1-8款', 'consec_18', 5, '天'],
+            ['10日內1-8款', 'in10', 6, '次'],
+            ['30日內1-8款', 'in30', 12, '次'],
+        ];
+        function ruleTooltip(c) {
+            const lines = [];
+            const ln = c.latest_notice;
+            if (ln && ln.text) lines.push(`【最新注意 ${ln.date}】\n${ln.text}`, '');
+            lines.push('距處置規則（達任一即處置）：');
+            const ct = c.counts || {};
+            RULE_ROWS.forEach(([label, key, th, unit]) => {
+                const cur = ct[key] || 0;
+                const mark = cur >= th ? '✅已達' : (cur >= 1 ? `再${th - cur}${unit}` : '—');
+                lines.push(`・${label}：目前 ${cur}${unit} / 門檻 ${th}${unit}（${mark}）`);
+            });
+            return lines.join('\n');
+        }
+
         function reasonHtml(reasons) {
             // reliable 由後端判定（規則本身的性質，不在前端硬編），避免規則調整後前後端不同步
             return (reasons || []).map(r => {
@@ -144,6 +166,32 @@
             }
         }
 
+        async function loadIntraday(c, cell) {
+            cell.innerHTML = '<span class="dr-muted">載入當日走勢…</span>';
+            try {
+                const r = await fetch(`/api/disposition/intraday?code=${encodeURIComponent(c.code)}&market=${encodeURIComponent(c.market || '')}`);
+                const d = await r.json();
+                if (!d.available) { cell.innerHTML = '<div class="dr-sub">📈 當日走勢：取價失敗或無資料。</div>'; return; }
+                const slope = d.slope_pct_per_day != null ? `${signed(d.slope_pct_per_day, '%')}/日（${esc(d.slope_label)}）` : '<span class="dr-muted">—</span>';
+                cell.innerHTML = `<div class="dr-sub" style="margin:4px 0 6px"><b>📈 當日走勢</b>　現價 <b>${esc(d.last)}</b>　漲跌 ${signed(d.change_pct, '%')}（昨收 ${esc(d.prev_close)}）　月斜率 ${slope}</div>
+                    <div style="height:150px;position:relative"><canvas></canvas></div>`;
+                if (typeof Chart === 'undefined' || !d.series.length) return;
+                const up = (d.change_pct || 0) >= 0;
+                new Chart(cell.querySelector('canvas'), {
+                    type: 'line',
+                    data: {
+                        labels: d.series.map(p => p.t),
+                        datasets: [{ data: d.series.map(p => p.c), borderColor: up ? '#16a34a' : '#ef4444', borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0.1 }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false, animation: false,
+                        plugins: { legend: { display: false } },
+                        scales: { x: { ticks: { maxTicksLimit: 6, font: { size: 10 } } }, y: { ticks: { font: { size: 10 } } } }
+                    }
+                });
+            } catch (e) { cell.innerHTML = '<div class="dr-sub">📈 當日走勢：載入失敗。</div>'; }
+        }
+
         async function loadAftermath(c, cell) {
             if (!c.last_disp_start) {
                 cell.innerHTML = '<div class="dr-sub">📉 上次處置後走勢：此檔近期無前次處置紀錄可參考（首次接近）。</div>';
@@ -161,6 +209,55 @@
                     <div class="dr-chipgrid">${cells}</div>
                     <div class="dr-sub" style="margin-top:6px">正=漲、負=跌；若當時放空這段報酬≈相反號。過去表現不代表未來、僅供觀察。</div>`;
             } catch (e) { cell.innerHTML = '<div class="dr-sub">📉 上次處置後走勢：載入失敗。</div>'; }
+        }
+
+        function renderInDisposition(ip) {
+            const host = document.getElementById('inproc');
+            if (!ip.length) { host.innerHTML = ''; return; }
+            host.innerHTML = `
+                <div class="dr-card" style="padding:14px 16px">
+                    <div class="dr-title" style="font-size:16px">🔒 目前處置中（${ip.length} 檔，已排除於上表）</div>
+                    <div class="dr-sub">分盤撮合＋預收款券中；點列看當日走勢與籌碼、滑鼠移到「措施/觸發」看細節。</div>
+                    <div class="dr-scroll"><table class="dr-tbl">
+                        <thead><tr><th>等級</th><th>代號</th><th>名稱</th><th>市場</th><th>出關日</th><th>狀態</th><th>措施/觸發</th><th>再處置</th><th></th></tr></thead>
+                        <tbody></tbody>
+                    </table></div>
+                </div>`;
+            const tb = host.querySelector('tbody');
+            ip.forEach(d => {
+                const lv = d.level && d.level.indexOf('加重') >= 0
+                    ? '<span class="badge" style="background:rgba(239,68,68,.15);color:#ef4444">加重20分</span>'
+                    : (d.level && d.level.indexOf('第一次') >= 0
+                        ? '<span class="badge" style="background:rgba(245,158,11,.15);color:#f59e0b">第一次5分</span>'
+                        : '<span class="dr-muted">處置中</span>');
+                const status = d.pending ? '<span class="dr-muted">即將生效</span>' : '進行中';
+                const tip = [d.measure ? `【目前處置措施】\n${d.measure}` : '',
+                             (d.latest_notice && d.latest_notice.text) ? `\n【進處置時最新注意數字】\n${d.latest_notice.text}` : '']
+                            .join('').trim();
+                const rerisk = d.re_risk
+                    ? `<span class="badge" style="background:rgba(239,68,68,.12);color:#ef4444" title="加重處置或近30日曾處置，解除後仍易再犯">⚠️ 偏高${d.prior_disposals ? '(前' + esc(d.prior_disposals) + '次)' : ''}</span>`
+                    : '<span class="dr-muted">一般</span>';
+                const tr = document.createElement('tr');
+                tr.className = 'main';
+                tr.innerHTML = `<td>${lv}</td><td><b>${esc(d.code)}</b></td><td>${esc(d.name)}</td>
+                    <td class="dr-muted">${esc(d.market)}</td><td><b>${esc(d.end || '—')}</b></td><td>${status}</td>
+                    <td class="dr-reason" title="${esc(tip)}"><span class="dr-muted" style="cursor:help">ℹ️ 看細節</span></td>
+                    <td>${rerisk}</td><td class="dr-muted">▾</td>`;
+                const det = document.createElement('tr');
+                det.style.display = 'none';
+                det.innerHTML = `<td colspan="9"><div class="dr-intraday-slot"></div><div class="dr-chip-slot"></div></td>`;
+                let loaded = false;
+                tr.onclick = () => {
+                    const open = det.style.display === 'none';
+                    det.style.display = open ? '' : 'none';
+                    if (open && !loaded) {
+                        loaded = true;
+                        loadIntraday(d, det.querySelector('.dr-intraday-slot'));
+                        loadChip(d.code, det.querySelector('.dr-chip-slot'));
+                    }
+                };
+                tb.appendChild(tr); tb.appendChild(det);
+            });
         }
 
         function render(data) {
@@ -192,20 +289,21 @@
                     tr.innerHTML = `<td><span class="badge ${t.cls}">${t.label}</span>${spy}</td>
                         <td><b>${esc(c.code)}</b></td><td>${esc(c.name)}</td><td class="dr-muted">${esc(c.market)}</td>
                         <td><b>${esc(c.distance)}</b></td>
-                        <td class="dr-reason">${reasonHtml(c.reasons)}　${hov}</td>
+                        <td class="dr-reason" title="${esc(ruleTooltip(c))}">${reasonHtml(c.reasons)} <span class="dr-muted" style="cursor:help">ℹ️</span>　${hov}</td>
                         <td class="dr-muted">▾ 籌碼</td>`;
                     const det = document.createElement('tr');
                     det.className = 'dr-detail';
                     det.style.display = 'none';
-                    det.innerHTML = `<td colspan="7"><div class="dr-after-slot"></div><div class="dr-chip-slot"></div></td>`;
+                    det.innerHTML = `<td colspan="7"><div class="dr-intraday-slot"></div><div class="dr-after-slot"></div><div class="dr-chip-slot"></div></td>`;
                     let loaded = false;
                     tr.onclick = () => {
                         const open = det.style.display === 'none';
                         det.style.display = open ? '' : 'none';
                         if (open && !loaded) {
                             loaded = true;
-                            loadChip(c.code, det.querySelector('.dr-chip-slot'));
+                            loadIntraday(c, det.querySelector('.dr-intraday-slot'));
                             loadAftermath(c, det.querySelector('.dr-after-slot'));
+                            loadChip(c.code, det.querySelector('.dr-chip-slot'));
                         }
                     };
                     tb.appendChild(tr); tb.appendChild(det);
@@ -226,10 +324,7 @@
                     </table></div>
                 </div>` : '';
 
-            const ip = data.in_disposition || [];
-            document.getElementById('inproc').innerHTML = ip.length
-                ? `<details class="dr-inproc"><summary>目前已在處置中（${ip.length} 檔，已排除於上表）</summary>${ip.map(esc).join('、')}</details>`
-                : '';
+            renderInDisposition(data.in_disposition || []);
             document.getElementById('asof').textContent = `資料日 ${data.as_of || '?'}（交易日 ${data.calendar_last || '?'}）· 資料源 TWSE/TPEx 公告 + FinMind`;
         }
 
