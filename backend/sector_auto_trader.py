@@ -29,6 +29,7 @@ from typing import Dict, Optional
 import numpy as np
 import pandas as pd
 import pytz
+import requests
 from quote_provider import get_quote_provider
 
 logger = logging.getLogger(__name__)
@@ -177,15 +178,55 @@ def fetch_latest_price(symbol: str) -> Optional[float]:
 _live_price_cache: Dict[str, dict] = {}
 LIVE_PRICE_TTL = 30
 
+# 除權息參考價（per-symbol 當日快取）；除息日昨收=除息前價，不能當 ±10%/漲停基準
+_FINMIND = "https://api.finmindtrade.com/api/v4/data"
+_div_ref_cache: Dict[str, dict] = {}
 
-def fetch_live_price(symbol: str, prev_close: Optional[float] = None) -> Optional[float]:
+
+def _ex_dividend_ref(symbol: str, prev_date: str, cur_date: str) -> Optional[float]:
+    """若最新交易日相對前一日之間發生除權息（含遇假日順延），回除息參考價(after_price)。
+
+    否則 None。用途：除息生效日「昨收」是除息前價（偏高），會讓 ±10% 合理性防護與
+    漲停偵測誤判（例：3034 除息 542→參考519、實價467.5 對 542 為 -13.7% 被當異常）。
+    以除息參考價當基準即可正確判斷。資料源 FinMind TaiwanStockDividendResult。
+    """
+    code = symbol.replace(".TWO", "").replace(".TW", "").strip()
+    if not code.isdigit():
+        return None
+    c = _div_ref_cache.get(code)
+    if not c or c["day"] != cur_date:
+        try:
+            start = (datetime.strptime(cur_date, "%Y-%m-%d") - timedelta(days=30)).strftime("%Y-%m-%d")
+            j = requests.get(_FINMIND, params={"dataset": "TaiwanStockDividendResult",
+                                               "data_id": code, "start_date": start}, timeout=8).json()
+        except Exception as e:
+            logger.debug("除息資料取得失敗 %s: %s", code, e)
+            return None                                    # 失敗不快取、下次重試（勿 silent stale）
+        if j.get("msg") != "success":
+            return None
+        c = _div_ref_cache[code] = {"day": cur_date, "records": j.get("data") or []}
+    for rec in c["records"]:
+        exd = rec.get("date")
+        if exd and prev_date < exd <= cur_date:           # 除息生效落在(前一交易日, 最新交易日]
+            try:
+                ref = float(rec.get("after_price") or 0)
+                if ref > 0:
+                    return ref
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def fetch_live_price(symbol: str, prev_close: Optional[float] = None,
+                     alt_ref_fn=None) -> Optional[float]:
     """取得盤中即時成交價（1m K 最後一根 close）。
 
     yfinance daily candle 在盤中會延遲/快取，漲停或低成交標的特別容易抓到舊值。
     1m K 線是真實逐筆成交，用來作交易執行價較可靠。
 
-    若提供 prev_close，會檢查價格是否在昨收 ±10%（台股漲跌停限制）內，
-    超出代表 1m 資料異常，回傳 None。
+    若提供 prev_close，會檢查價格是否在昨收 ±10%（台股漲跌停限制）內，超出代表 1m 資料異常。
+    alt_ref_fn：僅在價格「超出 prev_close ±10%」時才呼叫（回除權息參考價）——除息日昨收偏高
+    會誤判正常價為異常，用參考價再驗一次；懶惰呼叫確保正常情況零額外網路。
     """
     now = time.time()
     cached = _live_price_cache.get(symbol)
@@ -202,12 +243,15 @@ def fetch_live_price(symbol: str, prev_close: Optional[float] = None) -> Optiona
         price = float(df['close'].iloc[-1])
 
         # 合理性檢查：±10% 漲跌停範圍
-        if prev_close and prev_close > 0:
-            if not (prev_close * 0.89 <= price <= prev_close * 1.11):
+        if prev_close and prev_close > 0 and not (prev_close * 0.89 <= price <= prev_close * 1.11):
+            alt = alt_ref_fn() if alt_ref_fn else None    # 只有異常時才查除息（省網路）
+            if not (alt and alt > 0 and alt * 0.89 <= price <= alt * 1.11):
+                base = alt if alt else prev_close
                 logger.warning(
-                    f"{symbol} 1m 即時價 {price:.2f} 超出昨收 {prev_close:.2f} ±10%，疑似異常"
+                    f"{symbol} 1m 即時價 {price:.2f} 超出基準 {base:.2f} ±10%，疑似異常"
                 )
                 return None
+            logger.info(f"{symbol} 除權息參考價 {alt:.2f}：即時價 {price:.2f} 屬正常波動（昨收 {prev_close:.2f}）")
 
         _live_price_cache[symbol] = {"price": price, "time": now}
         return price
@@ -803,10 +847,18 @@ def process_sector(manager: SectorTradingManager):
         # 收盤後：用 daily close
         daily_price = float(df['close'].iloc[-1])
         prev_close = float(df['close'].iloc[-2]) if len(df) >= 2 else None
+        # 除權息生效日「昨收」=除息前價（偏高），會讓 ±10% 合理性防護誤判正常價為異常。
+        # 懶惰查除息參考價：只有價格真的超出昨收 ±10% 時才打 FinMind（正常情況零額外網路）。
+        _ex_ref_fn = None
+        if prev_close and len(df) >= 2:
+            _pd, _cd = df.index[-2], df.index[-1]
+            _pds = _pd.strftime("%Y-%m-%d") if hasattr(_pd, 'strftime') else str(_pd)[:10]
+            _cds = _cd.strftime("%Y-%m-%d") if hasattr(_cd, 'strftime') else str(_cd)[:10]
+            _ex_ref_fn = lambda: _ex_dividend_ref(symbol, _pds, _cds)  # noqa: E731
         price = daily_price
         live = None
         if is_market_hours:
-            live = fetch_live_price(symbol, prev_close=prev_close)
+            live = fetch_live_price(symbol, prev_close=prev_close, alt_ref_fn=_ex_ref_fn)
             if live is not None:
                 price = live
 
@@ -833,6 +885,7 @@ def process_sector(manager: SectorTradingManager):
                 continue
 
         # ── 漲停偵測：漲幅 ≥9.5% 不買入（實務上漲停板買不到） ──
+        # 用 prev_close；除息日漲停會「低估」(基準偏高→算出漲幅偏小)屬罕見小邊際、不誤買為主
         _is_limit_up = False
         if prev_close and prev_close > 0 and price >= prev_close * 1.095:
             _is_limit_up = True
