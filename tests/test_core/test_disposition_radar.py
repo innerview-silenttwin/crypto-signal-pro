@@ -179,6 +179,23 @@ def test_compute_radar_in_disposition_detail(monkeypatch):
     assert d["latest_notice"]["text"].startswith("累積漲幅")
 
 
+def test_in_disposition_prefers_running_over_future(monkeypatch):
+    """同時有現行期(涵蓋today)與已公告未來期 → 顯示現行期（非即將生效、出關日為現行期）。"""
+    cal = _cal([f"2026-07-{d:02d}" for d in (1, 2, 3, 6, 7)])
+    monkeypatch.setattr(dr, "_trading_calendar", lambda n=40: (cal, True))
+    monkeypatch.setattr(dr, "_fetch_attention_history", lambda bdays: (
+        {"5555": {"2026-07-06": {1}}}, {"5555": "戊股"}, {"5555": "TWSE"}, {}, True))
+    monkeypatch.setattr(dr, "_fetch_disposition_periods", lambda bdays: (
+        {"5555": [("2026-07-01", "2026-07-14"), ("2026-07-20", "2026-08-02")]},
+        {"5555": [{"start": "2026-07-01", "end": "2026-07-14", "level": "第一次(約5分盤)", "measure": "五分鐘"},
+                  {"start": "2026-07-20", "end": "2026-08-02", "level": "加重(約20分盤)", "measure": "二十分鐘"}]},
+        True))
+    dr._cache.clear()
+    d = dr.compute_radar(today="2026-07-07")["in_disposition"][0]
+    assert d["end"] == "2026-07-14"       # 現行期出關日，非未來期 08-02
+    assert d["pending"] is False          # 進行中、非即將生效
+
+
 def test_compute_radar_past_disposition_resets_but_keeps_fresh(monkeypatch):
     """已結束的處置（end<today）重置計數，但處置後新累積的注意仍算。"""
     cal = _cal([f"2026-07-{d:02d}" for d in (1, 2, 3, 6, 7)])

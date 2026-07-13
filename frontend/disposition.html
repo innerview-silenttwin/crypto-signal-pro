@@ -176,12 +176,14 @@
                 cell.innerHTML = `<div class="dr-sub" style="margin:4px 0 6px"><b>📈 當日走勢</b>　現價 <b>${esc(d.last)}</b>　漲跌 ${signed(d.change_pct, '%')}（昨收 ${esc(d.prev_close)}）　月斜率 ${slope}</div>
                     <div style="height:150px;position:relative"><canvas></canvas></div>`;
                 if (typeof Chart === 'undefined' || !d.series.length) return;
-                const up = (d.change_pct || 0) >= 0;
+                // 漲跌未知(null)或持平 → 中性灰，不誤導成綠(漲)
+                const chg = d.change_pct;
+                const color = chg == null ? '#9ca3af' : (chg > 0 ? '#16a34a' : (chg < 0 ? '#ef4444' : '#9ca3af'));
                 new Chart(cell.querySelector('canvas'), {
                     type: 'line',
                     data: {
                         labels: d.series.map(p => p.t),
-                        datasets: [{ data: d.series.map(p => p.c), borderColor: up ? '#16a34a' : '#ef4444', borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0.1 }]
+                        datasets: [{ data: d.series.map(p => p.c), borderColor: color, borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0.1 }]
                     },
                     options: {
                         responsive: true, maintainAspectRatio: false, animation: false,

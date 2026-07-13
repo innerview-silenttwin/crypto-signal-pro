@@ -436,12 +436,15 @@ def compute_radar(bdays: int = 30, today: str | None = None) -> dict:
     in_disposition = []
     for code in sorted(disposed_or_pending):
         recs = disp_detail.get(code, [])
-        active = None
-        for r in recs:
-            if r["start"] <= today <= r["end"] or r["start"] > today:   # 進行中 或 已公告未生效
-                if active is None or r["end"] > active["end"]:
-                    active = r
-        if active is None:
+        # 優先取「進行中(start≤today≤end)」；沒有才退「已公告未生效(start>today)」——
+        # 否則同時有現行+未來期時會被未來期(end 較大)蓋掉、誤標即將生效且出關日錯。
+        running = [r for r in recs if r["start"] and r["start"] <= today <= r["end"]]
+        future = [r for r in recs if r["start"] and r["start"] > today]
+        if running:
+            active = max(running, key=lambda r: r["end"])
+        elif future:
+            active = min(future, key=lambda r: r["start"])      # 最近生效的那期
+        else:
             active = max(recs, key=lambda r: r["end"], default={"start": None, "end": None,
                                                                 "level": "處置中", "measure": ""})
         past_cnt = sum(1 for r in recs if r["end"] < today)     # 近期已結束處置次數
