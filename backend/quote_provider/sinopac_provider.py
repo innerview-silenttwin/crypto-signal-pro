@@ -178,7 +178,10 @@ class SinopacQuoteProvider:
         """Shioaji kbars 物件 → 標準 DataFrame。
 
         - columns: open/high/low/close/volume（小寫）
-        - index: DatetimeIndex with Asia/Taipei tz（Shioaji ts 是 UTC ns epoch）
+        - index: DatetimeIndex with Asia/Taipei tz
+        - ⚠️ Shioaji kbars.ts 是「台北牆鐘時間」編成的 ns epoch（非 UTC）。
+          先前誤當 UTC 再 +8 轉台北 → 09:01 變 17:01（處置雷達走勢圖 X 軸實證抓到）；
+          日線 resample 因 +8 後仍同一天而未被發現。正確做法：naive 解析後 localize。
         """
         try:
             data = {
@@ -189,10 +192,21 @@ class SinopacQuoteProvider:
                 "volume": list(kbars.Volume),
             }
             ts = list(kbars.ts)
-            # UTC ns epoch → tz-aware Asia/Taipei，避免下游 .astimezone 對 naive 丟 TypeError
-            idx = pd.to_datetime(ts, unit="ns", utc=True).tz_convert(_TW_TZ)
+            # naive(已是台北牆鐘) → tz-aware Asia/Taipei，避免下游 .astimezone 對 naive 丟 TypeError
+            idx = pd.to_datetime(ts, unit="ns").tz_localize(_TW_TZ)
+            # 哨兵：台股 kbars 應落在 08:30~14:05；大量落在外面＝shioaji ts 語義可能又變了
+            # （曾誤當 UTC 讓 09:01 變 17:01；若未來改真 UTC 會整體 -8h、日線仍對而 intraday 靜默錯）
+            try:
+                hhmm = idx.strftime("%H:%M")
+                n_bad = int(sum(1 for t in hhmm if not ("08:30" <= t <= "14:05")))
+                if n_bad and n_bad >= max(3, len(hhmm) // 2):
+                    logger.warning("kbars %d/%d 根落在盤中時段外（首根 %s）——疑 shioaji ts 時區語義變更，請檢查",
+                                   n_bad, len(hhmm), hhmm[0])
+            except Exception:
+                pass
             df = pd.DataFrame(data, index=idx)
             df = df.dropna(subset=["close"])
+            df.attrs["volume_unit"] = "lots"     # Shioaji kbars.Volume 單位=張（yfinance=股）
             return df
         except Exception as e:
             logger.warning("kbars_to_df failed: %s", e)

@@ -40,7 +40,10 @@ class YFinanceProvider:
             df.columns = [c.lower() for c in df.columns]
             keep = [c for c in ("open", "high", "low", "close", "volume") if c in df.columns]
             df = df[keep].dropna(subset=["close"])
-            return df if not df.empty else None
+            if df.empty:
+                return None
+            df.attrs["volume_unit"] = "shares"   # yfinance 台股 volume 單位=股（sinopac kbars=張）
+            return df
         except Exception as e:
             logger.warning("yfinance get_history(%s) failed: %s", symbol, e)
             return None

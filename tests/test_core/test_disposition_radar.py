@@ -312,6 +312,80 @@ def test_stock_aftermath_malformed_trigger_no_crash():
         assert dr.stock_aftermath("6182", bad)["available"] is False
 
 
+def test_stock_intraday_high_low_volume_session(monkeypatch):
+    """intraday：帶最高/最低/每根量；盤中時段過濾（濾掉 09:00 前與 13:30 後怪點）。"""
+    import pandas as pd
+
+    class _QP:
+        def get_history(self, symbol, period_days=1, interval="1m"):
+            if interval == "1m":
+                idx = pd.to_datetime(["2026-07-13 08:45", "2026-07-13 09:01",
+                                      "2026-07-13 13:24", "2026-07-13 17:01"]).tz_localize("Asia/Taipei")
+                return pd.DataFrame({"close": [95.0, 100.0, 104.0, 999.0],
+                                     "high": [95.5, 101.0, 106.5, 999.0],
+                                     "low": [94.0, 99.5, 103.0, 999.0],
+                                     "volume": [1000, 2000, 3000, 500]}, index=idx)
+            idx = pd.to_datetime(["2026-07-10", "2026-07-13"])
+            return pd.DataFrame({"close": [98.0, 104.0]}, index=idx)
+
+    import quote_provider
+    monkeypatch.setattr(quote_provider, "get_quote_provider", lambda: _QP())
+    d = dr.stock_intraday("1234", "TWSE")
+    assert d["available"] is True
+    assert [p["t"] for p in d["series"]] == ["09:01", "13:24"]   # 08:45 / 17:01 被濾
+    assert d["series"][0]["v"] == 2                               # yfinance 股→張(÷1000)
+    assert d["last"] == 104.0
+    # 高低價只從「盤中時段」K 棒算：盤外怪點（08:45 的 95 / 17:01 的 999）不可污染
+    assert d["day_high"] == 106.5
+    assert d["day_low"] == 99.5
+    assert d["change_pct"] == 6.12                                # 104 vs 昨收 98
+
+
+def test_stock_intraday_volume_unit_by_attrs(monkeypatch):
+    """成交量單位依 df.attrs 標記正規化成張：lots 直通、shares ÷1000。
+    關鍵情境：sinopac provider 內部 fallback yfinance 時，類名仍是 Sinopac 但資料是股——
+    必須看 attrs 不能看類名（review 抓到）。"""
+    import pandas as pd
+
+    def _mk_provider(unit, vol):
+        class SinopacQuoteProviderFake:        # 類名故意叫 Sinopac（模擬 fallback 情境）
+            def get_history(self, symbol, period_days=1, interval="1m"):
+                if interval == "1m":
+                    idx = pd.to_datetime(["2026-07-13 09:01"]).tz_localize("Asia/Taipei")
+                    df = pd.DataFrame({"close": [100.0], "high": [101.0], "low": [99.0],
+                                       "volume": [vol]}, index=idx)
+                    if unit:
+                        df.attrs["volume_unit"] = unit
+                    return df
+                idx = pd.to_datetime(["2026-07-10", "2026-07-13"])
+                return pd.DataFrame({"close": [98.0, 100.0]}, index=idx)
+        return SinopacQuoteProviderFake()
+
+    import quote_provider
+    # sinopac 原生 kbars（attrs=lots、132 張）→ 直通
+    monkeypatch.setattr(quote_provider, "get_quote_provider", lambda: _mk_provider("lots", 132))
+    assert dr.stock_intraday("1234", "TWSE")["series"][0]["v"] == 132
+    # sinopac 類名但 fallback yfinance（attrs=shares、132000 股）→ ÷1000 = 132 張
+    monkeypatch.setattr(quote_provider, "get_quote_provider", lambda: _mk_provider("shares", 132000))
+    assert dr.stock_intraday("1234", "TWSE")["series"][0]["v"] == 132
+    # 未標記 → 退回類名推斷（Sinopac 開頭 → 當張）
+    monkeypatch.setattr(quote_provider, "get_quote_provider", lambda: _mk_provider(None, 55))
+    assert dr.stock_intraday("1234", "TWSE")["series"][0]["v"] == 55
+
+
+def test_providers_tag_volume_unit():
+    """兩個 provider 的 df 都要帶 volume_unit 標記（正規化依據）。"""
+    import pandas as pd
+    from quote_provider.sinopac_provider import SinopacQuoteProvider
+
+    class _KB:
+        ts = [int(pd.Timestamp("2026-07-13 09:01:00").value)]
+        Open = [100.0]; High = [101.0]; Low = [99.0]; Close = [100.5]; Volume = [132]
+
+    df = SinopacQuoteProvider._kbars_to_df(_KB())
+    assert df.attrs.get("volume_unit") == "lots"
+
+
 def test_run_disposition_alert_dedup_and_degraded(monkeypatch, tmp_path):
     """推播：新進紅色候選才發、7天內去重、degraded 不發。"""
     import notifier

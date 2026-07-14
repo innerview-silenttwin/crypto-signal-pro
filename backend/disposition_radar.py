@@ -641,14 +641,47 @@ def stock_intraday(code: str, market: str = "") -> dict:
     except Exception as e:
         logger.debug("[disposition_radar] intraday 取價失敗 %s: %s", code, e)
         return out
-    series, last = [], None
+    series, last, day_high, day_low = [], None, None, None
     if intr is not None and not intr.empty:
         idf = intr.dropna(subset=["close"])
+        # 成交量單位正規化成「張」：Shioaji kbars.Volume 已是張、yfinance 是股(÷1000)。
+        # 兩源差 1000 倍。單位從資料的 attrs 標記讀（provider 在回傳時標）——不能只看
+        # provider 類名：sinopac 內部會 per-symbol fallback 到 yfinance（review 抓到）。
+        unit = getattr(intr, "attrs", {}).get("volume_unit")
+        if unit == "lots":
+            vol_is_lots = True
+        elif unit == "shares":
+            vol_is_lots = False
+        else:                                     # 未標記（防禦）→ 退回類名推斷
+            vol_is_lots = type(qp).__name__.startswith("Sinopac")
+
+        def _f(v):
+            try:
+                x = float(v)                          # pd.NA/None/字串 → except；NaN → 下行濾
+                return x if x == x else None
+            except (TypeError, ValueError):
+                return None
+
+        rows = []            # (t, close, volume_lots, high, low)
         for ts, row in idf.iterrows():
             t = ts.strftime("%H:%M") if hasattr(ts, "strftime") else str(ts)[-8:-3]
-            series.append({"t": t, "c": round(float(row["close"]), 2)})
+            vraw = _f(row.get("volume")) or 0.0
+            rows.append((t, round(float(row["close"]), 2),
+                         int(round(vraw if vol_is_lots else vraw / 1000)),
+                         _f(row.get("high")), _f(row.get("low"))))
+        # 只留台股盤中時段（09:00~13:30）；資料源偶帶盤後/怪點時保護 X 軸與高低價。
+        # 全被濾掉（罕見）則保留原樣。
+        in_session = [r for r in rows if "09:00" <= r[0] <= "13:30"]
+        if in_session:
+            rows = in_session
+        series = [{"t": t, "c": c, "v": v} for t, c, v, _h, _l in rows]
         if series:
             last = series[-1]["c"]
+            # 當日最高/最低：用（過濾後）1m high/low 極值；缺欄用收盤近似
+            highs = [h for _t, _c, _v, h, _l in rows if h is not None]
+            lows = [l for _t, _c, _v, _h, l in rows if l is not None]
+            day_high = round(max(highs), 2) if highs else max(p["c"] for p in series)
+            day_low = round(min(lows), 2) if lows else min(p["c"] for p in series)
     prev_close = slope_pct = slope_label = None
     if daily is not None and not daily.empty:
         dcloses = [float(x) for x in daily["close"].dropna().tolist()]
@@ -661,8 +694,8 @@ def stock_intraday(code: str, market: str = "") -> dict:
         return out
     change_pct = round((last / prev_close - 1) * 100, 2) if prev_close else None
     return {"code": code, "available": True, "last": last, "prev_close": prev_close,
-            "change_pct": change_pct, "slope_pct_per_day": slope_pct,
-            "slope_label": slope_label, "series": series}
+            "change_pct": change_pct, "day_high": day_high, "day_low": day_low,
+            "slope_pct_per_day": slope_pct, "slope_label": slope_label, "series": series}
 
 
 # ── 每日 Telegram 推播：新進「再1次就處置」 ─────────────────
