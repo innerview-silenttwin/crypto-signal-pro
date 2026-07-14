@@ -373,6 +373,32 @@ def test_stock_intraday_volume_unit_by_attrs(monkeypatch):
     assert dr.stock_intraday("1234", "TWSE")["series"][0]["v"] == 55
 
 
+def test_stock_intraday_keeps_only_last_day(monkeypatch):
+    """sinopac 1m 會回多天 K 棒 → 只留最後一個交易日（mini 實測 1567 根＝6 天串在一起）。"""
+    import pandas as pd
+
+    class _QP:
+        def get_history(self, symbol, period_days=1, interval="1m"):
+            if interval == "1m":
+                idx = pd.to_datetime(["2026-07-10 09:01", "2026-07-10 13:00",   # 前一交易日
+                                      "2026-07-13 09:01", "2026-07-13 13:00"]).tz_localize("Asia/Taipei")
+                df = pd.DataFrame({"close": [18.6, 19.0, 23.8, 24.05],
+                                   "high": [19.0, 19.2, 24.0, 24.3],
+                                   "low": [18.5, 18.9, 23.5, 23.9],
+                                   "volume": [100, 100, 200, 300]}, index=idx)
+                df.attrs["volume_unit"] = "lots"
+                return df
+            idx = pd.to_datetime(["2026-07-10", "2026-07-13"])
+            return pd.DataFrame({"close": [19.0, 24.05]}, index=idx)
+
+    import quote_provider
+    monkeypatch.setattr(quote_provider, "get_quote_provider", lambda: _QP())
+    d = dr.stock_intraday("2332", "TWSE")
+    assert len(d["series"]) == 2                       # 只剩 07-13 兩根
+    assert d["day_low"] == 23.5                        # 前一日的 18.5/18.6 不可污染當日低
+    assert d["last"] == 24.05
+
+
 def test_stock_intraday_bad_tick_high_low_clamped(monkeypatch):
     """1m high/low 壞 tick（超出昨收±11%）→ 改用收盤極值（mini 實測 sinopac low 18.6/昨收 25.95）。"""
     import pandas as pd

@@ -644,6 +644,13 @@ def stock_intraday(code: str, market: str = "") -> dict:
     series, last, day_high, day_low = [], None, None, None
     if intr is not None and not intr.empty:
         idf = intr.dropna(subset=["close"])
+        # 只留最後一個交易日：sinopac 1m 會回多天 K 棒（內部抓2+7天緩衝），
+        # 只按 HH:MM 過濾會把多天串在一起（mini 實測 1567 根＝6 天）
+        try:
+            last_day = idf.index[-1].date()
+            idf = idf[[ts.date() == last_day for ts in idf.index]]
+        except Exception:
+            pass
         # 成交量單位正規化成「張」：Shioaji kbars.Volume 已是張、yfinance 是股(÷1000)。
         # 兩源差 1000 倍。單位從資料的 attrs 標記讀（provider 在回傳時標）——不能只看
         # provider 類名：sinopac 內部會 per-symbol fallback 到 yfinance（review 抓到）。
