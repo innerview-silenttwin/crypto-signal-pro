@@ -693,6 +693,14 @@ def stock_intraday(code: str, market: str = "") -> dict:
     if last is None:
         return out
     change_pct = round((last / prev_close - 1) * 100, 2) if prev_close else None
+    # 1m high/low 欄偶有壞 tick（mini 實測 sinopac 出現低於跌停下限的 low 18.6/昨收 25.95）
+    # → 超出昨收 ±11%（漲跌停+buffer）改用收盤價極值（收盤序列可信度高於 high/low 雜點）
+    if prev_close and series:
+        closes_only = [p["c"] for p in series]
+        if day_high is not None and day_high > prev_close * 1.11:
+            day_high = max(closes_only)
+        if day_low is not None and day_low < prev_close * 0.89:
+            day_low = min(closes_only)
     return {"code": code, "available": True, "last": last, "prev_close": prev_close,
             "change_pct": change_pct, "day_high": day_high, "day_low": day_low,
             "slope_pct_per_day": slope_pct, "slope_label": slope_label, "series": series}

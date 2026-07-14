@@ -373,6 +373,29 @@ def test_stock_intraday_volume_unit_by_attrs(monkeypatch):
     assert dr.stock_intraday("1234", "TWSE")["series"][0]["v"] == 55
 
 
+def test_stock_intraday_bad_tick_high_low_clamped(monkeypatch):
+    """1m high/low 壞 tick（超出昨收±11%）→ 改用收盤極值（mini 實測 sinopac low 18.6/昨收 25.95）。"""
+    import pandas as pd
+
+    class _QP:
+        def get_history(self, symbol, period_days=1, interval="1m"):
+            if interval == "1m":
+                idx = pd.to_datetime(["2026-07-13 09:01", "2026-07-13 10:00"]).tz_localize("Asia/Taipei")
+                df = pd.DataFrame({"close": [24.0, 24.05], "high": [26.45, 24.5],
+                                   "low": [18.6, 23.9],           # 18.6 = 壞 tick（跌停下限 23.36）
+                                   "volume": [1000, 2000]}, index=idx)
+                df.attrs["volume_unit"] = "lots"
+                return df
+            idx = pd.to_datetime(["2026-07-10", "2026-07-13"])
+            return pd.DataFrame({"close": [25.95, 24.05]}, index=idx)
+
+    import quote_provider
+    monkeypatch.setattr(quote_provider, "get_quote_provider", lambda: _QP())
+    d = dr.stock_intraday("2332", "TWSE")
+    assert d["day_low"] == 24.0                             # 壞 tick 18.6 → 改用收盤極值
+    assert d["day_high"] == 26.45                           # 26.45 < 25.95*1.11=28.8 合法保留
+
+
 def test_providers_tag_volume_unit():
     """兩個 provider 的 df 都要帶 volume_unit 標記（正規化依據）。"""
     import pandas as pd
