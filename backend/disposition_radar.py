@@ -607,6 +607,38 @@ def stock_aftermath(code: str, trigger_date: str, horizons=(1, 3, 5, 10)) -> dic
     return _store(key, out)
 
 
+def _tick_size(price: float) -> float:
+    """台股普通股檔位（TWSE/TPEx 同）：<10:0.01、10-50:0.05、50-100:0.1、
+    100-500:0.5、500-1000:1、≥1000:5。"""
+    if price < 10:
+        return 0.01
+    if price < 50:
+        return 0.05
+    if price < 100:
+        return 0.10
+    if price < 500:
+        return 0.50
+    if price < 1000:
+        return 1.00
+    return 5.00
+
+
+def limit_prices(ref: float) -> tuple:
+    """由平盤價算 (漲停, 跌停)：±10% 後按檔位進位（漲停無條件捨去、跌停無條件進位）。
+
+    例 3034 除息參考價 519 → 漲停 570（570.9 捨到 1 元檔）、跌停 467.5（467.1 進到 0.5 檔）。
+    """
+    import math
+    if not ref or ref <= 0:
+        return None, None
+    raw_up = ref * 1.10
+    raw_dn = ref * 0.90
+    tu, td = _tick_size(raw_up), _tick_size(raw_dn)
+    up = math.floor(raw_up / tu + 1e-9) * tu
+    dn = math.ceil(raw_dn / td - 1e-9) * td
+    return round(up, 2), round(dn, 2)
+
+
 def _slope_pct_per_day(closes: list) -> tuple:
     """近 N 日收盤線性回歸斜率 → (%/日, 文字標籤)。用最小平方、不依賴 numpy。"""
     ys = [float(c) for c in closes if c]
@@ -728,8 +760,10 @@ def stock_intraday(code: str, market: str = "") -> dict:
             day_high = max(closes_only)
         if day_low is not None and day_low < ref_price * 0.89:
             day_low = min(closes_only)
+    limit_up, limit_down = limit_prices(ref_price) if ref_price else (None, None)
     return {"code": code, "available": True, "last": last, "prev_close": prev_close,
             "ref_price": ref_price, "ref_kind": ref_kind,
+            "limit_up": limit_up, "limit_down": limit_down,
             "change_pct": change_pct, "day_high": day_high, "day_low": day_low,
             "slope_pct_per_day": slope_pct, "slope_label": slope_label, "series": series}
 

@@ -432,6 +432,16 @@ def test_stock_intraday_bad_tick_high_low_clamped(monkeypatch):
     assert d["day_high"] == 26.45                           # 26.45 < 25.95*1.11=28.8 合法保留
 
 
+def test_limit_prices_tick_rounding():
+    """漲跌停按檔位進位：3034 除息參考價 519 → 漲停 570（570.9 捨 1 元檔）、
+    跌停 467.5（467.1 進 0.5 檔）——當天實際跌停正是 467.5。"""
+    assert dr.limit_prices(519.0) == (570.0, 467.5)
+    assert dr.limit_prices(100.0) == (110.0, 90.0)      # 平整數
+    assert dr.limit_prices(25.95) == (28.5, 23.4)       # 28.545捨0.05檔、23.355進0.05檔
+    assert dr.limit_prices(0) == (None, None)
+    assert dr.limit_prices(None) == (None, None)
+
+
 def test_stock_intraday_ex_dividend_ref_price(monkeypatch):
     """除權息生效日：平盤=除息參考價，漲跌幅/壞tick 基準隨之（3034 情境）。"""
     import pandas as pd

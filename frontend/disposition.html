@@ -189,7 +189,9 @@
                 const refTxt = d.ref_price != null
                     ? `平盤 ${esc(d.ref_price)}${exDiv ? ' <span class="badge" style="background:rgba(99,102,241,.12);color:#6366f1" title="今日除權息：平盤與漲跌停以除權息參考價計，非昨收">除權息參考價</span>' : ''}`
                     : '';
-                cell.innerHTML = `<div class="dr-sub" style="margin:4px 0 6px"><b>📈 當日走勢</b>　現價 <b>${esc(d.last)}</b>　漲跌 ${signed(d.change_pct, '%')}　${refTxt}　最高 ${hi}　最低 ${lo}　月斜率 ${slope}</div>
+                const lim = (d.limit_up != null && d.limit_down != null)
+                    ? `　<span class="pos" title="圖表上緣">漲停 ${esc(d.limit_up)}</span>　<span class="neg" title="圖表下緣">跌停 ${esc(d.limit_down)}</span>` : '';
+                cell.innerHTML = `<div class="dr-sub" style="margin:4px 0 6px"><b>📈 當日走勢</b>　現價 <b>${esc(d.last)}</b>　漲跌 ${signed(d.change_pct, '%')}　${refTxt}${lim}　最高 ${hi}　最低 ${lo}　月斜率 ${slope}</div>
                     <div style="height:150px;position:relative"><canvas></canvas></div>`;
                 if (typeof Chart === 'undefined' || !d.series.length) return;
                 // 漲跌未知(null)或持平 → 中性灰，不誤導成綠(漲)
@@ -223,7 +225,14 @@
                                 }
                             }
                         },
-                        scales: { x: { ticks: { maxTicksLimit: 6, font: { size: 10 } } }, y: { ticks: { font: { size: 10 } } } }
+                        scales: {
+                            x: { ticks: { maxTicksLimit: 6, font: { size: 10 } } },
+                            // Y 軸固定＝當日漲跌停區間（上緣漲停、下緣跌停；除權息日以參考價計），
+                            // 一眼看出價格位於允許區間的位置；無漲跌停資料時回自動縮放
+                            y: (d.limit_up != null && d.limit_down != null)
+                                ? { min: d.limit_down, max: d.limit_up, ticks: { font: { size: 10 } } }
+                                : { ticks: { font: { size: 10 } } }
+                        }
                     }
                 });
             } catch (e) { cell.innerHTML = '<div class="dr-sub">📈 當日走勢：載入失敗。</div>'; }
