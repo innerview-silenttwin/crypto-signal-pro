@@ -29,7 +29,6 @@ from typing import Dict, Optional
 import numpy as np
 import pandas as pd
 import pytz
-import requests
 from quote_provider import get_quote_provider
 
 logger = logging.getLogger(__name__)
@@ -178,43 +177,9 @@ def fetch_latest_price(symbol: str) -> Optional[float]:
 _live_price_cache: Dict[str, dict] = {}
 LIVE_PRICE_TTL = 30
 
-# 除權息參考價（per-symbol 當日快取）；除息日昨收=除息前價，不能當 ±10%/漲停基準
-_FINMIND = "https://api.finmindtrade.com/api/v4/data"
-_div_ref_cache: Dict[str, dict] = {}
-
-
-def _ex_dividend_ref(symbol: str, prev_date: str, cur_date: str) -> Optional[float]:
-    """若最新交易日相對前一日之間發生除權息（含遇假日順延），回除息參考價(after_price)。
-
-    否則 None。用途：除息生效日「昨收」是除息前價（偏高），會讓 ±10% 合理性防護與
-    漲停偵測誤判（例：3034 除息 542→參考519、實價467.5 對 542 為 -13.7% 被當異常）。
-    以除息參考價當基準即可正確判斷。資料源 FinMind TaiwanStockDividendResult。
-    """
-    code = symbol.replace(".TWO", "").replace(".TW", "").strip()
-    if not code.isdigit():
-        return None
-    c = _div_ref_cache.get(code)
-    if not c or c["day"] != cur_date:
-        try:
-            start = (datetime.strptime(cur_date, "%Y-%m-%d") - timedelta(days=30)).strftime("%Y-%m-%d")
-            j = requests.get(_FINMIND, params={"dataset": "TaiwanStockDividendResult",
-                                               "data_id": code, "start_date": start}, timeout=8).json()
-        except Exception as e:
-            logger.debug("除息資料取得失敗 %s: %s", code, e)
-            return None                                    # 失敗不快取、下次重試（勿 silent stale）
-        if j.get("msg") != "success":
-            return None
-        c = _div_ref_cache[code] = {"day": cur_date, "records": j.get("data") or []}
-    for rec in c["records"]:
-        exd = rec.get("date")
-        if exd and prev_date < exd <= cur_date:           # 除息生效落在(前一交易日, 最新交易日]
-            try:
-                ref = float(rec.get("after_price") or 0)
-                if ref > 0:
-                    return ref
-            except (TypeError, ValueError):
-                continue
-    return None
+# 除權息參考價：除息日昨收=除息前價，不能當 ±10%/漲停基準（3034 實例）。
+# 實作在共用模組 market_ref（處置雷達走勢圖平盤價也用），此處保留別名給既有呼叫點。
+from market_ref import get_ex_dividend_ref as _ex_dividend_ref  # noqa: E402
 
 
 def fetch_live_price(symbol: str, prev_close: Optional[float] = None,

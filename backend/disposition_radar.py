@@ -29,6 +29,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from http_legacy_ssl import legacy_get
+from market_ref import get_ex_dividend_ref
 
 logger = logging.getLogger(__name__)
 
@@ -690,25 +691,45 @@ def stock_intraday(code: str, market: str = "") -> dict:
             day_high = round(max(highs), 2) if highs else max(p["c"] for p in series)
             day_low = round(min(lows), 2) if lows else min(p["c"] for p in series)
     prev_close = slope_pct = slope_label = None
+    ref_price = None
+    ref_kind = "昨收"
     if daily is not None and not daily.empty:
-        dcloses = [float(x) for x in daily["close"].dropna().tolist()]
+        ddf = daily.dropna(subset=["close"])
+        dcloses = [float(x) for x in ddf["close"].tolist()]
         if len(dcloses) >= 2:
             prev_close = dcloses[-2]
             if last is None:
                 last = dcloses[-1]
+            # 平盤價：一般日=昨收；除權息生效日=除息參考價（漲跌停/漲跌幅以參考價計）
+            ref_price = prev_close
+            try:
+                _pd_, _cd_ = ddf.index[-2], ddf.index[-1]
+                pds = _pd_.strftime("%Y-%m-%d") if hasattr(_pd_, "strftime") else str(_pd_)[:10]
+                cds = _cd_.strftime("%Y-%m-%d") if hasattr(_cd_, "strftime") else str(_cd_)[:10]
+                # 平盤線需「主動」查除息（懶查會漏：除息日小漲跌看似正常）。
+                # 短 TTL 快取包住：FinMind 失敗/限流時 10 分鐘內不重打 8s 逾時（仍會重試、非整天 stale）
+                ck = f"exdiv:{code}:{cds}"
+                cv = _cached(ck, ttl=600)
+                if cv is None:
+                    cv = _store(ck, {"ref": get_ex_dividend_ref(code, pds, cds)})
+                if cv.get("ref"):
+                    ref_price, ref_kind = cv["ref"], "除權息參考價"
+            except Exception as e:
+                logger.debug("[disposition_radar] 除息參考價查詢失敗 %s: %s", code, e)
         slope_pct, slope_label = _slope_pct_per_day(dcloses[-20:])
     if last is None:
         return out
-    change_pct = round((last / prev_close - 1) * 100, 2) if prev_close else None
+    change_pct = round((last / ref_price - 1) * 100, 2) if ref_price else None
     # 1m high/low 欄偶有壞 tick（mini 實測 sinopac 出現低於跌停下限的 low 18.6/昨收 25.95）
-    # → 超出昨收 ±11%（漲跌停+buffer）改用收盤價極值（收盤序列可信度高於 high/low 雜點）
-    if prev_close and series:
+    # → 超出平盤 ±11%（漲跌停+buffer；除息日以參考價計）改用收盤價極值
+    if ref_price and series:
         closes_only = [p["c"] for p in series]
-        if day_high is not None and day_high > prev_close * 1.11:
+        if day_high is not None and day_high > ref_price * 1.11:
             day_high = max(closes_only)
-        if day_low is not None and day_low < prev_close * 0.89:
+        if day_low is not None and day_low < ref_price * 0.89:
             day_low = min(closes_only)
     return {"code": code, "available": True, "last": last, "prev_close": prev_close,
+            "ref_price": ref_price, "ref_kind": ref_kind,
             "change_pct": change_pct, "day_high": day_high, "day_low": day_low,
             "slope_pct_per_day": slope_pct, "slope_label": slope_label, "series": series}
 

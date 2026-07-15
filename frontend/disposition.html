@@ -185,19 +185,26 @@
                 const slope = d.slope_pct_per_day != null ? `${signed(d.slope_pct_per_day, '%')}/日（${esc(d.slope_label)}）` : '<span class="dr-muted">—</span>';
                 const hi = d.day_high != null ? `<span class="pos">${esc(d.day_high)}</span>` : '—';
                 const lo = d.day_low != null ? `<span class="neg">${esc(d.day_low)}</span>` : '—';
-                cell.innerHTML = `<div class="dr-sub" style="margin:4px 0 6px"><b>📈 當日走勢</b>　現價 <b>${esc(d.last)}</b>　漲跌 ${signed(d.change_pct, '%')}（昨收 ${esc(d.prev_close)}）　最高 ${hi}　最低 ${lo}　月斜率 ${slope}</div>
+                const exDiv = d.ref_kind === '除權息參考價';
+                const refTxt = d.ref_price != null
+                    ? `平盤 ${esc(d.ref_price)}${exDiv ? ' <span class="badge" style="background:rgba(99,102,241,.12);color:#6366f1" title="今日除權息：平盤與漲跌停以除權息參考價計，非昨收">除權息參考價</span>' : ''}`
+                    : '';
+                cell.innerHTML = `<div class="dr-sub" style="margin:4px 0 6px"><b>📈 當日走勢</b>　現價 <b>${esc(d.last)}</b>　漲跌 ${signed(d.change_pct, '%')}　${refTxt}　最高 ${hi}　最低 ${lo}　月斜率 ${slope}</div>
                     <div style="height:150px;position:relative"><canvas></canvas></div>`;
                 if (typeof Chart === 'undefined' || !d.series.length) return;
                 // 漲跌未知(null)或持平 → 中性灰，不誤導成綠(漲)
                 const chg = d.change_pct;
                 const color = chg == null ? '#9ca3af' : (chg > 0 ? '#16a34a' : (chg < 0 ? '#ef4444' : '#9ca3af'));
                 const vols = d.series.map(p => p.v || 0);
+                const datasets = [{ data: d.series.map(p => p.c), borderColor: color, borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0.1 }];
+                if (d.ref_price != null) {
+                    // 平盤參考線（除權息日=除息參考價）：灰虛線、不進 tooltip
+                    datasets.push({ data: d.series.map(() => d.ref_price), borderColor: '#9ca3af',
+                                    borderWidth: 1, borderDash: [6, 4], pointRadius: 0, fill: false });
+                }
                 new Chart(cell.querySelector('canvas'), {
                     type: 'line',
-                    data: {
-                        labels: d.series.map(p => p.t),
-                        datasets: [{ data: d.series.map(p => p.c), borderColor: color, borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0.1 }]
-                    },
+                    data: { labels: d.series.map(p => p.t), datasets },
                     options: {
                         responsive: true, maintainAspectRatio: false, animation: false,
                         interaction: { mode: 'index', intersect: false },   // 滑過即顯示、不用貼線
@@ -205,6 +212,7 @@
                             legend: { display: false },
                             tooltip: {
                                 displayColors: false,
+                                filter: ctx => ctx.datasetIndex === 0,      // 平盤線不出 tooltip
                                 callbacks: {
                                     title: items => items[0] ? items[0].label : '',
                                     label: ctx => {

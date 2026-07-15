@@ -1,4 +1,7 @@
-"""sector_auto_trader 除權息參考價守衛（_ex_dividend_ref）單元測試（不打網路）。"""
+"""除權息參考價（market_ref.get_ex_dividend_ref）單元測試（不打網路）。
+
+實作已從 sector_auto_trader 抽到共用模組 market_ref（處置雷達平盤價共用）；
+sector_auto_trader._ex_dividend_ref 為其別名，本檔仍經別名呼叫以驗整合。"""
 
 import os
 import sys
@@ -7,6 +10,7 @@ _BACKEND = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", 
 if _BACKEND not in sys.path:
     sys.path.insert(0, _BACKEND)
 
+import market_ref
 import sector_auto_trader as sat
 
 
@@ -19,8 +23,8 @@ class _Resp:
 
 
 def _patch(monkeypatch, records):
-    sat._div_ref_cache.clear()
-    monkeypatch.setattr(sat.requests, "get", lambda *a, **k: _Resp(records))
+    market_ref._div_ref_cache.clear()
+    monkeypatch.setattr(market_ref.requests, "get", lambda *a, **k: _Resp(records))
 
 
 def test_ex_dividend_in_window_returns_ref(monkeypatch):
@@ -54,13 +58,13 @@ def test_ex_dividend_bad_ref_price_none(monkeypatch):
 
 
 def test_ex_dividend_fetch_failure_none(monkeypatch):
-    sat._div_ref_cache.clear()
+    market_ref._div_ref_cache.clear()
     def boom(*a, **k):
         raise RuntimeError("network down")
-    monkeypatch.setattr(sat.requests, "get", boom)
+    monkeypatch.setattr(market_ref.requests, "get", boom)
     assert sat._ex_dividend_ref("1234.TW", "2026-07-09", "2026-07-13") is None
-    assert "1234" not in sat._div_ref_cache          # 失敗不快取（下次重試、不 silent stale）
+    assert "1234" not in market_ref._div_ref_cache          # 失敗不快取（下次重試、不 silent stale）
     # 之後成功 → 恢復正常回參考價
-    monkeypatch.setattr(sat.requests, "get",
+    monkeypatch.setattr(market_ref.requests, "get",
                         lambda *a, **k: _Resp([{"date": "2026-07-10", "after_price": 519.0}]))
     assert sat._ex_dividend_ref("1234.TW", "2026-07-09", "2026-07-13") == 519.0

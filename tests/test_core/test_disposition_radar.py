@@ -3,11 +3,21 @@
 import os
 import sys
 
+import pytest
+
 _BACKEND = os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "..", "backend"))
 if _BACKEND not in sys.path:
     sys.path.insert(0, _BACKEND)
 
 import disposition_radar as dr
+
+
+@pytest.fixture(autouse=True)
+def _no_exdiv_network(monkeypatch):
+    """stock_intraday 會查除息參考價（FinMind）——測試預設擋掉；除息情境測試自行覆寫。
+    同時清 dr._cache 避免 exdiv 短 TTL 快取跨測試污染。"""
+    dr._cache.clear()
+    monkeypatch.setattr(dr, "get_ex_dividend_ref", lambda *a, **k: None)
 
 
 def _cal(dates):
@@ -420,6 +430,52 @@ def test_stock_intraday_bad_tick_high_low_clamped(monkeypatch):
     d = dr.stock_intraday("2332", "TWSE")
     assert d["day_low"] == 24.0                             # 壞 tick 18.6 → 改用收盤極值
     assert d["day_high"] == 26.45                           # 26.45 < 25.95*1.11=28.8 合法保留
+
+
+def test_stock_intraday_ex_dividend_ref_price(monkeypatch):
+    """除權息生效日：平盤=除息參考價，漲跌幅/壞tick 基準隨之（3034 情境）。"""
+    import pandas as pd
+
+    class _QP:
+        def get_history(self, symbol, period_days=1, interval="1m"):
+            if interval == "1m":
+                idx = pd.to_datetime(["2026-07-13 09:01"]).tz_localize("Asia/Taipei")
+                df = pd.DataFrame({"close": [467.5], "high": [470.0], "low": [465.0],
+                                   "volume": [100]}, index=idx)
+                df.attrs["volume_unit"] = "lots"
+                return df
+            idx = pd.to_datetime(["2026-07-09", "2026-07-13"])
+            return pd.DataFrame({"close": [542.0, 467.5]}, index=idx)
+
+    import quote_provider
+    monkeypatch.setattr(quote_provider, "get_quote_provider", lambda: _QP())
+    monkeypatch.setattr(dr, "get_ex_dividend_ref",
+                        lambda code, pds, cds: 519.0 if (code, pds, cds) == ("3034", "2026-07-09", "2026-07-13") else None)
+    d = dr.stock_intraday("3034", "TWSE")
+    assert d["ref_price"] == 519.0 and d["ref_kind"] == "除權息參考價"
+    assert d["change_pct"] == round((467.5 / 519.0 - 1) * 100, 2)   # -9.92（對參考價，非對 542 的 -13.7）
+    assert d["prev_close"] == 542.0                                  # 昨收照樣回（顯示用）
+
+
+def test_stock_intraday_normal_day_ref_is_prev_close(monkeypatch):
+    import pandas as pd
+
+    class _QP:
+        def get_history(self, symbol, period_days=1, interval="1m"):
+            if interval == "1m":
+                idx = pd.to_datetime(["2026-07-13 09:01"]).tz_localize("Asia/Taipei")
+                df = pd.DataFrame({"close": [104.0], "high": [105.0], "low": [103.0],
+                                   "volume": [10]}, index=idx)
+                df.attrs["volume_unit"] = "lots"
+                return df
+            idx = pd.to_datetime(["2026-07-10", "2026-07-13"])
+            return pd.DataFrame({"close": [98.0, 104.0]}, index=idx)
+
+    import quote_provider
+    monkeypatch.setattr(quote_provider, "get_quote_provider", lambda: _QP())
+    d = dr.stock_intraday("1234", "TWSE")
+    assert d["ref_price"] == 98.0 and d["ref_kind"] == "昨收"
+    assert d["change_pct"] == 6.12
 
 
 def test_providers_tag_volume_unit():
