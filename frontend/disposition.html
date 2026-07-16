@@ -238,6 +238,64 @@
             } catch (e) { cell.innerHTML = '<div class="dr-sub">📈 當日走勢：載入失敗。</div>'; }
         }
 
+        async function loadCandles(c, cell) {
+            cell.innerHTML = '<span class="dr-muted">載入日K…</span>';
+            try {
+                const r = await fetch(`/api/disposition/candles?code=${encodeURIComponent(c.code)}&market=${encodeURIComponent(c.market || '')}`);
+                const d = await r.json();
+                if (!d.available || !d.series.length) { cell.innerHTML = '<div class="dr-sub">🕯 日K：取價失敗或無資料。</div>'; return; }
+                cell.innerHTML = `<div class="dr-sub" style="margin:10px 0 6px"><b>🕯 近兩個月日K</b>　<span class="dr-muted">紅漲綠跌（台股慣例）；滑過看開高低收量</span></div>
+                    <div style="height:180px;position:relative"><canvas></canvas></div>`;
+                if (typeof Chart === 'undefined') return;
+                const s = d.series;
+                const UP = '#ef4444', DOWN = '#16a34a', FLAT = '#9ca3af';   // 台股：紅漲綠跌
+                const colors = s.map(p => p.c > p.o ? UP : (p.c < p.o ? DOWN : FLAT));
+                // 平盤 K（開=收）實體高度 0 會看不到 → 給極小厚度
+                const eps = Math.max(...s.map(p => p.h - p.l)) * 0.01 || 0.01;
+                const ymin = Math.min(...s.map(p => p.l)), ymax = Math.max(...s.map(p => p.h));
+                const pad = (ymax - ymin) * 0.05 || 1;
+                new Chart(cell.querySelector('canvas'), {
+                    type: 'bar',
+                    data: {
+                        labels: s.map(p => p.d.slice(5)),                    // MM-DD
+                        datasets: [
+                            { data: s.map(p => [p.l, p.h]), backgroundColor: colors,   // 影線（細）
+                              barPercentage: 0.25, categoryPercentage: 1, grouped: false },
+                            { data: s.map(p => [Math.min(p.o, p.c), Math.max(p.o, p.c) + (p.o === p.c ? eps : 0)]),
+                              backgroundColor: colors,                                  // 實體（粗）
+                              barPercentage: 0.85, categoryPercentage: 1, grouped: false }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false, animation: false,
+                        interaction: { mode: 'index', intersect: false },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                displayColors: false,
+                                filter: ctx => ctx.datasetIndex === 1,       // 只在實體出 tooltip
+                                callbacks: {
+                                    title: items => items[0] ? s[items[0].dataIndex].d : '',
+                                    label: ctx => {
+                                        const p = s[ctx.dataIndex];
+                                        const prev = ctx.dataIndex > 0 ? s[ctx.dataIndex - 1].c : null;
+                                        const chg = prev ? ((p.c / prev - 1) * 100).toFixed(2) : null;
+                                        return [`開 ${p.o}　高 ${p.h}`, `低 ${p.l}　收 ${p.c}`,
+                                                chg != null ? `漲跌 ${chg > 0 ? '+' : ''}${chg}%　量 ${(p.v || 0).toLocaleString()} 張`
+                                                            : `量 ${(p.v || 0).toLocaleString()} 張`];
+                                    }
+                                }
+                            }
+                        },
+                        scales: { x: { ticks: { maxTicksLimit: 8, font: { size: 10 } } },
+                                  // bar 圖 y 軸預設 beginAtZero 會把高價股 K 線壓成細線（review 抓到）
+                                  // → 以兩個月高低價框定 ±5% 留白
+                                  y: { min: ymin - pad, max: ymax + pad, ticks: { font: { size: 10 } } } }
+                    }
+                });
+            } catch (e) { cell.innerHTML = '<div class="dr-sub">🕯 日K：載入失敗。</div>'; }
+        }
+
         async function loadAftermath(c, cell) {
             if (!c.last_disp_start) {
                 cell.innerHTML = '<div class="dr-sub">📉 上次處置後走勢：此檔近期無前次處置紀錄可參考（首次接近）。</div>';
@@ -292,7 +350,7 @@
                 const det = document.createElement('tr');
                 det.className = 'dr-detail';
                 det.style.display = 'none';
-                det.innerHTML = `<td colspan="9"><div class="dr-intraday-slot"></div><div class="dr-chip-slot"></div></td>`;
+                det.innerHTML = `<td colspan="9"><div class="dr-intraday-slot"></div><div class="dr-candle-slot"></div><div class="dr-chip-slot"></div></td>`;
                 let loaded = false;
                 tr.onclick = () => {
                     const open = det.style.display === 'none';
@@ -300,6 +358,7 @@
                     if (open && !loaded) {
                         loaded = true;
                         loadIntraday(d, det.querySelector('.dr-intraday-slot'));
+                        loadCandles(d, det.querySelector('.dr-candle-slot'));
                         loadChip(d.code, det.querySelector('.dr-chip-slot'));
                     }
                 };
@@ -341,7 +400,7 @@
                     const det = document.createElement('tr');
                     det.className = 'dr-detail';
                     det.style.display = 'none';
-                    det.innerHTML = `<td colspan="7"><div class="dr-intraday-slot"></div><div class="dr-after-slot"></div><div class="dr-chip-slot"></div></td>`;
+                    det.innerHTML = `<td colspan="7"><div class="dr-intraday-slot"></div><div class="dr-candle-slot"></div><div class="dr-after-slot"></div><div class="dr-chip-slot"></div></td>`;
                     let loaded = false;
                     tr.onclick = () => {
                         const open = det.style.display === 'none';
@@ -349,6 +408,7 @@
                         if (open && !loaded) {
                             loaded = true;
                             loadIntraday(c, det.querySelector('.dr-intraday-slot'));
+                            loadCandles(c, det.querySelector('.dr-candle-slot'));
                             loadAftermath(c, det.querySelector('.dr-after-slot'));
                             loadChip(c.code, det.querySelector('.dr-chip-slot'));
                         }

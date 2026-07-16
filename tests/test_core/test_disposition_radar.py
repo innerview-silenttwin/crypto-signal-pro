@@ -488,6 +488,40 @@ def test_stock_intraday_normal_day_ref_is_prev_close(monkeypatch):
     assert d["change_pct"] == 6.12
 
 
+def test_stock_daily_candles(monkeypatch):
+    """日K：開高低收+量(張)、tail 裁切、缺 OHLC 欄回 unavailable。"""
+    import pandas as pd
+
+    class _QP:
+        def get_history(self, symbol, period_days=70, interval="1d"):
+            idx = pd.to_datetime([f"2026-07-{d:02d}" for d in range(1, 11)])
+            df = pd.DataFrame({"open": [100 + i for i in range(10)],
+                               "high": [102 + i for i in range(10)],
+                               "low": [99 + i for i in range(10)],
+                               "close": [101 + i for i in range(10)],
+                               "volume": [3000] * 10}, index=idx)
+            df.attrs["volume_unit"] = "shares"
+            return df
+
+    import quote_provider
+    monkeypatch.setattr(quote_provider, "get_quote_provider", lambda: _QP())
+    d = dr.stock_daily_candles("1234", "TWSE", bars=5)
+    assert d["available"] is True and len(d["series"]) == 5     # tail(5)
+    k = d["series"][-1]
+    assert (k["o"], k["h"], k["l"], k["c"]) == (109, 111, 108, 110)
+    assert k["v"] == 3                                           # 股→張
+    assert k["d"] == "2026-07-10"
+
+    # 缺 OHLC（只有 close）→ unavailable
+    class _QP2:
+        def get_history(self, symbol, period_days=70, interval="1d"):
+            idx = pd.to_datetime(["2026-07-10"])
+            return pd.DataFrame({"close": [100.0]}, index=idx)
+    monkeypatch.setattr(quote_provider, "get_quote_provider", lambda: _QP2())
+    dr._cache.clear()
+    assert dr.stock_daily_candles("5678", "TWSE")["available"] is False
+
+
 def test_providers_tag_volume_unit():
     """兩個 provider 的 df 都要帶 volume_unit 標記（正規化依據）。"""
     import pandas as pd

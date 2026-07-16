@@ -768,6 +768,53 @@ def stock_intraday(code: str, market: str = "") -> dict:
             "slope_pct_per_day": slope_pct, "slope_label": slope_label, "series": series}
 
 
+def stock_daily_candles(code: str, market: str = "", bars: int = 44) -> dict:
+    """個股近 N 根日 K（開高低收＋量[張]，含今日進行中 K；純揭露）。
+
+    bars=44 ≈ 近兩個月交易日。10 分鐘快取（盤中今日 K 會變）。
+    """
+    code = re.sub(r"\.TW[O]?$", "", str(code or "").strip().upper())
+    suffix = ".TWO" if str(market).upper() == "TPEX" else ".TW"
+    out = {"code": code, "available": False, "series": []}
+    ck = f"candles:{code}:{suffix}:{bars}"
+    hit = _cached(ck, ttl=600)
+    if hit is not None:
+        return hit
+    try:
+        from quote_provider import get_quote_provider
+        qp = get_quote_provider()
+        # 日曆天 ≈ 交易日 ×1.5 + 假日緩衝，再 tail(bars)
+        daily = qp.get_history(f"{code}{suffix}", period_days=int(bars * 1.5) + 10, interval="1d")
+    except Exception as e:
+        logger.debug("[disposition_radar] 日K取價失敗 %s: %s", code, e)
+        return out
+    if daily is None or daily.empty:
+        return out
+    need = [c for c in ("open", "high", "low", "close") if c in daily.columns]
+    if len(need) < 4:
+        return out
+    ddf = daily.dropna(subset=["close"]).tail(bars)
+    # 量單位正規化成「張」（同 intraday：attrs 標記優先、缺標記退類名推斷）
+    unit = getattr(daily, "attrs", {}).get("volume_unit")
+    vol_is_lots = unit == "lots" or (unit is None and type(qp).__name__.startswith("Sinopac"))
+    series = []
+    for ts, row in ddf.iterrows():
+        try:
+            d = ts.strftime("%Y-%m-%d") if hasattr(ts, "strftime") else str(ts)[:10]
+            vraw = float(row.get("volume") or 0)
+            if vraw != vraw:
+                vraw = 0.0
+            series.append({"d": d,
+                           "o": round(float(row["open"]), 2), "h": round(float(row["high"]), 2),
+                           "l": round(float(row["low"]), 2), "c": round(float(row["close"]), 2),
+                           "v": int(round(vraw if vol_is_lots else vraw / 1000))})
+        except (TypeError, ValueError):
+            continue
+    if not series:
+        return out
+    return _store(ck, {"code": code, "available": True, "series": series})
+
+
 # ── 每日 Telegram 推播：新進「再1次就處置」 ─────────────────
 
 def _load_alert_seen() -> dict:

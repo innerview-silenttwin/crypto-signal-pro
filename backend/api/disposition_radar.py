@@ -42,3 +42,14 @@ def get_disposition_intraday(code: str, market: str = ""):
     if not code:
         return {"available": False, "error": "empty_code"}
     return stock_intraday(code, market.strip())
+
+
+@router.get("/api/disposition/candles")
+def get_disposition_candles(code: str, market: str = "", bars: int = 44):
+    """個股近 N 根日 K（開高低收＋量[張]；預設 44 ≈ 近兩個月；純揭露）。"""
+    from disposition_radar import stock_daily_candles
+    code = (code or "").strip()
+    if not code:
+        return {"available": False, "error": "empty_code"}
+    bars = max(10, min(int(bars), 90))
+    return stock_daily_candles(code, market.strip(), bars=bars)
