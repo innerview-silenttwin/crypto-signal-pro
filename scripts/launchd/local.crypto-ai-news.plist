@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-AI 新聞摘要：每日 08:40 / 14:00 / 21:30 觸發（避開 08:30 premarket、18:00 inst、21:00 evening 前後 5 分禁區）。
+AI 新聞摘要：每日 08:40 / 21:30 觸發（避開 08:30 premarket、18:00 inst、21:00 evening 前後 5 分禁區）。
+2026-07-25 拿掉 14:00 那次，一天 3 次→2 次，減少 Gemini 免費層呼叫量（省配額非省錢）。
 抓公開 AI 新聞源+Fed RSS → 去重 → Gemini 情報簡報（含 google 搜尋；失敗降級純標題）→ Telegram（可多則）。
 curl -m 420：最壞路徑 RSS ~96s + Gemini 90s×2（搜尋版+純文字版）+ 多則發送重試，120s 會誤斷。
 
@@ -27,7 +28,6 @@ curl -m 420：最壞路徑 RSS ~96s + Gemini 90s×2（搜尋版+純文字版）+
     <key>StartCalendarInterval</key>
     <array>
         <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>40</integer></dict>
-        <dict><key>Hour</key><integer>14</integer><key>Minute</key><integer>0</integer></dict>
         <dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>30</integer></dict>
     </array>
 
