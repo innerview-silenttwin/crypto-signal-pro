@@ -601,7 +601,89 @@ class SinopacBroker:
         if self._state_store is not None and broker_order_id:
             self._state_store.update_pending_broker_id(client_order_id, broker_order_id)
 
-        # poll 直到 filled / partfilled / cancelled / rejected / timeout
+        result = self._poll_until_done(trade, client_order_id, sj_quantity, is_odd_lot,
+                                        broker_order_id, limit_price)
+
+        # SELL 被拒（非 timeout/cancelled）→ 用跌停價重試一次，等同「市價急賣」但仍走
+        # 合法限價委託（零股盤中交易不支援市價單，跌停價掛單可保證吃到任何賣方掛價）。
+        # 2026-07-30 實據：semiconductor 5 檔零股停損單連續失敗 3766 次、虧損從 -10%
+        # 滾到 -34% 都沒賣掉（見 memory/project_zero_lot_stoploss_failure）。
+        if (not result.ok and result.fill_status == "rejected" and action == "SELL"
+                and contract is not None):
+            limit_down = getattr(contract, "limit_down", 0) or 0
+            if limit_down > 0 and abs(limit_down - limit_price) > 1e-6:
+                # 處置股重試前重新確認可賣：最初的 ensure_sellable 檢查/圈存是綁定「原始那筆」
+                # 委託的，重試是全新一筆委託，prod 環境的 reserve_stock 未必自動延續覆蓋
+                # （sim 環境對處置股 SELL 本來就 no-op、會在函式最前面提前 return，不會走到
+                # 這裡；此檢查是為 prod 環境的完整性）。guard 擋下就不重試，維持原拒單結果。
+                from .disposition_guard import get_guard
+                guard = get_guard()
+                if guard is not None and guard.is_disposed(self.api, symbol):
+                    ok, guard_reason = guard.ensure_sellable(self.api, symbol, qty_shares)
+                    if not ok:
+                        result.reason = f"{result.reason}|retry_skipped_disposition:{guard_reason}"
+                        return result
+                logger.warning(
+                    "%s SELL 被拒（%s），改用跌停價 %.2f 重試一次",
+                    symbol, result.reason, limit_down,
+                )
+                retry_result = self._retry_sell_at_price(
+                    contract, sj_quantity, is_odd_lot, limit_down,
+                    client_order_id, sector_id,
+                )
+                first_reason = result.reason
+                if retry_result.ok:
+                    retry_result.reason = f"retried_limit_down_after:{first_reason}"
+                    return retry_result
+                retry_result.reason = f"{first_reason}|retry_limit_down_also:{retry_result.reason}"
+                return retry_result
+
+        return result
+
+    def _retry_sell_at_price(self, contract, sj_quantity: int, is_odd_lot: bool,
+                              price: float, client_order_id: str, sector_id: str) -> "BrokerResult":
+        """SELL 委託遭拒後，用指定價格（通常是跌停價）重新送一次限價單。
+
+        只重試一次；重試單的成功/失敗一樣計入 sector 熔斷計數（真實反映永豐當下狀況）。
+        """
+        sj = self._sj
+        try:
+            order = self.api.Order(
+                action=sj.constant.Action.Sell,
+                price=float(price),
+                quantity=int(sj_quantity),
+                price_type=sj.constant.StockPriceType.LMT,
+                order_type=sj.constant.OrderType.ROD,
+                order_lot=(sj.constant.StockOrderLot.IntradayOdd if is_odd_lot
+                          else sj.constant.StockOrderLot.Common),
+                order_cond=sj.constant.StockOrderCond.Cash,
+                account=self.api.stock_account,
+            )
+        except Exception as e:
+            logger.error("retry Order construction failed: %s", e.__class__.__name__)
+            return BrokerResult(ok=False, fill_status="rejected", reason="retry_order_build_error")
+
+        with self._lock:
+            try:
+                trade, retry_used = self._place_order_with_retry(contract, order)
+            except Exception as e:
+                logger.error("retry place_order failed: %s", e.__class__.__name__)
+                self._on_place_order_failure(sector_id)
+                return BrokerResult(ok=False, fill_status="rejected", reason="retry_place_order_error")
+            self._on_place_order_success(retry_used, sector_id)
+            self._in_flight[client_order_id] = trade
+
+        # 重試單有自己的 broker_order_id，必須更新 state_store（否則 crash-recovery /
+        # reconcile 讀到的還是原始被拒單的 id，指向錯誤或空的委託）——review 抓到
+        broker_order_id = self._safe_order_id(trade)
+        if self._state_store is not None and broker_order_id:
+            self._state_store.update_pending_broker_id(client_order_id, broker_order_id)
+        return self._poll_until_done(trade, client_order_id, sj_quantity, is_odd_lot,
+                                     broker_order_id, price)
+
+    def _poll_until_done(self, trade, client_order_id: str, sj_quantity: int, is_odd_lot: bool,
+                         broker_order_id: str, limit_price: float) -> "BrokerResult":
+        """poll 直到 filled / partfilled / cancelled / rejected / timeout。"""
         deadline = time.time() + self._fill_timeout_s
         last_status = ""
         while time.time() < deadline:
@@ -632,6 +714,20 @@ class SinopacBroker:
             if status.get("rejected") or status.get("cancelled"):
                 with self._lock:
                     self._in_flight.pop(client_order_id, None)
+                # 保守防護：萬一 SDK 回的複合狀態同時帶有部分成交（理論上 OrderState 是互斥
+                # 列舉、極不可能，但一旦發生，整筆判 rejected 會丟失已成交部分；SELL 重試邏輯
+                # 又會拿「原始全額」再送一次，變成潛在超賣。優先回 partial 保留已成交數量，
+                # 也讓 fill_status != "rejected" 天然不會觸發 SELL 重試（review 抓到）。
+                deal_qty = status.get("deal_quantity") or 0
+                if deal_qty > 0:
+                    actual_price = float(status.get("avg_price") or limit_price)
+                    return BrokerResult(
+                        ok=True,
+                        actual_qty=int(deal_qty) if is_odd_lot else int(deal_qty) * 1000,
+                        actual_price=actual_price,
+                        order_id=broker_order_id,
+                        fill_status="partial",
+                    )
                 return BrokerResult(
                     ok=False,
                     fill_status=("rejected" if status.get("rejected") else "cancelled"),

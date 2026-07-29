@@ -82,10 +82,32 @@ class _FakeTrade:
         self.status = _FakeStatus(status_str, deals=deals)
 
 
+class _FakeContract:
+    """帶漲跌停/平盤資訊的假 contract（真實 Shioaji Stock contract 有這些欄位）。"""
+    def __init__(self, code, limit_up=0.0, limit_down=0.0, reference=0.0):
+        self.code = code
+        self.limit_up = limit_up
+        self.limit_down = limit_down
+        self.reference = reference
+
+    def __repr__(self):
+        return f"contract_{self.code}"
+
+
+class _FakeStocksDict(dict):
+    """__getitem__ 回帶漲跌停的 _FakeContract；limits 是 instance 屬性避免測試互相污染。"""
+    def __init__(self):
+        super().__init__()
+        self.limits: dict = {}   # code -> (limit_up, limit_down)；未設定 = (0,0) 停用重試
+
+    def __getitem__(self, k):
+        up, down = self.limits.get(k, (0.0, 0.0))
+        return _FakeContract(k, limit_up=up, limit_down=down)
+
+
 class _FakeContracts:
-    class Stocks(dict):
-        def __getitem__(self, k):
-            return f"contract_{k}"
+    def __init__(self):
+        self.Stocks = _FakeStocksDict()
 
 
 class _FakeShioajiAPI:
@@ -124,6 +146,13 @@ class _FakeShioajiAPI:
         if getattr(self, "_place_order_ban_error", False):
             exc = type("SystemMaintenance", (Exception,), {})
             raise exc("StatusCode: 503, Detail: 操作異常，請1分鐘後再重新登入")
+        # 支援測試「第一次回 X、重試回 Y」（跌停重試場景）；同時記錄每次呼叫的完整參數
+        # （_last_order_params 只留最後一次，驗證「原始單+重試單都是同一種 lot」需要全部）
+        self._all_order_params = getattr(self, "_all_order_params", [])
+        self._all_order_params.append(order.params)
+        seq = getattr(self, "_trade_sequence", None)
+        if seq:
+            return seq.pop(0)
         # 支援測試「前 N 次 timeout、第 N+1 次成功」
         if hasattr(self, "_place_order_timeouts_left") and self._place_order_timeouts_left > 0:
             self._place_order_timeouts_left -= 1
@@ -171,7 +200,8 @@ class _FakeShioajiModule(types.ModuleType):
                          "_place_order_value_error",
                          "_place_order_conn_errs_left",
                          "_place_order_ban_error",
-                         "_logout_should_fail"):
+                         "_logout_should_fail",
+                         "_trade_sequence"):
                 if hasattr(cfg, attr):
                     setattr(api, attr, getattr(cfg, attr))
             # 只 pre-configure「第一個」instance：rebuild 建的新 instance 應是乾淨的
@@ -302,6 +332,134 @@ def test_rejection_returns_rejected(fake_shioaji):
                  limit_price=900.0, client_order_id="x", sector_id="semiconductor")
     assert r.ok is False
     assert r.fill_status == "rejected"
+
+
+# ── SELL 被拒 → 跌停價重試（2026-07-30：零股停損連續失敗實據）──
+
+def test_sell_rejected_retries_at_limit_down_and_succeeds(fake_shioaji):
+    """SELL 被拒 + contract 有跌停價 → 自動用跌停價重試一次；重試成交則整體回 ok=True。"""
+    fake_shioaji._next_api = _FakeShioajiAPI()
+    fake_shioaji._next_api._trade_sequence = [
+        _FakeTrade("Failed"),                              # 原始限價單被拒
+        _FakeTrade("Filled", deal_qty_lots=1, avg_price=780.0),  # 跌停價重試 → 成交
+    ]
+    b = _new_broker(fake_shioaji)
+    b.api.Contracts.Stocks.limits["2330"] = (880.0, 780.0)  # (漲停, 跌停)
+    r = b.submit(symbol="2330.TW", action="SELL", qty_shares=1000,
+                 limit_price=800.0, client_order_id="x", sector_id="semiconductor")
+    assert r.ok is True
+    assert r.fill_status == "filled"
+    assert "retried_limit_down_after" in r.reason
+    assert b.api._place_order_calls == 2
+    # 重試單要用跌停價，不是原始限價
+    assert b.api._last_order_params["price"] == 780.0
+
+
+def test_sell_rejected_retry_also_fails(fake_shioaji):
+    """跌停價重試仍失敗 → 整體回 ok=False，reason 同時保留兩次失敗資訊。"""
+    fake_shioaji._next_api = _FakeShioajiAPI()
+    fake_shioaji._next_api._trade_sequence = [
+        _FakeTrade("Failed"),
+        _FakeTrade("Failed"),
+    ]
+    b = _new_broker(fake_shioaji)
+    b.api.Contracts.Stocks.limits["2330"] = (880.0, 780.0)
+    r = b.submit(symbol="2330.TW", action="SELL", qty_shares=1000,
+                 limit_price=800.0, client_order_id="x", sector_id="semiconductor")
+    assert r.ok is False
+    assert b.api._place_order_calls == 2
+    assert "retry_limit_down_also" in r.reason
+
+
+def test_sell_rejected_without_limit_down_does_not_retry(fake_shioaji):
+    """contract 沒有漲跌停資訊（0）→ 不觸發重試，維持原行為（回歸既有情境）。"""
+    fake_shioaji._next_api = _FakeShioajiAPI()
+    fake_shioaji._next_api._trade_to_return = _FakeTrade("Failed")
+    b = _new_broker(fake_shioaji)
+    r = b.submit(symbol="2330.TW", action="SELL", qty_shares=1000,
+                 limit_price=800.0, client_order_id="x", sector_id="semiconductor")
+    assert r.ok is False
+    assert b.api._place_order_calls == 1
+
+
+def test_buy_rejected_does_not_retry_at_limit_up(fake_shioaji):
+    """BUY 被拒不重試（重試只對 SELL——BUY 失敗頂多少買一次，不像 SELL 讓虧損擴大）。"""
+    fake_shioaji._next_api = _FakeShioajiAPI()
+    fake_shioaji._next_api._trade_to_return = _FakeTrade("Failed")
+    b = _new_broker(fake_shioaji)
+    b.api.Contracts.Stocks.limits["2330"] = (880.0, 780.0)
+    r = b.submit(symbol="2330.TW", action="BUY", qty_shares=1000,
+                 limit_price=800.0, client_order_id="x", sector_id="semiconductor")
+    assert r.ok is False
+    assert b.api._place_order_calls == 1
+
+
+def test_sell_rejected_odd_lot_retries_at_limit_down(fake_shioaji):
+    """零股（<1000股）停損被拒 → 重試也要走 IntradayOdd（正是實際事故的場景：
+    5 檔零股停損單連續失敗 3766 次，虧損從 -10% 滾到 -34% 都沒賣掉）。"""
+    fake_shioaji._next_api = _FakeShioajiAPI()
+    fake_shioaji._next_api._trade_sequence = [
+        _FakeTrade("Failed"),
+        _FakeTrade("Filled", deal_qty_lots=123, avg_price=499.0),  # 零股：股數即 deal_quantity
+    ]
+    b = _new_broker(fake_shioaji)
+    b.api.Contracts.Stocks.limits["3711"] = (737.0, 499.0)
+    r = b.submit(symbol="3711.TW", action="SELL", qty_shares=123,
+                 limit_price=670.0, client_order_id="x", sector_id="semiconductor")
+    assert r.ok is True
+    assert r.actual_qty == 123                      # 零股：股數不 ×1000
+    # 原始單與重試單都要走 IntradayOdd（只驗最後一次呼叫會漏掉原始單的迴歸——review 抓到）
+    assert len(b.api._all_order_params) == 2
+    assert b.api._all_order_params[0]["order_lot"] == "IntradayOdd"
+    assert b.api._all_order_params[0]["price"] == 670.0
+    assert b.api._all_order_params[1]["order_lot"] == "IntradayOdd"
+    assert b.api._all_order_params[1]["price"] == 499.0
+
+
+def test_sell_rejected_disposition_stock_rechecks_before_retry(fake_shioaji, monkeypatch):
+    """處置股 SELL 被拒 → 重試前重新確認 ensure_sellable；guard 擋下就不重試（prod 完整性）。"""
+    fake_shioaji._next_api = _FakeShioajiAPI()
+    fake_shioaji._next_api._trade_to_return = _FakeTrade("Failed")
+    b = _new_broker(fake_shioaji)
+    b.api.Contracts.Stocks.limits["6770"] = (99.0, 81.0)
+
+    class _FakeGuard:
+        """第一次 ensure_sellable（送原始單前）通過，讓委託真的送出去被永豐拒絕；
+        第二次（重試前重新檢查）才擋下——這樣才測到「重試前重新確認」那段路徑，
+        而不是函式最前面就被擋（若永遠回 False，根本不會走到 poll/重試邏輯）。"""
+        def __init__(self):
+            self.calls = 0
+        def is_disposed(self, api, symbol):
+            return True
+        def ensure_sellable(self, api, symbol, qty_shares):
+            self.calls += 1
+            if self.calls == 1:
+                return True, ""
+            return False, "disposition_sim_noop:6770"
+
+    # 必須共用同一個 instance：get_guard() 在 submit() 內被呼叫兩次（原始單前+重試前），
+    # 若每次都 lambda: _FakeGuard() 會產生新 instance、calls 計數器被重置，測不到真正場景。
+    import brokers.disposition_guard as dg
+    guard_instance = _FakeGuard()
+    monkeypatch.setattr(dg, "get_guard", lambda: guard_instance)
+
+    r = b.submit(symbol="6770.TW", action="SELL", qty_shares=1000,
+                 limit_price=90.0, client_order_id="x", sector_id="semiconductor")
+    assert r.ok is False
+    assert b.api._place_order_calls == 1            # 原始單送出、被拒；重試前 guard 擋下沒送第二次
+    assert "retry_skipped_disposition" in r.reason
+
+
+def test_sell_rejected_retry_at_same_price_does_not_retry(fake_shioaji):
+    """原始限價已等於跌停價時不重試（重試同價位無意義、避免無窮迴圈風險）。"""
+    fake_shioaji._next_api = _FakeShioajiAPI()
+    fake_shioaji._next_api._trade_to_return = _FakeTrade("Failed")
+    b = _new_broker(fake_shioaji)
+    b.api.Contracts.Stocks.limits["2330"] = (880.0, 780.0)
+    r = b.submit(symbol="2330.TW", action="SELL", qty_shares=1000,
+                 limit_price=780.0, client_order_id="x", sector_id="semiconductor")
+    assert r.ok is False
+    assert b.api._place_order_calls == 1
 
 
 def test_credentials_not_in_logs(fake_shioaji, caplog):
