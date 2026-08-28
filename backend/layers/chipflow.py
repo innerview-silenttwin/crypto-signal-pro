@@ -17,6 +17,7 @@ import os
 import json
 import time
 import logging
+import threading
 from datetime import datetime, timedelta
 from typing import Dict, Optional, List
 
@@ -35,6 +36,7 @@ logger = logging.getLogger(__name__)
 # ── 快取設定 ──
 
 _inst_cache: Dict = {}       # 三大法人快取 per-symbol：{cache_key: {"data": {date: {...}}, "time": float}}
+_inst_history: Dict = {}     # 三大法人全市場歷史：{"data": {date: {code: {...}}}}（與落地檔同結構）
 _margin_cache: Dict = {}     # 融資融券快取
 _chip_summary_cache: Dict = {}  # 彙整後籌碼摘要 per-symbol：{cache_key: {"data": summary, "time": float}}
 CHIP_CACHE_TTL = 3600 * 4    # 4 小時
@@ -65,12 +67,32 @@ def latest_published_t86_date() -> str:
 _DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data")
 _INST_HISTORY_FILE = os.path.join(_DATA_DIR, "chip_inst_history.json")
 _MARGIN_HISTORY_FILE = os.path.join(_DATA_DIR, "chip_margin_history.json")
-_openapi_inst_fetched = False   # 本次啟動是否已抓過 OpenAPI 三大法人
 _openapi_margin_fetched = False  # 本次啟動是否已抓過 OpenAPI 融資融券
 
 # API 重試冷卻：失敗後 5 分鐘內不重試，避免每輪都卡 timeout
 _MARGIN_RETRY_COOLDOWN = 300
 _margin_last_attempt: float = 0.0
+
+# 三大法人（T86 / TPEx）冷卻與回補上限
+_INST_RETRY_COOLDOWN = 300
+_inst_last_attempt: float = 0.0
+# 回補視窗以「平日」計算，中間的休市日只會存成空標記；
+# 長假（如農曆年最多 ~9 個平日）會吃掉額度，所以視窗要比 30 個交易日寬
+_INST_BACKFILL_DAYS = 40    # 本地歷史要湊滿的平日數（30d 欄位需要 30 個交易日）
+_INST_FETCH_PER_RUN = 8     # 單次最多補幾天，避免一次打太多 request
+_INST_HISTORY_KEEP = 45     # 落地檔保留天數（含休市日標記）
+_INST_MAX_ERRORS_PER_RUN = 3  # 單次回補容忍幾天失敗才收手
+# screener 用 ThreadPoolExecutor(max_workers=5) 並行掃描，會同時進 _ensure_inst_history：
+# 沒有鎖的話 5 條執行緒各自抓同一批日期，且互相覆蓋彼此的結果
+_inst_lock = threading.Lock()
+# 每個日期是否已抓過 T86（上市）。存在 day dict 裡，避免只有上櫃資料的日期
+# 被誤判為「已補齊」而永遠不再抓上市部分。code 不可能是底線開頭，不會撞名。
+_T86_DONE = "_t86"
+_TPEX_DONE = "_tpex"
+
+# FinMind 只當最後備援：匿名呼叫會被 IP ban（403 + retry_after），
+# 被 ban 後在冷卻期內完全不再嘗試，避免每檔股票都卡一次 timeout
+_finmind_blocked_until: float = 0.0
 
 
 def _load_history_file(filepath: str) -> Dict:
@@ -104,18 +126,32 @@ def _preload_margin_cache():
         logger.info(f"融資融券：從本地快取預載 {len(history)} 天（最新 {latest}）")
 
 
+def _preload_inst_cache():
+    """啟動時從本地歷史檔預載三大法人快取，確保 API 失敗時仍有資料可用"""
+    history = _load_history_file(_INST_HISTORY_FILE)
+    if history:
+        _inst_history["data"] = history
+        latest = max(history.keys()) if history else "N/A"
+        logger.info(f"三大法人：從本地快取預載 {len(history)} 天（最新 {latest}）")
+
+
 _preload_margin_cache()
+_preload_inst_cache()
 
 
 def _strip_tw(symbol: str) -> str:
     """2330.TW → 2330"""
-    return symbol.replace(".TW", "").replace(".TWO", "")
+    return symbol.replace(".TWO", "").replace(".TW", "")
 
 
 def _get_trading_dates(days: int = 10) -> List[str]:
-    """取得最近 N 個可能的交易日日期 (往前多抓幾天以跳過假日)"""
+    """取得最近 N 個可能的交易日日期 (往前多抓幾天以跳過假日)
+
+    掃描範圍要夠大才湊得到 N 個平日：N 個平日至少橫跨 N*7/5 個日曆天，
+    原本只掃 days+10 天，days=40 時只回得到 36 個日期。
+    """
     dates = []
-    for days_ago in range(0, days + 10):
+    for days_ago in range(0, int(days * 7 / 5) + 10):
         d = datetime.now() - timedelta(days=days_ago)
         # 跳過週末
         if d.weekday() >= 5:
@@ -162,6 +198,11 @@ def _fetch_finmind_institutional(stock_id: str, start_date: str, end_date: str) 
     Returns:
         {date_str(YYYYMMDD): {"foreign_net": int, "trust_net": int, "dealer_net": int, "total_net": int}}
     """
+    global _finmind_blocked_until
+    # 被 ban 的冷卻期內直接跳過（不然每檔都要卡一次 request）
+    if time.time() < _finmind_blocked_until:
+        return {}
+
     url = (
         f"https://api.finmindtrade.com/api/v4/data"
         f"?dataset=TaiwanStockInstitutionalInvestorsBuySell"
@@ -170,6 +211,18 @@ def _fetch_finmind_institutional(stock_id: str, start_date: str, end_date: str) 
     try:
         resp = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
         if resp.status_code != 200:
+            # 匿名呼叫量大會被 IP ban：{"msg":"ip banned","status":403,"retry_after":493}
+            if resp.status_code in (403, 429):
+                retry_after = 600
+                try:
+                    retry_after = int(resp.json().get("retry_after") or retry_after)
+                except Exception:
+                    pass
+                _finmind_blocked_until = time.time() + retry_after
+                logger.warning(
+                    f"FinMind 匿名呼叫被擋 (HTTP {resp.status_code})，"
+                    f"{retry_after}s 內不再嘗試；改用 TWSE/TPEx 本地歷史"
+                )
             return {}
         body = resp.json()
         if body.get("status") != 200 or not body.get("data"):
@@ -200,9 +253,248 @@ def _fetch_finmind_institutional(stock_id: str, start_date: str, end_date: str) 
         return {}
 
 
+def _t86_field_index(fields: List[str], exact: str, *keywords: str,
+                     exclude: tuple = ()) -> Optional[int]:
+    """在 T86 表頭找欄位位置：先全字比對，再退回關鍵字全含比對（欄名偶有空白差異）。
+
+    exclude 用來擋掉「名字包含目標關鍵字、但語意不同」的欄位——表頭同時有
+    「自營商買賣超股數」「外資自營商買賣超股數」「自營商買賣超股數(自行買賣)」，
+    純關鍵字比對會命中錯的那個。
+    """
+    for i, f in enumerate(fields):
+        if f.strip() == exact:
+            return i
+    for i, f in enumerate(fields):
+        norm = f.replace(" ", "")
+        if any(x in norm for x in exclude):
+            continue
+        if all(k.replace(" ", "") in norm for k in keywords):
+            return i
+    return None
+
+
+_EMPTY_SETTLED_AFTER_DAYS = 2   # 空結果要幾天後才敢認定是休市
+
+
+def _is_settled_empty_date(date_str: str) -> bool:
+    """空結果是否可以定論為休市（而非尚未公布）。
+
+    TWSE 對「休市日」與「當日尚未上架」回同一句話，只能靠日期新舊區分：
+    超過 2 天還是空的，就不可能是還沒公布。
+    """
+    try:
+        import pytz
+        d = datetime.strptime(date_str, "%Y%m%d").date()
+        today = datetime.now(pytz.timezone("Asia/Taipei")).date()
+        return (today - d).days >= _EMPTY_SETTLED_AFTER_DAYS
+    except Exception:
+        return False
+
+
+def _fetch_twse_t86(date_str: str) -> tuple:
+    """抓 TWSE T86 指定日期的全市場三大法人買賣超（一次 request 拿 1300+ 檔）。
+
+    取代原本「逐檔打 FinMind」：universe 有 75+ 檔時那會發 75+ 個 request，
+    匿名 IP 會被 FinMind 擋（403 ip banned），導致外資/投信類別整批歸零。
+
+    Returns: (state, {code: {...}})
+        "ok"      有資料，寫入並標記完成
+        "holiday" 確定休市（夠舊仍是空的），標記完成避免重抓
+        "pending" 空的但太新，可能尚未公布 → 跳過這天、繼續補更舊的
+        "error"   網路/HTTP/表頭解析失敗 → 停手，整批下次再來
+    """
+    url = (f"https://www.twse.com.tw/rwd/zh/fund/T86"
+           f"?response=json&date={date_str}&selectType=ALLBUT0999")
+    try:
+        resp = legacy_get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0"})
+        if resp.status_code != 200:
+            return "error", {}
+        body = resp.json()
+        stat = str(body.get("stat") or "")
+        if stat != "OK":
+            # 不能用 stat 字串判斷「休市」還是「尚未公布」：實測交易日當天收盤後
+            # 資料未上架時，回的是與週日完全相同的「很抱歉，沒有符合條件的資料!」。
+            # 改用日期新舊判斷：夠舊還是空的才是真休市（那時一定早就公布了）；
+            # 太新的空結果視為尚未公布，不標記、下次再抓，否則當天資料會被永久跳過。
+            if _is_settled_empty_date(date_str):
+                return "holiday", {}
+            logger.info(f"T86 {date_str} 尚無資料（{stat}），可能尚未公布，稍後重試")
+            return "pending", {}
+        fields = body.get("fields") or []
+        rows = body.get("data") or []
+        i_code = _t86_field_index(fields, "證券代號", "代號")
+        i_foreign = _t86_field_index(fields, "外陸資買賣超股數(不含外資自營商)", "外陸資", "買賣超")
+        i_trust = _t86_field_index(fields, "投信買賣超股數", "投信", "買賣超")
+        # 要的是自營商「合計」。表頭同時有「外資自營商買賣超股數」（不同法人）
+        # 與「自營商買賣超股數(自行買賣)」「(避險)」（只是其中一條腿），都要排除
+        i_dealer = _t86_field_index(fields, "自營商買賣超股數", "自營商", "買賣超",
+                                    exclude=("外資", "自行買賣", "避險"))
+        if i_code is None or i_foreign is None or i_trust is None:
+            logger.warning(f"T86 表頭無法解析 ({date_str}): {fields[:6]}")
+            return "error", {}
+
+        result: Dict[str, dict] = {}
+        for row in rows:
+            code = str(row[i_code]).strip()
+            if not code or len(code) > 6:
+                continue
+            foreign = _parse_int(row[i_foreign]) or 0
+            trust = _parse_int(row[i_trust]) or 0
+            dealer = (_parse_int(row[i_dealer]) or 0) if i_dealer is not None else 0
+            result[code] = {
+                "foreign_net": foreign, "trust_net": trust,
+                "dealer_net": dealer, "total_net": foreign + trust + dealer,
+            }
+        return "ok", result
+    except Exception as e:
+        logger.warning(f"T86 三大法人抓取失敗 ({date_str}): {e}")
+        return "error", {}
+
+
+
+
+def _inst_history_snapshot() -> Dict[str, dict]:
+    """在鎖內取歷史的淺層快照。
+
+    _ensure_inst_history 的 trim 會在鎖內 pop 日期；讀取端若直接迭代同一個 dict，
+    可能撞到 "dictionary changed size during iteration"。呼叫端有的包在
+    `except Exception: pass` 裡，例外會被吞掉、讓整個過期防護靜默失效。
+    """
+    with _inst_lock:
+        # 連內層 day dict 一起複製：呼叫端會迭代 rec，而 _backfill 會對同一個
+        # day dict 做 update（一次塞 1300 檔會觸發 resize），只複製外層擋不住
+        return {d: dict(rec) for d, rec in (_inst_history.get("data") or {}).items()}
+
+
+def _fetch_tpex_insti_for_date(date_str: str) -> tuple:
+    """抓 TPEx（上櫃）指定日期的全市場三大法人買賣超。
+
+    openapi 只給最新一天，上櫃就只能一天一天累積；但這樣新裝機的上櫃股
+    30 日欄位只有 1 天資料，而上市股有 30 天——screener 是跨標的做百分位
+    正規化的，兩者基準不同並不公平。這支用可帶日期的端點做歷史回補。
+
+    此端點欄位名稱是重複的（買進/賣出/買賣超 各法人一組），只能靠位置取值；
+    欄位順序已與 openapi 當日資料全量交叉比對確認。
+
+    Returns: 與 _fetch_twse_t86 相同的三態
+    """
+    roc = f"{int(date_str[:4]) - 1911}/{date_str[4:6]}/{date_str[6:]}"
+    url = ("https://www.tpex.org.tw/www/zh-tw/insti/dailyTrade"
+           f"?type=Daily&sect=EW&date={roc}&response=json")
+    try:
+        resp = legacy_get(url, timeout=25, headers={"User-Agent": "Mozilla/5.0"})
+        if resp.status_code != 200:
+            return "error", {}
+        tables = (resp.json() or {}).get("tables") or []
+        rows = (tables[0].get("data") or []) if tables else []
+        if not rows:
+            return ("holiday" if _is_settled_empty_date(date_str) else "pending"), {}
+
+        I_CODE, I_FOREIGN, I_TRUST, I_DEALER = 0, 4, 13, 22
+        result: Dict[str, dict] = {}
+        for row in rows:
+            if len(row) <= I_DEALER:
+                continue
+            code = str(row[I_CODE]).strip()
+            if not code or len(code) > 6:
+                continue
+            foreign = _parse_int(row[I_FOREIGN]) or 0
+            trust = _parse_int(row[I_TRUST]) or 0
+            dealer = _parse_int(row[I_DEALER]) or 0
+            result[code] = {
+                "foreign_net": foreign, "trust_net": trust,
+                "dealer_net": dealer, "total_net": foreign + trust + dealer,
+            }
+        return "ok", result
+    except Exception as e:
+        logger.warning(f"TPEx 三大法人（{date_str}）抓取失敗: {e}")
+        return "error", {}
+
+
+def _ensure_inst_history():
+    """補齊本地三大法人歷史（上市走 T86 逐日回補、上櫃走 TPEx 最新日累積）。
+
+    失敗不阻塞：有多少用多少，下次再補。冷卻機制避免每輪都卡 timeout。
+    """
+    global _inst_last_attempt
+
+    with _inst_lock:
+        history = _inst_history.setdefault("data", {})
+        published = latest_published_t86_date()
+        wanted = [d for d in _get_trading_dates(_INST_BACKFILL_DAYS) if d <= published]
+        # 判斷依據是「該日是否抓過該市場」而不是「該日是否存在」：
+        # 只要有一邊先把日期建出來，用 `d not in history` 就再也不會補另一邊
+        missing_t86 = [d for d in wanted if not history.get(d, {}).get(_T86_DONE)]
+        missing_tpex = [d for d in wanted if not history.get(d, {}).get(_TPEX_DONE)]
+        if not missing_t86 and not missing_tpex:
+            return
+
+        # 冷卻無條件生效（含 history 為空的冷啟動）：
+        # 否則 T86 一失敗，整輪 75 檔會各自重試一次，
+        # 還會全部掉進 FinMind 個股查詢 —— 正是造成 IP ban 的那個模式
+        now = time.time()
+        if now - _inst_last_attempt < _INST_RETRY_COOLDOWN:
+            return
+        _inst_last_attempt = now
+
+        changed = False
+
+        def _backfill(dates: list, fetcher, done_key: str, label: str) -> int:
+            """逐日回補單一市場。
+
+            dates 是新到舊排列。「今天尚未公布」只該跳過那一天（pending），
+            不能因此停掉整批——否則每天收盤後到 TWSE 實際上架前的那段時間，
+            以及冷啟動遇到休市日時，較舊的日期永遠補不到。
+            只有 error（網路/HTTP/表頭壞掉）才停手。
+            """
+            nonlocal changed
+            got = 0
+            attempted = 0
+            errors = 0
+            for date_str in dates:
+                if attempted >= _INST_FETCH_PER_RUN:
+                    break
+                state, day_data = fetcher(date_str)
+                attempted += 1
+                if state == "error":
+                    errors += 1
+                    # 不直接 break：dates 是新到舊，若最新那天固定失敗（該日 500、
+                    # 表頭壞掉…），整批停手會讓較舊、其實抓得到的日期永遠補不到。
+                    # 連續錯誤累積到上限才收手，避免資料源真的掛掉時狂打。
+                    if errors >= _INST_MAX_ERRORS_PER_RUN:
+                        break
+                    continue
+                if state == "pending":
+                    continue            # 該日尚未公布 → 不標記，換更舊的補
+                day = history.setdefault(date_str, {})
+                day.update(day_data)
+                day[done_key] = 1       # 休市日也標記，避免每次重抓
+                changed = True
+                if day_data:
+                    got += 1
+            if got:
+                logger.info(f"三大法人（{label}）回補 {got} 天")
+            return got
+
+        n_twse = _backfill(missing_t86, _fetch_twse_t86, _T86_DONE, "上市")
+        n_tpex = _backfill(missing_tpex, _fetch_tpex_insti_for_date, _TPEX_DONE, "上櫃")
+
+        # changed 而非「有抓到資料」才存檔：整批都是休市日時也要把標記寫下去，
+        # 否則重啟後又要重抓同一批，白白吃掉回補額度
+        if changed:
+            kept = set(sorted(history.keys(), reverse=True)[:_INST_HISTORY_KEEP])
+            # 就地縮減，不重新綁定 _inst_history["data"]，
+            # 避免其他執行緒手上的 alias 變成孤兒 dict 而丟失資料
+            for d in [d for d in history if d not in kept]:
+                history.pop(d, None)
+            _save_history_file(_INST_HISTORY_FILE, history)
+            logger.info(f"三大法人歷史已更新：上市 +{n_twse} 天 / 上櫃 +{n_tpex} 天，"
+                        f"本地共 {len(history)} 天")
+
+
 def fetch_institutional_for_stock(symbol: str, days: int = 10) -> Dict[str, dict]:
     """
-    取得個股近 N 天的三大法人買賣超（FinMind）
+    取得個股近 N 天的三大法人買賣超（TWSE T86 / TPEx，FinMind 為最後備援）
 
     Returns:
         {date_str: {"foreign_net": int, "trust_net": int, "dealer_net": int, "total_net": int}}
@@ -221,17 +513,27 @@ def fetch_institutional_for_stock(symbol: str, days: int = 10) -> Dict[str, dict
             if cache_latest >= latest_published_t86_date():
                 return cached_data
 
-    # 計算日期範圍
-    end_date = datetime.now().strftime("%Y-%m-%d")
-    start_date = (datetime.now() - timedelta(days=days + 5)).strftime("%Y-%m-%d")
+    # 全市場歷史（一天一 request，所有股票共用）
+    _ensure_inst_history()
+    history = _inst_history_snapshot()
+    result = {d: rec[code] for d, rec in history.items() if code in rec}
 
-    result = _fetch_finmind_institutional(code, start_date, end_date)
+    # 只有在「上市+上櫃當日快照都完整、卻仍查不到這檔」時才退回 FinMind 個股查詢
+    # （例如興櫃、剛上市、指數代號）。只要有一邊沒抓到，缺資料就可能是資料源掛了
+    # 而不是這檔真的沒有——那時逐檔打 FinMind 會直接把 IP 打到被 ban
+    newest = max(history, default=None)
+    snapshot_complete = bool(newest) and bool(history[newest].get(_T86_DONE)) \
+        and bool(history[newest].get(_TPEX_DONE))
+    if not result and snapshot_complete:
+        end_date = datetime.now().strftime("%Y-%m-%d")
+        start_date = (datetime.now() - timedelta(days=days + 5)).strftime("%Y-%m-%d")
+        result = _fetch_finmind_institutional(code, start_date, end_date)
+
     if result:
         _inst_cache[cache_key] = {"data": result, "time": time.time()}
-        logger.info(f"三大法人 {code}: {len(result)} 天 (FinMind)")
         return result
 
-    # fetch 失敗：回舊 cache（若有）避免畫面瞬間空白；下次仍會嘗試重抓
+    # 全部失敗：回舊 cache（若有）避免畫面瞬間空白；下次仍會嘗試重抓
     if entry:
         return entry.get("data") or {}
     return {}
@@ -684,23 +986,46 @@ class ChipFlowLayer(BaseLayer):
                 reason=f"{symbol} 無籌碼資料",
             )
 
-        # ── Staleness guard：法人資料 > 3 天舊 → 不參與評分 ──
-        # Why: TWSE OpenAPI 失敗 / FinMind 失敗 → fallback 到磁碟快取，可能是上週資料。
-        #     用 stale 法人資料做交易決定（買賣超方向已過時）會誤導。寧可關掉。
-        CHIP_MAX_STALE_DAYS = 3
+        # ── Staleness guard：法人資料落後太多個「應公布日」→ 不參與評分 ──
+        # Why: 資料源失敗時會 fallback 到磁碟歷史，可能是上週資料。
+        #     用 stale 法人資料做交易決定（買賣超方向已過時）會誤導，寧可關掉。
+        # 用「落後幾個應公布交易日」而非日曆天：日曆天會把連假算進去，
+        # 長假後第一個交易日（例如週五休市 → 週一資料最新只到週四）會被誤判成過舊，
+        # 導致整個籌碼面被靜默移出綜合評分（aggregator 對 active=False 是直接 skip，
+        # 不會留下任何訊息），而那天的資料其實是正常的。
+        CHIP_MAX_STALE_SESSIONS = 3   # 落後幾個「實際有資料的交易日」
+        CHIP_MAX_STALE_CALENDAR = 14  # 絕對上限：連假最長也不會超過，超過就是資料源壞了
         latest_date = summary.get("latest_date", "")
         if latest_date:
             try:
                 from datetime import datetime as _dt
                 import pytz as _pytz
-                latest_dt = _dt.strptime(latest_date, "%Y-%m-%d").date()
-                today_tw = _dt.now(_pytz.timezone("Asia/Taipei")).date()
-                age_days = (today_tw - latest_dt).days
-                if age_days > CHIP_MAX_STALE_DAYS:
+                # 以「全市場歷史裡實際有資料的交易日」為基準，而不是平日或日曆天：
+                # 平日會把休市日算進去，長假後第一個交易日就會被誤判成過舊
+                market_days = sorted(
+                    (d for d, rec in _inst_history_snapshot().items()
+                     if any(not k.startswith("_") for k in rec)),
+                    reverse=True,
+                )
+                if market_days:
+                    sessions_behind = sum(1 for d in market_days if d > latest_date)
+                else:
+                    published = latest_published_t86_date()
+                    sessions_behind = sum(
+                        1 for d in _get_trading_dates(CHIP_MAX_STALE_SESSIONS + 6)
+                        if latest_date < d <= published
+                    )
+                # latest_date 一律是 YYYYMMDD（T86 與 FinMind 兩條路徑都已正規化）；
+                # 原本寫 "%Y-%m-%d" 會固定拋例外被下面的 except 吃掉 → 這個 guard 等於沒作用
+                latest_dt = _dt.strptime(latest_date, "%Y%m%d").date()
+                age_days = (_dt.now(_pytz.timezone("Asia/Taipei")).date() - latest_dt).days
+                if sessions_behind > CHIP_MAX_STALE_SESSIONS or age_days > CHIP_MAX_STALE_CALENDAR:
                     return LayerModifier(
                         layer_name=self.name, active=False,
-                        reason=f"籌碼資料過舊（最新 {latest_date}，距今 {age_days} 天 > {CHIP_MAX_STALE_DAYS} 天上限），暫不參與評分",
-                        details={"latest_date": latest_date, "age_days": age_days},
+                        reason=(f"籌碼資料過舊（最新 {latest_date}，落後 {sessions_behind} 個"
+                                f"交易日 / {age_days} 個日曆天），暫不參與評分"),
+                        details={"latest_date": latest_date,
+                                 "sessions_behind": sessions_behind, "age_days": age_days},
                     )
             except Exception:
                 # 日期格式異常不擋，繼續走原流程（避免一個解析失敗 kill 整個層）

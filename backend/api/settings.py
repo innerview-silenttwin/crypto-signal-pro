@@ -51,7 +51,7 @@ async def add_custom_stock_validated(req: CustomStock):
 
     # 1) 先查 TWSE 上市資料庫（涵蓋所有上市股，最權威）
     all_pe = fetch_twse_pe_all()
-    code_only = sym.replace(".TW", "").replace(".TWO", "") if sym else ""
+    code_only = sym.replace(".TWO", "").replace(".TW", "") if sym else ""
 
     matched_code = None
     matched_name = None

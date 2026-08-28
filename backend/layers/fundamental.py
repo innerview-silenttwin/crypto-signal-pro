@@ -149,7 +149,7 @@ def fetch_twse_revenue_all() -> Dict[str, dict]:
 
 def _strip_tw(symbol: str) -> str:
     """2330.TW → 2330"""
-    return symbol.replace(".TW", "").replace(".TWO", "")
+    return symbol.replace(".TWO", "").replace(".TW", "")
 
 
 def _safe_float(val) -> Optional[float]:

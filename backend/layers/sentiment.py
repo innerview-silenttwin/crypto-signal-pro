@@ -111,7 +111,7 @@ NEGATIVE_KEYWORDS = {
 
 def _strip_tw(symbol: str) -> str:
     """2330.TW → 2330"""
-    return symbol.replace(".TW", "").replace(".TWO", "")
+    return symbol.replace(".TWO", "").replace(".TW", "")
 
 
 def _strip_html(text: str) -> str:

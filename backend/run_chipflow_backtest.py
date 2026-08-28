@@ -182,7 +182,7 @@ def fetch_all_institutional_data(sectors: Dict) -> Dict[str, Dict[str, dict]]:
     need_fetch = []
 
     for sym in all_symbols:
-        code = sym.replace(".TW", "").replace(".TWO", "")
+        code = sym.replace(".TWO", "").replace(".TW", "")
         if code in cache and len(cache[code]) > 500:
             # 已有充足快取資料（至少 500 個交易日）
             result[sym] = cache[code]
@@ -194,7 +194,7 @@ def fetch_all_institutional_data(sectors: Dict) -> Dict[str, Dict[str, dict]]:
         print(f"  （已快取 {len(result)} 檔）")
 
         for i, sym in enumerate(need_fetch):
-            code = sym.replace(".TW", "").replace(".TWO", "")
+            code = sym.replace(".TWO", "").replace(".TW", "")
             print(f"    [{i+1}/{len(need_fetch)}] 下載 {code}...", end="", flush=True)
 
             data = _fetch_finmind_bulk(code, START_DATE, END_DATE)

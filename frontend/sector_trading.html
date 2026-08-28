@@ -94,9 +94,12 @@
             padding: 0 24px 24px;
         }
 
+        /* 與 .score-grid 同一個問題：repeat(5, 1fr) 的最小值是 min-content，
+           數字長的卡（如 +3,045,678 是不可斷行的長字串）會搶走寬度，
+           中文標題最短的卡被擠到折行（實測 1280 下卡片寬 88~150px 不等、標題兩行）。 */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(5, 1fr);
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
             gap: 10px;
             margin-bottom: 14px;
         }
@@ -112,6 +115,7 @@
             text-transform: uppercase;
             margin-bottom: 6px;
             font-weight: 700;
+            white-space: nowrap;   /* 中文標題不逐字折行 */
         }
 
         .stat-value {
@@ -475,10 +479,16 @@
             color: var(--text-main);
         }
 
-        /* 分數卡片列 */
+        /* 分數卡片列
+           原本是 `1.4fr repeat(5, 1fr)`。`1fr` 的最小值是 min-content，而中文可逐字
+           斷行，所以「內容最短的那一欄」（籌碼面沒資料時只有「--」）會被其他欄位的
+           長內容擠到只剩一個字寬、標題直排（實測 1440 視窗下只有 42px）。
+           改用 auto-fit + minmax 給欄寬下限：空間不足就減少欄數換行，不再無限壓縮。
+           這個卡片實際可用寬度只有 ~640px（右側還有欄），所以下限取 150px。
+           綜合建議卡的視覺強調改由 .composite 的粗邊框/底色承擔。 */
         .score-grid {
             display: grid;
-            grid-template-columns: 1.4fr repeat(5, 1fr);
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
             gap: 10px;
             margin-bottom: 12px;
         }
@@ -491,6 +501,7 @@
             display: flex;
             flex-direction: column;
             gap: 4px;
+            min-width: 0;   /* grid item 預設 min-width:auto，內容會撐出欄外 */
         }
 
         .score-card.composite {
@@ -503,6 +514,7 @@
             color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.05em;
+            white-space: nowrap;   /* 中文標題不逐字斷行成直排 */
         }
 
         .sc-num {
@@ -1796,7 +1808,7 @@
                         }
                         return `<tr class="${isBuy ? 'buy-row' : 'sell-row'}">
                         <td>${h.time}</td>
-                        <td style="cursor:pointer;text-decoration:underline dotted" onclick="window.goToStock('${h.symbol}')" title="前往主頁查看">${h.name || h.symbol} <small style="color:var(--text-muted);font-weight:400">${h.symbol.replace('.TW', '')}</small></td>
+                        <td style="cursor:pointer;text-decoration:underline dotted" onclick="window.goToStock('${h.symbol}')" title="前往主頁查看">${h.name || h.symbol} <small style="color:var(--text-muted);font-weight:400">${h.symbol.replace(/\.TWO?$/, '')}</small></td>
                         <td>${isBuy ? '買進' : '賣出'}</td>
                         <td>${h.price.toLocaleString()}</td>
                         <td>${h.qty.toLocaleString()}</td>
@@ -2221,8 +2233,8 @@
 
             function renderResult(data, sym) {
                 // 標題
-                const name = (data.fundamental && data.fundamental.name) || sym.replace('.TW', '');
-                document.getElementById('arc-title').textContent = sym.replace('.TW', '') + ' ' + name;
+                const name = (data.fundamental && data.fundamental.name) || sym.replace(/\.TWO?$/, '');
+                document.getElementById('arc-title').textContent = sym.replace(/\.TWO?$/, '') + ' ' + name;
                 const _now = new Date();
                 const _ts = _now.toLocaleDateString('zh-TW') + ' ' +
                     _now.toLocaleTimeString('zh-TW', {hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false});

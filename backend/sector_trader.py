@@ -894,7 +894,7 @@ class SectorTradingManager:
             logger.warning(f"skipped_trades log failed: {e}")
 
         stock_name = self.stocks.get(symbol, symbol)
-        code = symbol.replace(".TW", "").replace(".TWO", "")
+        code = symbol.replace(".TWO", "").replace(".TW", "")
         stock_url = f"https://tw.stock.yahoo.com/quote/{code}.TW"
 
         # 共用的「動作+股數+價位+小計」資訊行

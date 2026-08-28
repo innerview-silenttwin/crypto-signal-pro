@@ -70,7 +70,7 @@ async def stock_lookup(q: str):
     # 1. 先查交易中心追蹤清單（精確優先）
     for sector, stocks in SECTOR_STOCKS.items():
         for sym, name in stocks.items():
-            code = sym.replace(".TW", "").replace(".TWO", "")
+            code = sym.replace(".TWO", "").replace(".TW", "")
             if q == name or q == code or q == sym:
                 return [{"symbol": sym, "name": name, "sector": sector}]
             if q in name or q in code:

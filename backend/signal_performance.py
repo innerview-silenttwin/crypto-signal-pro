@@ -134,7 +134,7 @@ _inst_cache_loaded = None
 def _get_institutional_data(symbol: str) -> Dict[str, dict]:
     """取得法人歷史資料（優先用全域快取）"""
     global _inst_cache_loaded
-    code = symbol.replace(".TW", "").replace(".TWO", "")
+    code = symbol.replace(".TWO", "").replace(".TW", "")
 
     if _inst_cache_loaded is None:
         _inst_cache_loaded = _load_inst_cache()

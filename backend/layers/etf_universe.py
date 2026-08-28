@@ -179,7 +179,7 @@ def get_beat_taiex_top10(force: bool = False) -> dict:
 # ── 標籤 + universe 擴充 ────────────────────────────────────
 
 def _strip(code: str) -> str:
-    return code.replace(".TW", "").replace(".TWO", "").strip().upper()
+    return code.replace(".TWO", "").replace(".TW", "").strip().upper()
 
 
 def get_etf_tags(symbol: str) -> list[dict]:

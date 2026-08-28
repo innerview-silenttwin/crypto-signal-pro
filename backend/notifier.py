@@ -133,7 +133,7 @@ def notify_trade(sector_name: str, symbol: str, stock_name: str,
     action = "買入" if trade_type == "BUY" else "賣出"
     amount = round(price * qty)
 
-    code = symbol.replace(".TW", "").replace(".TWO", "")
+    code = symbol.replace(".TWO", "").replace(".TW", "")
     stock_url = f"https://tw.stock.yahoo.com/quote/{code}.TW"
 
     # 來源標籤：永豐單明確標出來、虛擬單低調標

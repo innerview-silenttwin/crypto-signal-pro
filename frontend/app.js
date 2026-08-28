@@ -374,13 +374,29 @@ function renderSymbolSwitcher(market) {
 
     container.innerHTML = items.map(item => {
         const isActive = currentSymbol === item.symbol;
-        return `<button class="${isActive ? 'active' : ''}" onclick="window.changeSymbol('${item.symbol}','${market}')">${item.label}</button>`;
+        return `<button class="${isActive ? 'active' : ''}" onclick="window.changeSymbol(${jsAttr(item.symbol)},${jsAttr(market)})">${escHtml(item.label)}</button>`;
     }).join('');
+}
+
+/** HTML 轉義（文字節點與屬性值共用）。
+ *  股票名稱可由使用者自行輸入（POST /api/settings/stock 的 name 會原樣存進
+ *  custom_stocks.json，再經 /api/screener/picks 回到前端），直接塞進 innerHTML
+ *  會變成儲存型 XSS。檔案裡原有的 escT / escC 都是函式內區域變數，這裡提到模組層共用。 */
+function escHtml(x) {
+    return String(x == null ? '' : x).replace(/[&<>"']/g, c =>
+        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+/** 供 inline on* 屬性使用：值會先被當成 JS 字面值，再被當成 HTML 屬性值。
+ *  只做 escHtml 沒用——瀏覽器解析屬性時會把實體解回單引號，字串照樣被跳脫。
+ *  先 JSON.stringify（產生帶引號且內部已跳脫的字面值）再 escHtml 才安全。 */
+function jsAttr(v) {
+    return escHtml(JSON.stringify(String(v == null ? '' : v)));
 }
 
 function _getDisplayName(symbol, market, fallback) {
     if (market === 'stock') {
-        return stockNames[symbol] || fallback || symbol.replace('.TW', '').replace('.TWO', '');
+        return stockNames[symbol] || fallback || symbol.replace(/\.TWO?$/, '');
     }
     if (market === 'futures') {
         const code = symbol.split('.')[0];
@@ -555,10 +571,10 @@ function renderHistory() {
 
         return `
             <div class="history-grid-item ${isActive ? 'active' : ''}" 
-                 onclick="window.changeSymbol('${item.sym}', '${item.market}')"
-                 title="${item.name} (${item.sym})">
+                 onclick="window.changeSymbol(${jsAttr(item.sym)}, ${jsAttr(item.market)})"
+                 title="${escHtml(item.name)} (${escHtml(item.sym)})">
                 <div class="history-dot dot-${item.market}"></div>
-                <span class="history-name">${displayName}</span>
+                <span class="history-name">${escHtml(displayName)}</span>
             </div>
         `;
     }).join('');
@@ -731,9 +747,9 @@ function renderTwMiniCards(market) {
     const list = twWatchlist[market] || [];
     container.innerHTML = list.map(item => `
         <div class="mini-card glass-panel" style="cursor:pointer"
-             onclick="window.changeSymbol('${item.symbol}','${market}')">
+             onclick="window.changeSymbol(${jsAttr(item.symbol)},${jsAttr(market)})">
             <div class="mc-head">
-                <h3>${item.label} ${item.name}</h3>
+                <h3>${escHtml(item.label)} ${escHtml(item.name)}</h3>
                 <span class="glow-text tw-mc-price" data-sym="${item.symbol}">...</span>
             </div>
             <div class="mc-body">1D: <span class="tw-mc-dir" data-sym="${item.symbol}">--</span>
@@ -1694,16 +1710,16 @@ function renderScreenerCards(categories, activeEtfs = [], etfDiffPrevDate = null
                 const etfChip = buildEtfChip(s.etf_holders);
                 const etfEvents = buildEtfEventBadges(s.etf_added_today, s.etf_removed_today, etfNameMap, prevDateLabel);
                 const etfTopBadges = buildEtfTopBadges(s.etf_tags);
-                return `<div class="screener-stock-row${hiddenCls}" data-symbol="${s.symbol}" data-market="stock">
+                return `<div class="screener-stock-row${hiddenCls}" data-symbol="${escHtml(s.symbol)}" data-market="stock">
                     ${rankBadge}
                     ${scoreHtml}
-                    <span class="screener-stock-sym">${s.symbol.replace('.TW','')}</span>
-                    <span class="screener-stock-name">${s.name}</span>
+                    <span class="screener-stock-sym">${escHtml(s.symbol.replace(/\.TWO?$/, ''))}</span>
+                    <span class="screener-stock-name" title="${escHtml(s.name)}">${escHtml(s.name)}</span>
                     ${etfTopBadges}
                     ${daysBadge}
                     ${etfChip}
                     ${etfEvents}
-                    <span class="screener-stock-hl">${s.highlight}</span>
+                    <span class="screener-stock-hl" title="${escHtml(s.highlight)}">${escHtml(s.highlight)}</span>
                 </div>`;
             }).join('')
             : '<div class="screener-empty">暫無符合條件的標的</div>';
@@ -1871,16 +1887,16 @@ async function initConsultation() {
         if (!q || q.length < 1) { hintEl.style.display = 'none'; return; }
         const hits = _consultUniverse.filter(s =>
             s.symbol.includes(q) || s.name.includes(q) ||
-            s.symbol.replace('.TW','').startsWith(q)
+            s.symbol.replace(/\.TWO?$/, '').startsWith(q)
         ).slice(0, 6);
         if (hits.length === 0) { hintEl.style.display = 'none'; return; }
         hintEl.innerHTML = hits.map(h =>
-            `<span class="consult-hint-item" data-sym="${h.symbol}" data-name="${h.name}">${h.symbol.replace('.TW','')} ${h.name}</span>`
+            `<span class="consult-hint-item" data-sym="${escHtml(h.symbol)}" data-name="${escHtml(h.name)}">${escHtml(h.symbol.replace(/\.TWO?$/, ''))} ${escHtml(h.name)}</span>`
         ).join('');
         hintEl.style.display = 'flex';
         hintEl.querySelectorAll('.consult-hint-item').forEach(el => {
             el.addEventListener('click', () => {
-                symbolInput.value = el.dataset.sym.replace('.TW','');
+                symbolInput.value = el.dataset.sym.replace(/\.TWO?$/, '');
                 hintEl.style.display = 'none';
             });
         });
@@ -1918,14 +1934,14 @@ async function runConsultation() {
         const data = await res.json();
 
         if (data.error) {
-            resultEl.innerHTML = `<div class="consultation-error glass-panel">${data.error}</div>`;
+            resultEl.innerHTML = `<div class="consultation-error glass-panel">${escHtml(data.error)}</div>`;
             resultEl.style.display = 'block';
             return;
         }
 
         renderConsultationResult(data);
     } catch (e) {
-        resultEl.innerHTML = `<div class="consultation-error glass-panel">查詢失敗: ${e.message}</div>`;
+        resultEl.innerHTML = `<div class="consultation-error glass-panel">查詢失敗: ${escHtml(e.message)}</div>`;
         resultEl.style.display = 'block';
     } finally {
         btn.disabled = false;
@@ -1980,7 +1996,7 @@ function renderConsultationResult(d) {
         }).join('');
         if (!rows) return '';
         return `<div class="horizon-group">
-            <div class="horizon-group-title">${title}</div>
+            <div class="horizon-group-title">${escHtml(title)}</div>
             <table class="horizon-table"><thead><tr>
                 <th>期限</th><th>平均報酬</th><th>勝率</th><th>最佳</th><th>最差</th><th>樣本</th>
             </tr></thead><tbody>${rows}</tbody></table></div>`;
@@ -2006,9 +2022,9 @@ function renderConsultationResult(d) {
         });
         return `<div class="case-row ${c.is_self ? 'case-self' : ''}">
             ${selfTag}
-            <span class="case-sym">${c.symbol.replace('.TW','')} ${c.name}</span>
-            <span class="case-date">${c.date}</span>
-            <span class="case-regime">${c.regime}</span>
+            <span class="case-sym">${escHtml(c.symbol.replace(/\.TWO?$/, ''))} ${escHtml(c.name)}</span>
+            <span class="case-date">${escHtml(c.date)}</span>
+            <span class="case-regime">${escHtml(c.regime)}</span>
             <span class="case-rets">${retParts[0]} / ${retParts[1]} / ${retParts[2]}</span>
         </div>`;
     }).join('');
@@ -2051,8 +2067,8 @@ function renderConsultationResult(d) {
         <!-- 頭部：股票 + 建議 -->
         <div class="consult-header glass-panel">
             <div class="consult-stock-info">
-                <span class="consult-sym">${d.symbol.replace('.TW','')}</span>
-                <span class="consult-name">${d.name}</span>
+                <span class="consult-sym">${escHtml(d.symbol.replace(/\.TWO?$/, ''))}</span>
+                <span class="consult-name">${escHtml(d.name)}</span>
             </div>
             <div class="consult-pnl-block">
                 <div class="consult-price-row">
@@ -2195,8 +2211,8 @@ function renderActiveEtfRanking(data) {
     // ETF 概覽卡
     const etfSummaryHtml = etfs.map(e => `
         <div class="aetf-etf-chip">
-            <span class="aetf-etf-code">${e.code}</span>
-            <span class="aetf-etf-name">${e.name.replace('主動', '')}</span>
+            <span class="aetf-etf-code">${escHtml(e.code)}</span>
+            <span class="aetf-etf-name">${escHtml(e.name.replace('主動', ''))}</span>
             <span class="aetf-etf-alpha">+${e.alpha}%</span>
         </div>`).join('');
 
@@ -2220,10 +2236,10 @@ function renderActiveEtfRanking(data) {
         }
         const etfEvents = buildEtfEventBadges(s.etf_added_today, s.etf_removed_today, etfNameMap, prevDateLabel);
         const etfEvents7d = buildEtfEvent7dBadges(s.etf_added_7d, s.etf_removed_7d, etfNameMap, historyWindow, todayIso);
-        return `<div class="screener-stock-row${hiddenCls}" data-symbol="${s.symbol}.TW" data-market="stock">
+        return `<div class="screener-stock-row${hiddenCls}" data-symbol="${escHtml(s.symbol)}.TW" data-market="stock">
             <span class="screener-rank">${idx + 1}</span>
-            <span class="screener-stock-sym">${s.symbol}</span>
-            <span class="screener-stock-name">${s.name}</span>
+            <span class="screener-stock-sym">${escHtml(s.symbol)}</span>
+            <span class="screener-stock-name" title="${escHtml(s.name)}">${escHtml(s.name)}</span>
             ${etfCountDisplay}
             ${daysBadge}
             ${etfEvents}
@@ -2248,9 +2264,9 @@ function renderActiveEtfRanking(data) {
             <div class="aetf-removed-list">
                 ${removedStocks.map(r => {
                     const byList = (r.removed_by || []).map(c => `${c} ${etfNameMap[c] || ''}`.trim()).join('、');
-                    return `<div class="aetf-removed-row" data-symbol="${r.symbol}.TW">
-                        <span class="screener-stock-sym">${r.symbol}</span>
-                        <span class="screener-stock-name">${r.name}</span>
+                    return `<div class="aetf-removed-row" data-symbol="${escHtml(r.symbol)}.TW">
+                        <span class="screener-stock-sym">${escHtml(r.symbol)}</span>
+                        <span class="screener-stock-name" title="${escHtml(r.name)}">${escHtml(r.name)}</span>
                         <span class="aetf-removed-by">原被 ${byList} 持有</span>
                     </div>`;
                 }).join('')}

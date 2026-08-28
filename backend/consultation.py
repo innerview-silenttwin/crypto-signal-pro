@@ -446,7 +446,7 @@ def _ai_position_analysis(symbol: str, name: str, current_price: float,
     隱私：送出的是「該股公開資訊 + 成本/張數/損益數字」，不含任何帳號識別（用戶明示
     要求 AI 考慮成本與張數）。
     """
-    code = symbol.replace(".TW", "").replace(".TWO", "")
+    code = symbol.replace(".TWO", "").replace(".TW", "")
     mid = (horizon_stats or {}).get("mid") or {}
     prompt = (
         f"你是台股投資顧問。請先搜尋台股 {code} {name} 近兩週的重大訊息（公司公告、月營收、"

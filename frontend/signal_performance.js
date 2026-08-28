@@ -147,7 +147,7 @@ function renderTable() {
     let stocks = perfData.stocks.filter(s => {
         if (sectorFilter && s.sector !== sectorFilter) return false;
         if (searchFilter) {
-            const code = s.symbol.replace('.TW', '').toLowerCase();
+            const code = s.symbol.replace(/\.TWO?$/, '').toLowerCase();
             const nm = (s.name || '').toLowerCase();
             if (!code.includes(searchFilter) && !nm.includes(searchFilter)) return false;
         }
@@ -235,7 +235,7 @@ function renderCell(stock, col, idx) {
     switch (col.type) {
         case 'text':
             if (col.key === 'symbol') {
-                const code = stock.symbol.replace('.TW', '');
+                const code = stock.symbol.replace(/\.TWO?$/, '');
                 return `<td style="font-weight:700"><a href="index.html" class="stock-link" data-symbol="${stock.symbol}" title="在分析儀表板查看 ${code}">${code}</a></td>`;
             }
             return `<td>${stock[col.key] || ''}</td>`;
@@ -356,7 +356,7 @@ function showSparkOverlay(e, stock, dim, ds) {
     const canvas = document.getElementById('spark-overlay-canvas');
 
     const dimNames = { close: '股價', tech: '技術面分數', regime: '盤勢分數', chip: '籌碼面分數' };
-    titleEl.textContent = `${stock.symbol.replace('.TW', '')} ${stock.name} - ${dimNames[dim] || dim}`;
+    titleEl.textContent = `${stock.symbol.replace(/\.TWO?$/, '')} ${stock.name} - ${dimNames[dim] || dim}`;
 
     const values = ds.map(d => d[dim] ?? 0);
     const labels = ds.map(d => d.date);

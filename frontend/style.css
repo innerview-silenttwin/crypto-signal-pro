@@ -2423,15 +2423,26 @@ a.event-item:hover {
     opacity: 0.5;
     cursor: not-allowed;
 }
+/* 原本是 repeat(3, 1fr)。`1fr` 的最小值是 min-content，卡片內的列（代號/名稱/
+   徽章/highlight 都 nowrap）會把每個欄軌撐到 ~570px，三欄合計遠超過 .main-content
+   可視寬度，最右邊那一欄因此被推出畫面（截圖看到的右側被切掉）。
+   改用 auto-fit + 400px 下限：欄數由容器實際寬度決定，一張卡至少有 ~360px 內容寬，
+   足夠放下固定元素（分數/代號/名稱/徽章約 255px）再留約 100px 給 highlight。
+   固定三欄時 highlight 只剩不到 20px（實測 1440 下 55 列有 44 列如此）＝等於看不見。
+   注意：全站 body{zoom:1.15} 會讓 media query 的判斷寬度與實際版面差 15%，
+   auto-fit 讀的是容器真實寬度，比斷點可靠。 */
 .screener-categories {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    /* min(400px, 100%) 讓容器窄於 400px 時（Windows 傳統捲軸 + 200px 側欄，
+       約 770px 視窗會落在這個帶）欄寬跟著容器縮，不會硬撐出水平捲軸 */
+    grid-template-columns: repeat(auto-fit, minmax(min(400px, 100%), 1fr));
     gap: 12px;
 }
 .screener-cat-card {
     padding: 12px 14px;
     border-radius: 14px;
     transition: transform 0.2s, box-shadow 0.2s;
+    min-width: 0;
 }
 .screener-cat-card:hover {
     transform: translateY(-2px);
@@ -2492,16 +2503,30 @@ a.event-item:hover {
     box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.1);
     position: relative;
 }
+/* 卡片是 3 欄 grid，列內元素（代號 40px + 名稱 48px + 分數 + ETF/NEW 徽章 +
+   highlight 140px）加總常超過卡片可用寬度。這裡讓名稱與 highlight 可壓縮、
+   並把溢出收在列內，否則整條 flex row 會直接切在卡片右緣（截圖問題）。
+   徽章維持 flex-shrink:0；tooltip 走 body 層 position:fixed，不受 overflow 影響。 */
+.screener-cat-stocks { min-width: 0; }
+.screener-stock-row { min-width: 0; overflow: hidden; }
 .screener-stock-sym {
     font-size: 12px;
     font-weight: 700;
     color: var(--accent);
     min-width: 40px;
+    flex-shrink: 0;
 }
 .screener-stock-name {
     font-size: 11px;
     color: var(--text-main);
+    /* 名稱是辨識標的的關鍵，不參與壓縮（要縮先縮右側的 highlight）；
+       超長名稱（如「台新臺灣IC...」）自己 ellipsis，不撐開整列 */
     min-width: 48px;
+    flex-shrink: 0;
+    max-width: 90px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .screener-stock-score {
     font-size: 10px;
@@ -2522,6 +2547,9 @@ a.event-item:hover {
     overflow: hidden;
     text-overflow: ellipsis;
     max-width: 140px;
+    /* min-width:0 才會真的被壓縮並顯示 ellipsis（否則以內容寬度撐開整列） */
+    flex: 0 1 auto;
+    min-width: 0;
 }
 .aetf-etf-count {
     font-size: 10px;
@@ -2794,14 +2822,13 @@ a.event-item:hover {
     background: rgba(100,108,255,0.08);
 }
 
-@media (max-width: 1200px) {
-    .screener-categories {
-        grid-template-columns: repeat(2, 1fr);
-    }
-}
+/* 原本這裡有 @media (max-width:1200px) 把超選卡片固定成 2 欄；
+   欄數已改由 auto-fit 依容器實際寬度決定（斷點看的是實體視窗寬度，
+   與 body{zoom:1.15} 後的版面差 15%，會誤判），故移除。 */
 @media (max-width: 768px) {
+    /* 容器可能窄於 auto-fit 的 400px 下限，明確收成一欄避免溢出 */
     .screener-categories {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
     }
     .screener-ranking-card .screener-cat-stocks {
         grid-template-columns: 1fr;
@@ -2841,22 +2868,29 @@ a.event-item:hover {
     padding-left: 2px;
 }
 
+/* 用 auto-fit + minmax 而非固定欄數：`1fr` 的最小值是 min-content，
+   而中文（如「籌碼面」）的 min-content 只有一個字寬，所以固定 5 欄在視窗不夠寬時
+   會把內容最短的那張卡（籌碼面全是「—」佔位符）壓成一條、標題直向排列（截圖問題）。
+   auto-fit 會在寬度不足時自動減少欄數換行，而不是無限壓縮欄寬。
+   注意：全站 body{zoom:1.15} 不會觸發 media query 重算，但會縮小容器的 CSS 像素寬度，
+   auto-fit 讀得到，因此比斷點寫死更可靠。 */
 .tla-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 14px;
 }
 .tla-grid.tla-grid-4 {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 .tla-grid.tla-grid-5 {
-    grid-template-columns: repeat(5, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 }
 
 .tla-card {
     padding: 14px 16px;
     border-radius: 14px;
     transition: transform 0.2s, box-shadow 0.2s;
+    min-width: 0;   /* grid item 預設 min-width:auto，會被內容撐出欄外 */
 }
 
 .tla-card:hover {
@@ -2881,6 +2915,7 @@ a.event-item:hover {
     font-size: 13px;
     font-weight: 700;
     color: var(--text-main);
+    white-space: nowrap;   /* 中文標題不逐字斷行成直排 */
 }
 
 .tla-body {
@@ -2899,6 +2934,7 @@ a.event-item:hover {
 .tla-row-label {
     color: var(--text-muted);
     font-size: 11px;
+    white-space: nowrap;   /* 「外資30日」等標籤不逐字斷行 */
 }
 
 .tla-row-value {
@@ -3068,8 +3104,12 @@ a.event-item:hover {
 }
 
 @media (max-width: 768px) {
-    .tla-grid {
-        grid-template-columns: 1fr;
+    /* 要寫成 .tla-grid.tla-grid-5 才有足夠 specificity 蓋掉上面的 auto-fit 規則；
+       只寫 .tla-grid 會輸給 .tla-grid.tla-grid-5（實際使用的就是這個變體）。 */
+    .tla-grid,
+    .tla-grid.tla-grid-4,
+    .tla-grid.tla-grid-5 {
+        grid-template-columns: minmax(0, 1fr);
     }
     .tla-recommendation {
         padding: 12px 14px;

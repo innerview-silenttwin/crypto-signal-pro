@@ -540,7 +540,7 @@
             acIndex = -1;
             dropdown.innerHTML = acResults.map((r, i) =>
                 `<div class="symbol-option" data-idx="${i}" onmousedown="selectOption(acResults[${i}])">
-                    <span><span class="so-code">${r.symbol.replace('.TW','').replace('.TWO','')}</span> <span class="so-name">${r.name}</span></span>
+                    <span><span class="so-code">${r.symbol.replace(/\.TWO?$/, '')}</span> <span class="so-name">${r.name}</span></span>
                     ${r.sector ? `<span class="so-sector">${r.sector}</span>` : ''}
                 </div>`
             ).join('');
@@ -911,14 +911,14 @@
                 const retClass = c.avg_return_pct >= 0 ? 'pos' : 'neg';
                 const bestClass = c.best_return_pct >= 0 ? 'pos' : 'neg';
                 const bestLabel = c.best_symbol_name
-                    ? `${c.best_symbol.replace('.TW','')} ${c.best_symbol_name}`
-                    : c.best_symbol.replace('.TW','');
+                    ? `${c.best_symbol.replace(/\.TWO?$/, '')} ${c.best_symbol_name}`
+                    : c.best_symbol.replace(/\.TWO?$/, '');
 
                 // 第 1 名的股票標籤
                 const stockTags = c.first_place.map(fp => {
                     const label = fp.symbol_name
-                        ? `${fp.symbol.replace('.TW','')} ${fp.symbol_name}`
-                        : fp.symbol.replace('.TW','');
+                        ? `${fp.symbol.replace(/\.TWO?$/, '')} ${fp.symbol_name}`
+                        : fp.symbol.replace(/\.TWO?$/, '');
                     const cls = fp.return_pct >= 0 ? '' : ' neg';
                     return `<span class="stock-tag${cls}">${label} ${fmtPct(fp.return_pct)}</span>`;
                 }).join('');
